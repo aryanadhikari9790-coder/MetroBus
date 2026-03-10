@@ -1,0 +1,60 @@
+from django.db.models import Q
+from decimal import Decimal
+from transport.models import RouteFare
+from .models import Booking, BookingSeat, OfflineSeat
+
+
+def intervals_overlap(a_from: int, a_to: int, b_from: int, b_to: int) -> bool:
+    # overlap if max(from) < min(to) using half-open interval [from,to)
+    return max(a_from, b_from) < min(a_to, b_to)
+
+
+def get_fare_for_segment(route_id: int, from_order: int, to_order: int) -> Decimal:
+    fare = RouteFare.objects.filter(
+        route_id=route_id,
+        from_stop_order=from_order,
+        to_stop_order=to_order,
+    ).first()
+    if not fare:
+        raise ValueError("Fare not configured for this stop pair")
+    return fare.fare_amount
+
+
+def get_taken_seat_ids_for_trip(trip_id: int, from_order: int, to_order: int) -> set[int]:
+    """
+    Returns seat_ids that are NOT available for [from_order,to_order)
+    considering:
+    - confirmed bookings seat segments
+    - offline seats seat segments
+    """
+    taken = set()
+
+    # Confirmed bookings
+    bookings = (
+        Booking.objects.filter(trip_id=trip_id, status=Booking.Status.CONFIRMED)
+        .prefetch_related("booking_seats")
+    )
+
+    for b in bookings:
+        if intervals_overlap(b.from_stop_order, b.to_stop_order, from_order, to_order):
+            for bs in b.booking_seats.all():
+                taken.add(bs.seat_id)
+
+    # Offline seats
+    offline = (
+        OfflineSeat.objects.filter(offline_boarding__trip_id=trip_id)
+        .select_related("offline_boarding")
+    )
+    for os in offline:
+        ob = os.offline_boarding
+        if intervals_overlap(ob.from_stop_order, ob.to_stop_order, from_order, to_order):
+            taken.add(os.seat_id)
+
+    return taken
+
+
+def validate_seats_available(trip_id: int, from_order: int, to_order: int, seat_ids: list[int]) -> None:
+    taken = get_taken_seat_ids_for_trip(trip_id, from_order, to_order)
+    conflict = [sid for sid in seat_ids if sid in taken]
+    if conflict:
+        raise ValueError(f"Seats not available: {conflict}")

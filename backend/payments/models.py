@@ -1,34 +1,41 @@
-class Payment:
-    def __init__(self, amount, payment_method, status="pending"):
-        self.amount = amount
-        self.payment_method = payment_method
-        self.status = status
+from django.db import models
+from django.conf import settings
+from bookings.models import Booking
 
-    def process_payment(self):
-        # Implement payment processing logic here
-        pass
 
-    def refund(self):
-        # Implement refund logic here
-        pass
+class Payment(models.Model):
+    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name="payment")
 
-class CreditCardPayment(Payment):
-    def __init__(self, amount, card_number, card_expiry, card_cvc):
-        super().__init__(amount, "credit_card")
-        self.card_number = card_number
-        self.card_expiry = card_expiry
-        self.card_cvc = card_cvc
+    class Method(models.TextChoices):
+        CASH = "CASH", "Cash"
+        MOCK_ONLINE = "MOCK_ONLINE", "Mock Online"
+        ESEWA = "ESEWA", "eSewa"
+        KHALTI = "KHALTI", "Khalti"
 
-class PayPalPayment(Payment):
-    def __init__(self, amount, email):
-        super().__init__(amount, "paypal")
-        self.email = email
+    method = models.CharField(max_length=20, choices=Method.choices)
 
-class BankTransferPayment(Payment):
-    def __init__(self, amount, bank_account):
-        super().__init__(amount, "bank_transfer")
-        self.bank_account = bank_account
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        SUCCESS = "SUCCESS", "Success"
+        FAILED = "FAILED", "Failed"
+        CANCELLED = "CANCELLED", "Cancelled"
 
-# Example usage:
-# payment = CreditCardPayment(100, "1234567812345678", "12/25", "123")
-# payment.process_payment()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
+
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    reference = models.CharField(max_length=200, blank=True, null=True)  # gateway ref id, txn id etc.
+
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="payments_created")
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="payments_verified"
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Payment {self.id} {self.method} {self.status}"

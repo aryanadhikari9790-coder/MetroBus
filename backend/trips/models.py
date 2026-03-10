@@ -1,23 +1,69 @@
 from django.db import models
+from django.conf import settings
+from transport.models import Route, Bus
+
+
+class TripSchedule(models.Model):
+    route = models.ForeignKey(Route, on_delete=models.CASCADE, related_name="schedules")
+    bus = models.ForeignKey(Bus, on_delete=models.CASCADE, related_name="schedules")
+    driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="driver_schedules")
+    helper = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="helper_schedules")
+    scheduled_start_time = models.DateTimeField()
+
+    class Status(models.TextChoices):
+        PLANNED = "PLANNED", "Planned"
+        CANCELLED = "CANCELLED", "Cancelled"
+        COMPLETED = "COMPLETED", "Completed"
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PLANNED)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-scheduled_start_time"]
+
+    def __str__(self):
+        return f"{self.route.name} @ {self.scheduled_start_time}"
 
 
 class Trip(models.Model):
-    trip_id = models.AutoField(primary_key=True)
-    origin = models.CharField(max_length=100)
-    destination = models.CharField(max_length=100)
-    departure_time = models.DateTimeField()
-    arrival_time = models.DateTimeField()
-    duration = models.IntegerField(help_text="Duration in minutes")
+    schedule = models.ForeignKey(TripSchedule, on_delete=models.SET_NULL, null=True, blank=True, related_name="trips")
+
+    route = models.ForeignKey(Route, on_delete=models.PROTECT, related_name="trips")
+    bus = models.ForeignKey(Bus, on_delete=models.PROTECT, related_name="trips")
+    driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="driver_trips")
+    helper = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="helper_trips")
+
+    class Status(models.TextChoices):
+        NOT_STARTED = "NOT_STARTED", "Not started"
+        LIVE = "LIVE", "Live"
+        ENDED = "ENDED", "Ended"
+        CANCELLED = "CANCELLED", "Cancelled"
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOT_STARTED)
+
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    deviation_mode = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 
     def __str__(self):
-        return f'Trip {self.trip_id} from {self.origin} to {self.destination}'
+        return f"{self.route.name} ({self.status})"
+class TripLocation(models.Model):
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="locations")
+    lat = models.DecimalField(max_digits=9, decimal_places=6)
+    lng = models.DecimalField(max_digits=9, decimal_places=6)
+    speed = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    heading = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
 
-
-class TripStop(models.Model):
-    trip = models.ForeignKey(Trip, related_name='stops', on_delete=models.CASCADE)
-    stop_name = models.CharField(max_length=100)
-    stop_order = models.IntegerField()
-    schedule_time = models.DateTimeField()
+    class Meta:
+        ordering = ["-recorded_at"]
 
     def __str__(self):
-        return f'Stop {self.stop_order} at {self.stop_name} for Trip {self.trip.trip_id}'
+        return f"Trip {self.trip_id} @ {self.lat},{self.lng}"
