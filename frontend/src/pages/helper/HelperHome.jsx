@@ -184,9 +184,9 @@ export default function HelperHome() {
             onChange={(e) => setTripId(Number(e.target.value))}
           >
             {trips.length === 0 ? <option value="">No LIVE trips</option> : null}
-            {trips.map((t) => (
-              <option key={t.id} value={t.id}>
-                #{t.id} â€¢ {t.route_name} â€¢ {t.bus_plate}
+            {trips.map((trip) => (
+              <option key={trip.id} value={trip.id}>
+                #{trip.id} • {trip.route_name} • {trip.bus_plate}
               </option>
             ))}
           </select>
@@ -201,9 +201,9 @@ export default function HelperHome() {
                 value={fromOrder}
                 onChange={(e) => setFromOrder(Number(e.target.value))}
               >
-                {routeStops.map((rs) => (
-                  <option key={rs.stop_order} value={rs.stop_order}>
-                    {rs.stop.name}
+                {routeStops.map((stop) => (
+                  <option key={stop.stop_order} value={stop.stop_order}>
+                    {stop.stop.name}
                   </option>
                 ))}
               </select>
@@ -218,9 +218,9 @@ export default function HelperHome() {
                 value={toOrder}
                 onChange={(e) => setToOrder(Number(e.target.value))}
               >
-                {routeStops.map((rs) => (
-                  <option key={rs.stop_order} value={rs.stop_order}>
-                    {rs.stop.name}
+                {routeStops.map((stop) => (
+                  <option key={stop.stop_order} value={stop.stop_order}>
+                    {stop.stop.name}
                   </option>
                 ))}
               </select>
@@ -244,12 +244,12 @@ export default function HelperHome() {
           </div>
 
           <div className="mt-3 grid grid-cols-5 gap-2">
-            {seats.map((s) => (
+            {seats.map((seat) => (
               <SeatPill
-                key={s.seat_id}
-                seat={s}
-                selected={selectedSeatIds.includes(s.seat_id)}
-                onClick={() => toggleSeat(s.seat_id)}
+                key={seat.seat_id}
+                seat={seat}
+                selected={selectedSeatIds.includes(seat.seat_id)}
+                onClick={() => toggleSeat(seat.seat_id)}
               />
             ))}
           </div>

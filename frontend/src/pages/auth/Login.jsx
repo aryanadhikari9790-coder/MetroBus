@@ -4,6 +4,13 @@ import { api } from "../../api";
 import { setToken } from "../../auth";
 import { useAuth } from "../../AuthContext";
 
+const roleToHome = {
+  PASSENGER: "/passenger",
+  DRIVER: "/driver",
+  HELPER: "/helper",
+  ADMIN: "/admin",
+};
+
 export default function Login() {
   const nav = useNavigate();
   const { refreshMe } = useAuth();
@@ -16,9 +23,10 @@ export default function Login() {
     try {
       const res = await api.post("/api/auth/login/", { phone, password });
       setToken(res.data.access);
-      await refreshMe();      // populate user state BEFORE navigating
-      nav("/passenger");
-    } catch (e) {
+      const me = await refreshMe();
+      const destination = roleToHome[me?.role] || "/passenger";
+      nav(destination, { replace: true });
+    } catch {
       setErr("Login failed. Check phone/password.");
     }
   };
