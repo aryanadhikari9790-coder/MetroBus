@@ -21,6 +21,11 @@ export default function ProtectedRoute({ allowRoles, children }) {
 
   if (!user) return <Navigate to="/auth/login" replace />;
 
+  // During development/testing, a true Django superuser can access every protected dashboard.
+  if (user.is_superuser) {
+    return children;
+  }
+
   if (allowRoles && !allowRoles.includes(user.role)) {
     const dest = roleToHome[user.role] || "/passenger";
     return <Navigate to={dest} replace />;
