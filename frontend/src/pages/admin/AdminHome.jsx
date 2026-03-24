@@ -4,6 +4,7 @@ import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
+import { snapRouteToRoad } from "../../lib/mapRoute";
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -104,6 +105,7 @@ export default function AdminHome() {
   const [routeActive, setRouteActive] = useState(true);
   const [selectedStopIds, setSelectedStopIds] = useState([]);
   const [segmentFares, setSegmentFares] = useState([]);
+  const [roadPolyline, setRoadPolyline] = useState([]);
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [scheduleOptions, setScheduleOptions] = useState({ routes: [], buses: [], drivers: [], helpers: [], recent_schedules: [] });
   const [scheduleRouteId, setScheduleRouteId] = useState("");
@@ -229,14 +231,36 @@ export default function AdminHome() {
         .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)),
     [selectedStops]
   );
+  const displayedRoutePoints = roadPolyline.length > 1 ? roadPolyline : selectedRoutePoints;
 
   const mapPoints = useMemo(() => {
-    if (selectedRoutePoints.length > 0) return selectedRoutePoints;
+    if (displayedRoutePoints.length > 0) return displayedRoutePoints;
     const allStops = builderStops
       .map((stop) => [Number(stop.lat), Number(stop.lng)])
       .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
     return allStops.slice(0, 12);
-  }, [builderStops, selectedRoutePoints]);
+  }, [builderStops, displayedRoutePoints]);
+
+  useEffect(() => {
+    if (selectedRoutePoints.length < 2) {
+      setRoadPolyline([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadRoadRoute = async () => {
+      try {
+        const snappedPath = await snapRouteToRoad(selectedRoutePoints, controller.signal);
+        setRoadPolyline(snappedPath.length > 1 ? snappedPath : []);
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        setRoadPolyline([]);
+      }
+    };
+
+    loadRoadRoute();
+    return () => controller.abort();
+  }, [selectedRoutePoints]);
 
   const toggleStopSelection = (stopId) => {
     setSelectedStopIds((current) =>
@@ -342,17 +366,17 @@ export default function AdminHome() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#eff8ff_0%,#f7fbff_38%,#f8fafc_100%)] text-slate-900">
+    <div className="min-h-screen bg-[#f3f6f8] text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6">
-        <header className="rounded-[2rem] bg-white px-5 py-5 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.35)]">
+        <header className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-5 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.22)]">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex items-start gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-[1.5rem] bg-gradient-to-br from-blue-700 to-slate-900 text-lg font-black text-white">
+                <div className="flex h-16 w-16 items-center justify-center rounded-[1.2rem] bg-slate-900 text-lg font-black text-white">
                 AD
               </div>
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">MetroBus Control</div>
-                <div className="mt-1 text-3xl font-black text-slate-950">Admin Dashboard</div>
+                <div className="mt-1 text-3xl font-bold text-slate-950">Admin Dashboard</div>
                 <div className="mt-2 max-w-3xl text-sm text-slate-500">
                   Monitor users, transport inventory, live operations, bookings, payments, and system activity from one control center.
                 </div>
@@ -550,12 +574,12 @@ export default function AdminHome() {
                   <div className="h-[26rem] w-full bg-slate-100">
                     <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom={false} className="h-full w-full">
                       <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; OpenStreetMap &copy; CARTO'
+                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                       />
                       <MapViewport points={mapPoints} />
-                      {selectedRoutePoints.length > 1 ? (
-                        <Polyline positions={selectedRoutePoints} pathOptions={{ color: "#0f172a", weight: 5 }} />
+                      {displayedRoutePoints.length > 1 ? (
+                        <Polyline positions={displayedRoutePoints} pathOptions={{ color: "#334155", weight: 5, opacity: 0.9 }} />
                       ) : null}
                       {builderStops.map((stop) => {
                         const lat = Number(stop.lat);
@@ -571,8 +595,8 @@ export default function AdminHome() {
                             radius={selected ? 9 : 7}
                             eventHandlers={{ click: () => toggleStopSelection(stop.id) }}
                             pathOptions={{
-                              color: selected ? "#0f172a" : "#0f766e",
-                              fillColor: selected ? "#1d4ed8" : "#2dd4bf",
+                              color: selected ? "#0f172a" : "#475569",
+                              fillColor: selected ? "#0f172a" : "#94a3b8",
                               fillOpacity: 0.95,
                             }}
                           >

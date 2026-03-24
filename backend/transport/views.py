@@ -10,6 +10,14 @@ from .serializers import StopSerializer, RouteListSerializer, CreateRouteSeriali
 User = get_user_model()
 
 
+class ActiveStopsView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        stops = Stop.objects.filter(is_active=True).order_by("name")
+        return Response({"stops": StopSerializer(stops, many=True).data})
+
+
 class AdminTransportRouteBuilderView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

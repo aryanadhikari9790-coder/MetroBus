@@ -7,7 +7,7 @@ import { clearToken } from "../../auth";
 function ShellCard({ children, className = "" }) {
   return (
     <section
-      className={`rounded-[2rem] bg-white p-5 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.35)] ${className}`}
+      className={`rounded-[1.6rem] border border-slate-200 bg-white p-5 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.22)] ${className}`}
     >
       {children}
     </section>
@@ -16,9 +16,9 @@ function ShellCard({ children, className = "" }) {
 
 function StatusPill({ children, tone = "blue" }) {
   const tones = {
-    blue: "bg-blue-100 text-blue-900",
+    blue: "bg-slate-100 text-slate-800",
     green: "bg-emerald-100 text-emerald-900",
-    amber: "bg-amber-100 text-amber-900",
+    amber: "bg-slate-200 text-slate-800",
     slate: "bg-slate-100 text-slate-700",
     red: "bg-red-100 text-red-700",
   };
@@ -270,7 +270,7 @@ export default function HelperHome() {
 
   if (loadingTrips) {
     return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,#e4fff4_0%,#effcf7_42%,#f7fbff_100%)] px-4 py-8 text-slate-900">
+      <div className="min-h-screen bg-[#f3f6f8] px-4 py-8 text-slate-900">
         <div className="mx-auto max-w-md rounded-[2rem] bg-white p-8 text-center shadow-lg">
           Loading helper dashboard...
         </div>
@@ -279,17 +279,17 @@ export default function HelperHome() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#e4fff4_0%,#effcf7_42%,#f7fbff_100%)] text-slate-900">
+    <div className="min-h-screen bg-[#f3f6f8] text-slate-900">
       <div className="mx-auto max-w-md px-4 py-5 pb-8">
-        <header className="rounded-[2rem] bg-white px-4 py-4 shadow-[0_20px_40px_-28px_rgba(15,23,42,0.4)]">
+        <header className="rounded-[1.6rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.22)]">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-14 w-14 items-center justify-center rounded-[1.4rem] bg-gradient-to-br from-emerald-500 to-teal-700 text-lg font-black text-white">
+              <div className="flex h-12 w-12 items-center justify-center rounded-[1rem] bg-slate-900 text-sm font-black text-white">
                 HP
               </div>
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">MetroBus Ops</div>
-                <div className="mt-1 text-2xl font-black text-slate-950">Helper Side</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">MetroBus</div>
+                <div className="mt-1 text-xl font-bold text-slate-950">Helper</div>
                 <div className="mt-1 text-sm text-slate-500">{user?.full_name || "Helper"}</div>
               </div>
             </div>
@@ -297,14 +297,14 @@ export default function HelperHome() {
               <button
                 type="button"
                 onClick={() => loadTrips()}
-                className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700"
+                className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700"
               >
                 Refresh
               </button>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="rounded-2xl bg-slate-950 px-3 py-2 text-xs font-bold text-white"
+                className="rounded-2xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
               >
                 Logout
               </button>
@@ -325,7 +325,7 @@ export default function HelperHome() {
         ) : null}
 
         <div className="mt-5 space-y-5">
-          <ShellCard className="overflow-hidden bg-gradient-to-br from-[#0e5f49] via-[#0a7357] to-[#11977b] text-white">
+          <ShellCard className="overflow-hidden bg-slate-900 text-white">
             <div className="flex items-center justify-between gap-3">
               <StatusPill tone="green">On Trip Duty</StatusPill>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-100/90">
@@ -480,13 +480,13 @@ export default function HelperHome() {
               type="button"
               onClick={submitOffline}
               disabled={offlineBusy || selectedSeatIds.length === 0}
-              className="mt-5 w-full rounded-[1.5rem] bg-emerald-700 px-4 py-4 text-base font-black text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-5 w-full rounded-[1.2rem] bg-slate-900 px-4 py-4 text-base font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {offlineBusy ? "Saving offline boarding..." : "Save offline boarding"}
             </button>
           </ShellCard>
 
-          <ShellCard className="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white">
+          <ShellCard className="bg-slate-900 text-white">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-300">Cash Verification</div>

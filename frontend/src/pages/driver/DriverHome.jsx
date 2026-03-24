@@ -4,6 +4,7 @@ import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
+import { snapRouteToRoad } from "../../lib/mapRoute";
 
 const TABS = [
   { id: "home", label: "Home", short: "HM" },
@@ -184,7 +185,9 @@ export default function DriverHome() {
   const [manualLat, setManualLat] = useState("");
   const [manualLng, setManualLng] = useState("");
   const [routeStops, setRouteStops] = useState([]);
+  const [roadPolyline, setRoadPolyline] = useState([]);
   const [activeTab, setActiveTab] = useState("home");
+  const locationWatch = useMemo(() => ({ id: null }), []);
 
   const activeTrip = dashboard?.active_trip ?? null;
   const schedules = dashboard?.schedules ?? [];
@@ -198,6 +201,7 @@ export default function DriverHome() {
         .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)),
     [routeStops]
   );
+  const displayedRoutePolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
 
   const liveBusPoint = useMemo(() => {
     if (!latestLocation) return null;
@@ -208,10 +212,10 @@ export default function DriverHome() {
   }, [latestLocation]);
 
   const mapPoints = useMemo(() => {
-    const all = [...routePolyline];
+    const all = [...displayedRoutePolyline];
     if (liveBusPoint) all.push(liveBusPoint);
     return all;
-  }, [routePolyline, liveBusPoint]);
+  }, [displayedRoutePolyline, liveBusPoint]);
 
   const stopProgressIndex = useMemo(() => {
     if (!liveBusPoint || routePolyline.length === 0) return -1;
@@ -318,6 +322,7 @@ export default function DriverHome() {
     const loadTripDetail = async () => {
       if (!activeTrip?.id) {
         setRouteStops([]);
+        setRoadPolyline([]);
         return;
       }
 
@@ -331,6 +336,27 @@ export default function DriverHome() {
 
     loadTripDetail();
   }, [activeTrip?.id]);
+
+  useEffect(() => {
+    if (routePolyline.length < 2) {
+      setRoadPolyline([]);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadRoadRoute = async () => {
+      try {
+        const snappedPath = await snapRouteToRoad(routePolyline, controller.signal);
+        setRoadPolyline(snappedPath.length > 1 ? snappedPath : []);
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        setRoadPolyline([]);
+      }
+    };
+
+    loadRoadRoute();
+    return () => controller.abort();
+  }, [routePolyline]);
 
   const runAction = async (action, successMessage) => {
     setBusy(true);
@@ -404,6 +430,14 @@ export default function DriverHome() {
       setLocationBusy(false);
     }
   };
+
+  const clearAutoLocationWatch = () => {
+    if (locationWatch.id !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(locationWatch.id);
+      locationWatch.id = null;
+    }
+  };
+
   const sendBrowserLocation = async () => {
     if (!navigator.geolocation) {
       setErr("Geolocation is not supported in this browser.");
@@ -437,17 +471,61 @@ export default function DriverHome() {
   };
 
   useEffect(() => {
-    if (!autoShare || !activeTrip) return;
+    if (activeTrip?.id) {
+      setAutoShare(true);
+      return;
+    }
+
+    setAutoShare(false);
+  }, [activeTrip?.id]);
+
+  useEffect(() => {
+    if (!activeTrip?.id || !autoShare) {
+      clearAutoLocationWatch();
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setErr("Geolocation is not supported in this browser.");
+      setAutoShare(false);
+      return;
+    }
 
     sendBrowserLocation();
-    const intervalId = window.setInterval(() => {
-      sendBrowserLocation();
-    }, 15000);
+
+    const nextWatchId = navigator.geolocation.watchPosition(
+      async (position) => {
+        const { latitude, longitude, speed, heading } = position.coords;
+        await postLocation(
+          {
+            lat: latitude,
+            lng: longitude,
+            speed: Number.isFinite(speed) ? speed : null,
+            heading: Number.isFinite(heading) ? heading : null,
+          },
+          "Auto GPS is live."
+        );
+      },
+      (geoError) => {
+        setErr(geoError.message || "Unable to keep live GPS running.");
+        setAutoShare(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 3000,
+      }
+    );
+
+    locationWatch.id = nextWatchId;
 
     return () => {
-      window.clearInterval(intervalId);
+      navigator.geolocation.clearWatch(nextWatchId);
+      if (locationWatch.id === nextWatchId) {
+        locationWatch.id = null;
+      }
     };
-  }, [autoShare, activeTrip?.id]);
+  }, [autoShare, activeTrip?.id, locationWatch]);
 
   const sendManualLocation = async () => {
     const lat = Number(manualLat);
@@ -462,6 +540,7 @@ export default function DriverHome() {
   };
 
   const handleLogout = () => {
+    clearAutoLocationWatch();
     clearToken();
     navigate("/auth/login");
   };
@@ -477,16 +556,16 @@ export default function DriverHome() {
   }
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,#f7fbff_0%,#eef3fb_45%,#f5f7fb_100%)] text-slate-900">
+    <div className="min-h-screen bg-[#f3f6f8] text-slate-900">
       <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 py-5">
-        <header className="rounded-[2rem] bg-white px-4 py-4 shadow-[0_18px_40px_-28px_rgba(15,23,42,0.35)]">
+        <header className="rounded-[1.6rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.22)]">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-4">
               <HeaderIcon active>
                 <span className="text-lg font-black">DR</span>
               </HeaderIcon>
               <div>
-                <div className="text-2xl font-black leading-tight text-slate-950 sm:text-[1.9rem]">{currentBus} • Active</div>
+                <div className="text-2xl font-bold leading-tight text-slate-950 sm:text-[1.9rem]">{currentBus} • Active</div>
                 <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-green-700">
                   <span className="h-3 w-3 rounded-full bg-green-700" />
                   <span>ON DUTY</span>
@@ -522,7 +601,7 @@ export default function DriverHome() {
         <div className="mt-5 flex-1 space-y-5">
           {activeTab === "home" ? (
             <>
-              <SectionCard className="overflow-hidden bg-gradient-to-br from-[#0f2f84] via-[#13388f] to-[#0b2a77] text-white">
+              <SectionCard className="overflow-hidden border border-slate-200 bg-slate-900 text-white">
                 <div className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-100/80">Upcoming Schedule</div>
                 <div className="mt-5 text-5xl font-black leading-[1.02] tracking-tight">
                   {nextSchedule?.route_name || activeTrip?.route_name || "Pokhara-Lakeside"}
@@ -760,12 +839,12 @@ export default function DriverHome() {
                   <div className="h-72 w-full bg-slate-100">
                     <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
                       <TileLayer
-                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; OpenStreetMap &copy; CARTO'
+                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
                       />
                       <MapViewport points={mapPoints} />
-                      {routePolyline.length > 0 ? (
-                        <Polyline positions={routePolyline} pathOptions={{ color: "#1d4ed8", weight: 5 }} />
+                      {displayedRoutePolyline.length > 0 ? (
+                        <Polyline positions={displayedRoutePolyline} pathOptions={{ color: "#334155", weight: 5, opacity: 0.9 }} />
                       ) : null}
 
                       {routeStops.map((item, index) => {
@@ -781,8 +860,8 @@ export default function DriverHome() {
                             center={[lat, lng]}
                             radius={isCurrent ? 8 : 6}
                             pathOptions={{
-                              color: isCurrent ? "#1e3a8a" : "#0f766e",
-                              fillColor: isCurrent ? "#1d4ed8" : "#2dd4bf",
+                              color: isCurrent ? "#0f172a" : "#475569",
+                              fillColor: isCurrent ? "#0f172a" : "#94a3b8",
                               fillOpacity: 0.95,
                             }}
                           >
@@ -807,7 +886,7 @@ export default function DriverHome() {
                 </div>
               </SectionCard>
 
-              <SectionCard className="bg-gradient-to-br from-[#0f2f84] via-[#13388f] to-[#0b2a77] text-white">
+                <SectionCard className="border border-slate-200 bg-slate-900 text-white">
                 <div className="flex items-center gap-4">
                   <div className="flex h-14 w-14 items-center justify-center rounded-[1.3rem] bg-green-200 text-lg font-black text-green-950">AI</div>
                   <div>
@@ -845,7 +924,7 @@ export default function DriverHome() {
                 </div>
               </div>
 
-              <SectionCard className="bg-gradient-to-br from-[#0f2f84] via-[#1746af] to-[#13388f] text-white">
+              <SectionCard className="border border-slate-200 bg-slate-900 text-white">
                 <div className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-100/80">Current Occupancy</div>
                 <div className="mt-4 text-[5rem] font-black leading-none">{occupiedSeats}/{capacity}</div>
                 <div className="mt-6 flex items-center gap-4">
@@ -872,7 +951,7 @@ export default function DriverHome() {
 
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   <ActionButton onClick={() => setAutoShare((value) => !value)} disabled={locationBusy} tone="green" className="py-4 text-sm">
-                    {autoShare ? "STOP AUTO GPS" : "START AUTO GPS"}
+                    {autoShare ? "AUTO GPS RUNNING" : "RESUME AUTO GPS"}
                   </ActionButton>
                   <ActionButton onClick={sendBrowserLocation} disabled={locationBusy} tone="blue" className="py-4 text-sm">
                     {locationBusy ? "SENDING..." : "SEND CURRENT LOCATION"}
