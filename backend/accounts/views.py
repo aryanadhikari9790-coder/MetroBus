@@ -30,7 +30,7 @@ class AdminDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        if getattr(request.user, "role", None) != User.Role.ADMIN:
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
             return Response({"detail": "You do not have permission to view the admin dashboard."}, status=403)
 
         role_rows = User.objects.values("role").annotate(count=Count("id"))

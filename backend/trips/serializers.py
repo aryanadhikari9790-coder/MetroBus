@@ -7,6 +7,7 @@ from .models import Trip, TripSchedule
 class TripScheduleSerializer(serializers.ModelSerializer):
     route_name = serializers.CharField(source="route.name", read_only=True)
     bus_plate = serializers.CharField(source="bus.plate_number", read_only=True)
+    driver_name = serializers.CharField(source="driver.full_name", read_only=True)
     helper_name = serializers.CharField(source="helper.full_name", read_only=True)
 
     class Meta:
@@ -18,6 +19,7 @@ class TripScheduleSerializer(serializers.ModelSerializer):
             "bus",
             "bus_plate",
             "driver",
+            "driver_name",
             "helper",
             "helper_name",
             "scheduled_start_time",
@@ -68,3 +70,17 @@ class DriverStartOptionHelperSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ("id", "full_name", "phone")
+
+
+class AdminTripScheduleUserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "full_name", "phone", "role")
+
+
+class CreateTripScheduleSerializer(serializers.Serializer):
+    route_id = serializers.IntegerField()
+    bus_id = serializers.IntegerField()
+    driver_id = serializers.IntegerField()
+    helper_id = serializers.IntegerField()
+    scheduled_start_time = serializers.DateTimeField()

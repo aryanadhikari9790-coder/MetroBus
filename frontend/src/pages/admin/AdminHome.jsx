@@ -98,11 +98,19 @@ export default function AdminHome() {
   const [recentRoutes, setRecentRoutes] = useState([]);
   const [routeBusy, setRouteBusy] = useState(false);
   const [routeMsg, setRouteMsg] = useState("");
+  const [scheduleMsg, setScheduleMsg] = useState("");
   const [routeName, setRouteName] = useState("");
   const [routeCity, setRouteCity] = useState("Pokhara");
   const [routeActive, setRouteActive] = useState(true);
   const [selectedStopIds, setSelectedStopIds] = useState([]);
   const [segmentFares, setSegmentFares] = useState([]);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [scheduleOptions, setScheduleOptions] = useState({ routes: [], buses: [], drivers: [], helpers: [], recent_schedules: [] });
+  const [scheduleRouteId, setScheduleRouteId] = useState("");
+  const [scheduleBusId, setScheduleBusId] = useState("");
+  const [scheduleDriverId, setScheduleDriverId] = useState("");
+  const [scheduleHelperId, setScheduleHelperId] = useState("");
+  const [scheduleStartTime, setScheduleStartTime] = useState("");
 
   const loadDashboard = async ({ silent = false } = {}) => {
     if (!silent) {
@@ -132,9 +140,26 @@ export default function AdminHome() {
     }
   };
 
+  const loadScheduleBuilder = async () => {
+    try {
+      const res = await api.get("/api/trips/admin/schedules/");
+      const nextOptions = {
+        routes: res.data.routes || [],
+        buses: res.data.buses || [],
+        drivers: res.data.drivers || [],
+        helpers: res.data.helpers || [],
+        recent_schedules: res.data.recent_schedules || [],
+      };
+      setScheduleOptions(nextOptions);
+    } catch (e) {
+      setErr((prev) => prev || e?.response?.data?.detail || "Failed to load schedule assignment data.");
+    }
+  };
+
   useEffect(() => {
     loadDashboard();
     loadRouteBuilder();
+    loadScheduleBuilder();
     const intervalId = window.setInterval(() => {
       loadDashboard({ silent: true });
     }, 10000);
@@ -147,6 +172,26 @@ export default function AdminHome() {
       return Array.from({ length: requiredLength }, (_, index) => current[index] || "");
     });
   }, [selectedStopIds]);
+
+  useEffect(() => {
+    if (!scheduleRouteId && scheduleOptions.routes.length) {
+      setScheduleRouteId(String(scheduleOptions.routes[0].id));
+    }
+    if (!scheduleBusId && scheduleOptions.buses.length) {
+      setScheduleBusId(String(scheduleOptions.buses[0].id));
+    }
+    if (!scheduleDriverId && scheduleOptions.drivers.length) {
+      setScheduleDriverId(String(scheduleOptions.drivers[0].id));
+    }
+    if (!scheduleHelperId && scheduleOptions.helpers.length) {
+      setScheduleHelperId(String(scheduleOptions.helpers[0].id));
+    }
+    if (!scheduleStartTime) {
+      const date = new Date(Date.now() + 15 * 60000);
+      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      setScheduleStartTime(local);
+    }
+  }, [scheduleOptions, scheduleRouteId, scheduleBusId, scheduleDriverId, scheduleHelperId, scheduleStartTime]);
 
   const handleLogout = () => {
     clearToken();
@@ -218,6 +263,11 @@ export default function AdminHome() {
     setRouteMsg("");
   };
 
+  const clearScheduleBuilder = () => {
+    setScheduleMsg("");
+    setScheduleStartTime("");
+  };
+
   const createRoute = async () => {
     if (!routeName.trim()) {
       setErr("Enter a route name before creating the route.");
@@ -252,6 +302,34 @@ export default function AdminHome() {
       setErr(e?.response?.data?.detail || "Failed to create route.");
     } finally {
       setRouteBusy(false);
+    }
+  };
+
+  const createSchedule = async () => {
+    if (!(scheduleRouteId && scheduleBusId && scheduleDriverId && scheduleHelperId && scheduleStartTime)) {
+      setErr("Fill route, bus, driver, helper, and start time before creating a schedule.");
+      return;
+    }
+
+    setScheduleBusy(true);
+    setErr("");
+    setScheduleMsg("");
+
+    try {
+      const res = await api.post("/api/trips/admin/schedules/", {
+        route_id: Number(scheduleRouteId),
+        bus_id: Number(scheduleBusId),
+        driver_id: Number(scheduleDriverId),
+        helper_id: Number(scheduleHelperId),
+        scheduled_start_time: new Date(scheduleStartTime).toISOString(),
+      });
+      setScheduleMsg(res.data.message || "Trip schedule created successfully.");
+      clearScheduleBuilder();
+      await Promise.all([loadDashboard({ silent: true }), loadScheduleBuilder()]);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to create trip schedule.");
+    } finally {
+      setScheduleBusy(false);
     }
   };
 
@@ -317,6 +395,12 @@ export default function AdminHome() {
         {routeMsg ? (
           <div className="mt-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
             {routeMsg}
+          </div>
+        ) : null}
+
+        {scheduleMsg ? (
+          <div className="mt-4 rounded-[1.5rem] border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">
+            {scheduleMsg}
           </div>
         ) : null}
 
@@ -532,6 +616,127 @@ export default function AdminHome() {
           </ShellCard>
 
           <ShellCard>
+            <SectionTitle
+              eyebrow="Trip Assignment"
+              title="Assign route, driver, helper, and bus"
+              action={<StatusPill tone="green">{scheduleOptions.recent_schedules.length} recent schedules</StatusPill>}
+            />
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Route</label>
+                    <select
+                      value={scheduleRouteId}
+                      onChange={(e) => setScheduleRouteId(e.target.value)}
+                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
+                    >
+                      {scheduleOptions.routes.map((route) => (
+                        <option key={route.id} value={route.id}>
+                          {route.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Bus</label>
+                    <select
+                      value={scheduleBusId}
+                      onChange={(e) => setScheduleBusId(e.target.value)}
+                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
+                    >
+                      {scheduleOptions.buses.map((bus) => (
+                        <option key={bus.id} value={bus.id}>
+                          {bus.plate_number} | {bus.capacity} seats
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Driver</label>
+                    <select
+                      value={scheduleDriverId}
+                      onChange={(e) => setScheduleDriverId(e.target.value)}
+                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
+                    >
+                      {scheduleOptions.drivers.map((driver) => (
+                        <option key={driver.id} value={driver.id}>
+                          {driver.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Helper</label>
+                    <select
+                      value={scheduleHelperId}
+                      onChange={(e) => setScheduleHelperId(e.target.value)}
+                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
+                    >
+                      {scheduleOptions.helpers.map((helper) => (
+                        <option key={helper.id} value={helper.id}>
+                          {helper.full_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Scheduled start</label>
+                  <input
+                    type="datetime-local"
+                    value={scheduleStartTime}
+                    onChange={(e) => setScheduleStartTime(e.target.value)}
+                    className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
+                  />
+                </div>
+
+                <div className="rounded-[1.5rem] bg-slate-50 p-4 text-sm text-slate-600">
+                  Create schedules here so drivers can see assigned trips on their dashboard and start them without manual setup. Helper selection here also keeps the helper workflow synced with the same trip.
+                </div>
+
+                <button
+                  type="button"
+                  onClick={createSchedule}
+                  disabled={scheduleBusy}
+                  className="w-full rounded-[1.5rem] bg-blue-700 px-4 py-4 text-base font-black text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {scheduleBusy ? "Creating schedule..." : "Create trip schedule"}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {scheduleOptions.recent_schedules.length ? (
+                  scheduleOptions.recent_schedules.map((schedule) => (
+                    <div key={schedule.id} className="rounded-[1.5rem] border border-slate-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-lg font-black text-slate-950">{schedule.route_name}</div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            {schedule.bus_plate} | Driver {schedule.driver_name || "-"} | Helper {schedule.helper_name || "-"}
+                          </div>
+                        </div>
+                        <StatusPill tone={schedule.status === "PLANNED" ? "amber" : schedule.status === "COMPLETED" ? "green" : "slate"}>
+                          {schedule.status}
+                        </StatusPill>
+                      </div>
+                      <div className="mt-3 rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
+                        Starts {formatDateTime(schedule.scheduled_start_time)}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                    No trip schedules yet. Create one to let the driver start an assigned route.
+                  </div>
+                )}
+              </div>
+            </div>
+          </ShellCard>
+
+          <ShellCard>
             <SectionTitle eyebrow="Payments" title="Method performance" />
             <div className="mt-5 space-y-3">
               {paymentMethodRows.map((item) => (
@@ -552,7 +757,7 @@ export default function AdminHome() {
               ))}
             </div>
 
-            <div className="mt-5 grid grid-cols-3 gap-3">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-[1.4rem] bg-slate-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Success</div>
                 <div className="mt-2 text-2xl font-black text-slate-950">{payments.success || 0}</div>

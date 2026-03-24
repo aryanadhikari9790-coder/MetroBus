@@ -233,11 +233,24 @@ export default function DriverHome() {
   const currentBus = useMemo(() => {
     if (activeTrip) return activeTrip.bus_plate;
     if (nextSchedule) return nextSchedule.bus_plate;
-    return manualOptions.buses[0]?.plate_number || "Bus #1024";
-  }, [activeTrip, nextSchedule, manualOptions]);
+    return (
+      manualOptions.buses.find((bus) => String(bus.id) === String(busId))?.plate_number ||
+      manualOptions.buses[0]?.plate_number ||
+      "Bus #1024"
+    );
+  }, [activeTrip, nextSchedule, manualOptions, busId]);
 
-  const currentRoute = activeTrip?.route_name || nextSchedule?.route_name || "Pokhara-Lakeside";
-  const helperName = activeTrip?.helper_name || nextSchedule?.helper_name || manualOptions.helpers[0]?.full_name || "Helper";
+  const currentRoute =
+    activeTrip?.route_name ||
+    nextSchedule?.route_name ||
+    manualOptions.routes.find((route) => String(route.id) === String(routeId))?.name ||
+    "Pokhara-Lakeside";
+  const helperName =
+    activeTrip?.helper_name ||
+    nextSchedule?.helper_name ||
+    manualOptions.helpers.find((helper) => String(helper.id) === String(helperId))?.full_name ||
+    manualOptions.helpers[0]?.full_name ||
+    "Helper";
   const minutesToNext = minutesUntil(nextSchedule?.scheduled_start_time);
   const nextStop =
     routeStops[Math.min(stopProgressIndex + 1, routeStops.length - 1)]?.stop?.name ||
@@ -473,7 +486,7 @@ export default function DriverHome() {
                 <span className="text-lg font-black">DR</span>
               </HeaderIcon>
               <div>
-                <div className="text-[1.9rem] font-black leading-none text-slate-950">{currentBus} • Active</div>
+                <div className="text-2xl font-black leading-tight text-slate-950 sm:text-[1.9rem]">{currentBus} • Active</div>
                 <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-green-700">
                   <span className="h-3 w-3 rounded-full bg-green-700" />
                   <span>ON DUTY</span>
@@ -530,7 +543,7 @@ export default function DriverHome() {
                 <div className="mt-8 space-y-3">
                   <ActionButton
                     onClick={() => (nextSchedule ? startScheduledTrip(nextSchedule.id) : startManualTrip())}
-                    disabled={busy}
+                    disabled={busy || (!nextSchedule && (!routeId || !busId || !helperId))}
                     tone="green"
                     className="w-full bg-[#2d7f2d] py-5 text-2xl"
                   >
@@ -604,6 +617,12 @@ export default function DriverHome() {
                     </div>
                   </div>
                 </div>
+
+                {!manualOptions.helpers.length ? (
+                  <div className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    No helper is available yet. Create or assign a helper from the admin schedule panel before starting a manual trip.
+                  </div>
+                ) : null}
 
                 <div className="mt-5 grid grid-cols-2 gap-4">
                   <div className="rounded-[1.5rem] bg-slate-50 px-5 py-5">

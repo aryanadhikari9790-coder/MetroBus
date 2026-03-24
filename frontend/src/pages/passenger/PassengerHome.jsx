@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
@@ -17,6 +17,107 @@ function formatDateTime(value) {
 function formatMoney(value) {
   const numeric = Number(value || 0);
   return `NPR ${numeric.toLocaleString()}`;
+}
+
+function formatEtaLabel(eta) {
+  if (!eta) return "ETA unavailable";
+  if (eta.status === "arriving") return "Arriving now";
+  if (eta.status === "passed") return "Passed pickup";
+  if (Number.isFinite(eta.minutes)) return `ETA ${eta.minutes} min`;
+  return "ETA unavailable";
+}
+
+function toLatLng(value) {
+  if (!value) return null;
+  const lat = Number(value.lat);
+  const lng = Number(value.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return [lat, lng];
+}
+
+function distanceKm(a, b) {
+  if (!a || !b) return 0;
+
+  const [lat1, lng1] = a;
+  const [lat2, lng2] = b;
+  const earthRadiusKm = 6371;
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const dLat = toRadians(lat2 - lat1);
+  const dLng = toRadians(lng2 - lng1);
+  const originLat = toRadians(lat1);
+  const destinationLat = toRadians(lat2);
+
+  const haversine =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(originLat) * Math.cos(destinationLat) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
+function buildCumulativeDistances(points) {
+  const cumulative = [0];
+  for (let index = 1; index < points.length; index += 1) {
+    cumulative[index] = cumulative[index - 1] + distanceKm(points[index - 1], points[index]);
+  }
+  return cumulative;
+}
+
+function findNearestPointIndex(points, target) {
+  if (!points.length || !target) return -1;
+
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  points.forEach((point, index) => {
+    const currentDistance = distanceKm(point, target);
+    if (currentDistance < nearestDistance) {
+      nearestDistance = currentDistance;
+      nearestIndex = index;
+    }
+  });
+
+  return nearestIndex;
+}
+
+function normalizeSpeedKmh(speed) {
+  const numeric = Number(speed);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 22;
+  if (numeric <= 30) return numeric * 3.6;
+  return numeric;
+}
+
+function estimateEta(busPoint, targetPoint, routePath, speed) {
+  if (!busPoint || !targetPoint) return null;
+
+  const path = routePath.length > 1 ? routePath : [busPoint, targetPoint];
+  const cumulative = buildCumulativeDistances(path);
+  const busIndex = findNearestPointIndex(path, busPoint);
+  const targetIndex = findNearestPointIndex(path, targetPoint);
+
+  if (busIndex === -1 || targetIndex === -1) return null;
+
+  const directDistance = distanceKm(busPoint, targetPoint);
+  if (directDistance <= 0.15) {
+    return { status: "arriving", minutes: 1, distanceKm: directDistance };
+  }
+
+  if (busIndex > targetIndex + 3 && directDistance > 0.2) {
+    return { status: "passed", minutes: null, distanceKm: 0 };
+  }
+
+  const routeDistance =
+    targetIndex >= busIndex
+      ? Math.max(0, cumulative[targetIndex] - cumulative[busIndex])
+      : directDistance;
+
+  const speedKmh = normalizeSpeedKmh(speed);
+  const minutes = Math.max(1, Math.round((routeDistance / speedKmh) * 60));
+
+  return {
+    status: "enroute",
+    minutes,
+    distanceKm: routeDistance,
+  };
 }
 
 function MapViewport({ points }) {
@@ -123,13 +224,13 @@ export default function PassengerHome() {
   const { user } = useAuth();
 
   const [trips, setTrips] = useState([]);
+  const [selectedRouteId, setSelectedRouteId] = useState("");
   const [tripId, setTripId] = useState("");
   const [routeStops, setRouteStops] = useState([]);
   const [fromOrder, setFromOrder] = useState("");
   const [toOrder, setToOrder] = useState("");
   const [seats, setSeats] = useState([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
-  const [latestLocation, setLatestLocation] = useState(null);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [loadingTrips, setLoadingTrips] = useState(true);
@@ -141,10 +242,41 @@ export default function PassengerHome() {
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [roadRouteLoaded, setRoadRouteLoaded] = useState(false);
 
-  const selectedTrip = useMemo(
-    () => trips.find((trip) => String(trip.id) === String(tripId)) || null,
-    [trips, tripId]
+  const liveRoutes = useMemo(() => {
+    const uniqueRoutes = new Map();
+
+    trips.forEach((trip) => {
+      const routeKey = String(trip.route);
+      if (!uniqueRoutes.has(routeKey)) {
+        uniqueRoutes.set(routeKey, {
+          route: trip.route,
+          route_name: trip.route_name,
+          bus_count: 0,
+        });
+      }
+
+      uniqueRoutes.get(routeKey).bus_count += 1;
+    });
+
+    return Array.from(uniqueRoutes.values());
+  }, [trips]);
+
+  const selectedRouteTrips = useMemo(
+    () => trips.filter((trip) => String(trip.route) === String(selectedRouteId)),
+    [trips, selectedRouteId]
   );
+
+  const selectedRouteSummary = useMemo(
+    () => liveRoutes.find((route) => String(route.route) === String(selectedRouteId)) || null,
+    [liveRoutes, selectedRouteId]
+  );
+
+  const selectedTrip = useMemo(
+    () => selectedRouteTrips.find((trip) => String(trip.id) === String(tripId)) || selectedRouteTrips[0] || null,
+    [selectedRouteTrips, tripId]
+  );
+
+  const latestLocation = selectedTrip?.latest_location || null;
 
   const routePolyline = useMemo(
     () =>
@@ -154,22 +286,34 @@ export default function PassengerHome() {
     [routeStops]
   );
 
-  const liveBusPoint = useMemo(() => {
-    if (!latestLocation) return null;
-    const lat = Number(latestLocation.lat);
-    const lng = Number(latestLocation.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return [lat, lng];
-  }, [latestLocation]);
-
-  const mapPoints = useMemo(() => {
-    const all = [...routePolyline];
-    if (liveBusPoint) all.push(liveBusPoint);
-    return all;
-  }, [routePolyline, liveBusPoint]);
-
+  const displayedRoutePolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
   const fromStop = routeStops.find((stop) => String(stop.stop_order) === String(fromOrder)) || null;
   const toStop = routeStops.find((stop) => String(stop.stop_order) === String(toOrder)) || null;
+  const etaTargetStop = fromStop || routeStops[0] || null;
+  const etaTargetPoint = etaTargetStop ? [Number(etaTargetStop.stop?.lat), Number(etaTargetStop.stop?.lng)] : null;
+
+  const routeBuses = useMemo(
+    () =>
+      selectedRouteTrips
+        .map((trip) => {
+          const point = toLatLng(trip.latest_location);
+          const eta = estimateEta(point, etaTargetPoint, displayedRoutePolyline, trip.latest_location?.speed);
+          return {
+            trip,
+            point,
+            eta,
+          };
+        })
+        .filter((item) => item.point),
+    [selectedRouteTrips, etaTargetPoint, displayedRoutePolyline]
+  );
+
+  const mapPoints = useMemo(() => {
+    const all = [...displayedRoutePolyline];
+    routeBuses.forEach((bus) => all.push(bus.point));
+    return all;
+  }, [displayedRoutePolyline, routeBuses]);
+
   const availableSeats = seats.filter((seat) => seat.available);
   const selectedSeatLabels = seats
     .filter((seat) => selectedSeatIds.includes(seat.seat_id))
@@ -177,7 +321,6 @@ export default function PassengerHome() {
   const bookedSeatLabels = lastBookingSummary?.seats?.map((seat) => seat.seat_no) || [];
   const estimatedFare =
     lastBookingSummary?.fare_total || (selectedSeatIds.length > 0 && selectedTrip ? selectedSeatIds.length * 120 : 0);
-  const displayedRoutePolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
 
   const loadTrips = async ({ silent = false } = {}) => {
     if (!silent) setLoadingTrips(true);
@@ -186,12 +329,6 @@ export default function PassengerHome() {
       const res = await api.get("/api/trips/live/");
       setTrips(res.data);
       setErr("");
-
-      if (!tripId && res.data.length > 0) {
-        setTripId(String(res.data[0].id));
-      } else if (tripId && !res.data.some((trip) => String(trip.id) === String(tripId))) {
-        setTripId(res.data[0] ? String(res.data[0].id) : "");
-      }
     } catch (error) {
       setErr(error?.response?.data?.detail || "Unable to load live trips.");
     } finally {
@@ -199,26 +336,19 @@ export default function PassengerHome() {
     }
   };
 
-  const loadTripContext = async (activeTripId) => {
+  const loadRouteContext = async (activeTripId) => {
     if (!activeTripId) {
       setRouteStops([]);
-      setLatestLocation(null);
       return;
     }
 
     try {
-      const [tripDetail, latestLoc] = await Promise.all([
-        api.get(`/api/trips/${activeTripId}/`),
-        api.get(`/api/trips/${activeTripId}/location/latest/`).catch(() => null),
-      ]);
-
+      const tripDetail = await api.get(`/api/trips/${activeTripId}/`);
       setRouteStops(tripDetail.data.route_stops || []);
-      setLatestLocation(latestLoc?.data || null);
       setErr("");
     } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to load trip detail.");
+      setErr(error?.response?.data?.detail || "Unable to load route detail.");
       setRouteStops([]);
-      setLatestLocation(null);
     }
   };
 
@@ -249,21 +379,43 @@ export default function PassengerHome() {
     loadTrips();
     const intervalId = window.setInterval(() => {
       loadTrips({ silent: true });
-    }, 20000);
+    }, 10000);
 
     return () => window.clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
-    loadTripContext(tripId);
+    if (!liveRoutes.length) {
+      setSelectedRouteId("");
+      return;
+    }
 
-    if (!tripId) return undefined;
+    if (!selectedRouteId || !liveRoutes.some((route) => String(route.route) === String(selectedRouteId))) {
+      setSelectedRouteId(String(liveRoutes[0].route));
+    }
+  }, [liveRoutes, selectedRouteId]);
 
-    const intervalId = window.setInterval(() => {
-      loadTripContext(tripId);
-    }, 15000);
+  useEffect(() => {
+    if (!selectedRouteTrips.length) {
+      setTripId("");
+      return;
+    }
 
-    return () => window.clearInterval(intervalId);
+    if (!selectedRouteTrips.some((trip) => String(trip.id) === String(tripId))) {
+      setTripId(String(selectedRouteTrips[0].id));
+    }
+  }, [selectedRouteTrips, tripId]);
+
+  useEffect(() => {
+    loadRouteContext(selectedTrip?.id || "");
+  }, [selectedTrip?.id]);
+
+  useEffect(() => {
+    setLastBookingId(null);
+    setLastBookingSummary(null);
+    setMsg("");
+    setErr("");
+    setSelectedSeatIds([]);
   }, [tripId]);
 
   useEffect(() => {
@@ -273,9 +425,14 @@ export default function PassengerHome() {
       return;
     }
 
-    setFromOrder((current) => current || String(routeStops[0].stop_order));
+    setFromOrder((current) => {
+      if (routeStops.some((stop) => String(stop.stop_order) === String(current))) return current;
+      return String(routeStops[0].stop_order);
+    });
+
     setToOrder((current) => {
-      if (current) return current;
+      const currentStop = routeStops.find((stop) => String(stop.stop_order) === String(current));
+      if (currentStop && Number(currentStop.stop_order) > Number(routeStops[0].stop_order)) return current;
       return String(routeStops[1].stop_order);
     });
   }, [routeStops]);
@@ -339,7 +496,7 @@ export default function PassengerHome() {
     }
 
     loadAvailability(tripId, fromOrder, toOrder);
-  }, [tripId, fromOrder, toOrder]);
+  }, [tripId, fromOrder, toOrder, routeStops]);
 
   const toggleSeat = (seatId) => {
     setSelectedSeatIds((current) =>
@@ -349,7 +506,7 @@ export default function PassengerHome() {
 
   const handleBookSeats = async () => {
     if (!tripId || !fromOrder || !toOrder || selectedSeatIds.length === 0) {
-      setErr("Choose a trip, segment, and at least one seat first.");
+      setErr("Choose a bus, segment, and at least one seat first.");
       return;
     }
 
@@ -476,44 +633,37 @@ export default function PassengerHome() {
         <div className="mt-5 space-y-5">
           <ShellCard className="overflow-hidden bg-gradient-to-br from-[#062b73] via-[#0f3ea4] to-[#1167d8] text-white">
             <div className="flex items-center justify-between gap-3">
-              <StatusPill tone="green">Live Trip</StatusPill>
+              <StatusPill tone="green">Live Route Selection</StatusPill>
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-100/90">
-                {selectedTrip?.status || "Waiting"}
+                {selectedRouteTrips.length} bus{selectedRouteTrips.length === 1 ? "" : "es"} active
               </div>
             </div>
 
-            <div className="mt-4 text-sm font-semibold uppercase tracking-[0.28em] text-blue-100/80">Select active bus</div>
+            <div className="mt-4 text-sm font-semibold uppercase tracking-[0.28em] text-blue-100/80">Choose route first</div>
             <select
-              value={tripId}
-              onChange={(event) => {
-                setTripId(event.target.value);
-                setLastBookingId(null);
-                setLastBookingSummary(null);
-                setMsg("");
-                setErr("");
-              }}
+              value={selectedRouteId}
+              onChange={(event) => setSelectedRouteId(event.target.value)}
               className="mt-3 w-full rounded-[1.4rem] border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white outline-none"
             >
-              {trips.length === 0 ? <option value="">No live trips</option> : null}
-              {trips.map((trip) => (
-                <option key={trip.id} value={trip.id} className="text-slate-900">
-                  {trip.route_name} | {trip.bus_plate}
+              {liveRoutes.length === 0 ? <option value="">No live routes</option> : null}
+              {liveRoutes.map((route) => (
+                <option key={route.route} value={route.route} className="text-slate-900">
+                  {route.route_name} ({route.bus_count} bus{route.bus_count === 1 ? "" : "es"})
                 </option>
               ))}
             </select>
 
             <div className="mt-5 text-4xl font-black leading-tight">
-              {selectedTrip?.route_name || "No live trip available right now"}
+              {selectedRouteSummary?.route_name || "No live route available right now"}
             </div>
             <div className="mt-3 flex flex-wrap gap-2 text-sm text-blue-100">
-              <StatusPill tone="blue">Bus {selectedTrip?.bus_plate || "-"}</StatusPill>
-              <StatusPill tone="amber">Driver {selectedTrip?.driver_name || "-"}</StatusPill>
-              <StatusPill tone="green">Helper {selectedTrip?.helper_name || "-"}</StatusPill>
+              <StatusPill tone="blue">Tracking all buses on this route</StatusPill>
+              <StatusPill tone="amber">{etaTargetStop ? `Pickup ETA: ${etaTargetStop.stop?.name}` : "Choose your segment below"}</StatusPill>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-[1.5rem] bg-white/10 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-100/80">Started</div>
-                <div className="mt-2 text-sm font-semibold text-white">{formatDateTime(selectedTrip?.started_at)}</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-100/80">Selected bus</div>
+                <div className="mt-2 text-sm font-semibold text-white">{selectedTrip?.bus_plate || "Choose a bus"}</div>
               </div>
               <div className="rounded-[1.5rem] bg-white/10 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-100/80">Last GPS</div>
@@ -527,13 +677,73 @@ export default function PassengerHome() {
           <ShellCard>
             <div className="flex items-center justify-between gap-3">
               <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Route Fleet</div>
+                <div className="mt-1 text-2xl font-black text-slate-950">Live buses on this route</div>
+              </div>
+              <StatusPill tone={routeBuses.length ? "green" : "slate"}>
+                {routeBuses.length ? "Live positions available" : "No GPS yet"}
+              </StatusPill>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {selectedRouteTrips.map((trip) => {
+                const liveBus = routeBuses.find((item) => item.trip.id === trip.id);
+                const isActive = String(trip.id) === String(selectedTrip?.id);
+
+                return (
+                  <button
+                    key={trip.id}
+                    type="button"
+                    onClick={() => setTripId(String(trip.id))}
+                    className={`w-full rounded-[1.6rem] border p-4 text-left transition ${
+                      isActive
+                        ? "border-blue-700 bg-blue-50 shadow-[0_18px_32px_-24px_rgba(29,78,216,0.7)]"
+                        : "border-slate-200 bg-slate-50 hover:border-blue-300 hover:bg-white"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-lg font-black text-slate-950">Bus {trip.bus_plate}</div>
+                        <div className="mt-1 text-sm text-slate-500">
+                          Driver {trip.driver_name || "-"} | Helper {trip.helper_name || "-"}
+                        </div>
+                      </div>
+                      <StatusPill tone={isActive ? "blue" : "green"}>{formatEtaLabel(liveBus?.eta)}</StatusPill>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                      <div className="rounded-[1.2rem] bg-white px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">GPS updated</div>
+                        <div className="mt-2 font-semibold text-slate-900">
+                          {formatDateTime(trip.latest_location?.recorded_at)}
+                        </div>
+                      </div>
+                      <div className="rounded-[1.2rem] bg-white px-3 py-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Estimated arrival</div>
+                        <div className="mt-2 font-semibold text-slate-900">{formatEtaLabel(liveBus?.eta)}</div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {selectedRouteTrips.length === 0 ? (
+                <div className="rounded-[1.35rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                  No live buses are currently running on the selected route.
+                </div>
+              ) : null}
+            </div>
+          </ShellCard>
+
+          <ShellCard>
+            <div className="flex items-center justify-between gap-3">
+              <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Journey Tracker</div>
                 <div className="mt-1 text-2xl font-black text-slate-950">Live route map</div>
               </div>
               {roadRouteLoaded ? (
                 <StatusPill tone="green">Road route loaded</StatusPill>
-              ) : liveBusPoint ? (
-                <StatusPill tone="green">Bus moving</StatusPill>
+              ) : routeBuses.length ? (
+                <StatusPill tone="green">Dynamic bus locations</StatusPill>
               ) : (
                 <StatusPill tone="slate">No live GPS yet</StatusPill>
               )}
@@ -556,12 +766,16 @@ export default function PassengerHome() {
                     const lng = Number(item.stop?.lng);
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
+                    const isPickup = String(item.stop_order) === String(fromOrder);
+                    const isDrop = String(item.stop_order) === String(toOrder);
+                    const fillColor = isPickup ? "#22c55e" : isDrop ? "#f59e0b" : "#2dd4bf";
+
                     return (
                       <CircleMarker
                         key={`${item.stop_order}-${item.stop?.id || item.stop?.name}`}
                         center={[lat, lng]}
-                        radius={7}
-                        pathOptions={{ color: "#0f766e", fillColor: "#2dd4bf", fillOpacity: 0.95 }}
+                        radius={isPickup || isDrop ? 9 : 7}
+                        pathOptions={{ color: "#0f766e", fillColor, fillOpacity: 0.95 }}
                       >
                         <Popup>
                           Stop {item.stop_order}: {item.stop?.name}
@@ -570,15 +784,26 @@ export default function PassengerHome() {
                     );
                   })}
 
-                  {liveBusPoint ? (
+                  {routeBuses.map((bus) => (
                     <CircleMarker
-                      center={liveBusPoint}
-                      radius={10}
-                      pathOptions={{ color: "#991b1b", fillColor: "#ef4444", fillOpacity: 1 }}
+                      key={bus.trip.id}
+                      center={bus.point}
+                      radius={String(bus.trip.id) === String(selectedTrip?.id) ? 10 : 8}
+                      pathOptions={{
+                        color: String(bus.trip.id) === String(selectedTrip?.id) ? "#991b1b" : "#1d4ed8",
+                        fillColor: String(bus.trip.id) === String(selectedTrip?.id) ? "#ef4444" : "#60a5fa",
+                        fillOpacity: 1,
+                      }}
                     >
-                      <Popup>Live bus position</Popup>
+                      <Popup>
+                        <div className="space-y-1">
+                          <div className="font-bold">Bus {bus.trip.bus_plate}</div>
+                          <div>{formatEtaLabel(bus.eta)}</div>
+                          <div>Updated: {formatDateTime(bus.trip.latest_location?.recorded_at)}</div>
+                        </div>
+                      </Popup>
                     </CircleMarker>
-                  ) : null}
+                  ))}
                 </MapContainer>
               </div>
             </div>
@@ -633,7 +858,7 @@ export default function PassengerHome() {
               </div>
             </div>
 
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-[1.35rem] bg-slate-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Open seats</div>
                 <div className="mt-2 text-3xl font-black text-slate-950">{availableSeats.length}</div>
@@ -675,7 +900,7 @@ export default function PassengerHome() {
 
             {seats.length === 0 ? (
               <div className="mt-4 rounded-[1.35rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                Select a valid trip segment to view seats.
+                Select a valid bus and route segment to view seats.
               </div>
             ) : null}
 
@@ -704,14 +929,16 @@ export default function PassengerHome() {
               {lastBookingId ? <StatusPill tone="green">Booking #{lastBookingId}</StatusPill> : <StatusPill tone="amber">Book seats first</StatusPill>}
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="rounded-[1.4rem] bg-white/10 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">Passenger</div>
                 <div className="mt-2 text-sm font-semibold">{user?.full_name || "Passenger"}</div>
               </div>
               <div className="rounded-[1.4rem] bg-white/10 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">Trip</div>
-                <div className="mt-2 text-sm font-semibold">{selectedTrip?.route_name || "-"}</div>
+                <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">Bus</div>
+                <div className="mt-2 text-sm font-semibold">
+                  {selectedTrip?.route_name || "-"} | {selectedTrip?.bus_plate || "-"}
+                </div>
               </div>
               <div className="rounded-[1.4rem] bg-white/10 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-300">Segment</div>

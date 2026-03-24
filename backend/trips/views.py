@@ -13,33 +13,68 @@ from .serializers import (
     DriverStartOptionRouteSerializer,
     DriverStartOptionBusSerializer,
     DriverStartOptionHelperSerializer,
+    AdminTripScheduleUserSerializer,
+    CreateTripScheduleSerializer,
 )
 from .permissions import IsDriver
 from .location_serializers import TripLocationCreateSerializer, TripLocationSerializer
+
+
+def _is_admin_user(user):
+    return bool(user and user.is_authenticated and (user.role == User.Role.ADMIN or user.is_superuser))
+
+
+def _live_trip_conflict(route=None, bus=None, driver=None, helper=None):
+    qs = Trip.objects.filter(status=Trip.Status.LIVE)
+    if bus is not None and qs.filter(bus=bus).exists():
+        return "This bus already has a LIVE trip."
+    if driver is not None and qs.filter(driver=driver).exists():
+        return "This driver already has a LIVE trip."
+    if helper is not None and qs.filter(helper=helper).exists():
+        return "This helper already has a LIVE trip."
+    return None
 
 
 class LiveTripsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        qs = Trip.objects.filter(status=Trip.Status.LIVE).select_related("route", "bus", "driver", "helper")
-        return Response(TripSerializer(qs, many=True).data)
+        qs = (
+            Trip.objects.filter(status=Trip.Status.LIVE)
+            .select_related("route", "bus", "driver", "helper")
+            .prefetch_related("locations")
+        )
+
+        payload = []
+        for trip in qs:
+            trip_data = TripSerializer(trip).data
+            latest_location = trip.locations.order_by("-recorded_at").first()
+            trip_data["latest_location"] = TripLocationSerializer(latest_location).data if latest_location else None
+            payload.append(trip_data)
+
+        return Response(payload)
 
 
 class DriverDashboardView(APIView):
     permission_classes = [IsAuthenticated, IsDriver]
 
     def get(self, request):
+        trip_filter = {"status": Trip.Status.LIVE}
+        schedule_filter = {"status": TripSchedule.Status.PLANNED}
+        if not request.user.is_superuser:
+            trip_filter["driver"] = request.user
+            schedule_filter["driver"] = request.user
+
         active_trip = (
-            Trip.objects.filter(driver=request.user, status=Trip.Status.LIVE)
+            Trip.objects.filter(**trip_filter)
             .select_related("route", "bus", "driver", "helper")
             .order_by("-started_at", "-created_at")
             .first()
         )
 
         schedules = (
-            TripSchedule.objects.filter(driver=request.user, status=TripSchedule.Status.PLANNED)
-            .select_related("route", "bus", "helper")
+            TripSchedule.objects.filter(**schedule_filter)
+            .select_related("route", "bus", "helper", "driver")
             .order_by("scheduled_start_time")[:10]
         )
 
@@ -67,6 +102,79 @@ class DriverDashboardView(APIView):
         )
 
 
+class AdminTripScheduleBuilderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not _is_admin_user(request.user):
+            return Response({"detail": "You do not have permission to manage schedules."}, status=403)
+
+        routes = Route.objects.filter(is_active=True).order_by("city", "name")
+        buses = Bus.objects.filter(is_active=True).order_by("plate_number")
+        drivers = User.objects.filter(role=User.Role.DRIVER, is_active=True).order_by("full_name")
+        helpers = User.objects.filter(role=User.Role.HELPER, is_active=True).order_by("full_name")
+        schedules = (
+            TripSchedule.objects.select_related("route", "bus", "driver", "helper")
+            .order_by("-scheduled_start_time")[:8]
+        )
+
+        return Response(
+            {
+                "routes": DriverStartOptionRouteSerializer(routes, many=True).data,
+                "buses": DriverStartOptionBusSerializer(buses, many=True).data,
+                "drivers": AdminTripScheduleUserSerializer(drivers, many=True).data,
+                "helpers": AdminTripScheduleUserSerializer(helpers, many=True).data,
+                "recent_schedules": TripScheduleSerializer(schedules, many=True).data,
+            }
+        )
+
+    def post(self, request):
+        if not _is_admin_user(request.user):
+            return Response({"detail": "You do not have permission to manage schedules."}, status=403)
+
+        ser = CreateTripScheduleSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        route_id = ser.validated_data["route_id"]
+        bus_id = ser.validated_data["bus_id"]
+        driver_id = ser.validated_data["driver_id"]
+        helper_id = ser.validated_data["helper_id"]
+        scheduled_start_time = ser.validated_data["scheduled_start_time"]
+
+        try:
+            route = Route.objects.get(id=route_id, is_active=True)
+            bus = Bus.objects.get(id=bus_id, is_active=True)
+            driver = User.objects.get(id=driver_id, role=User.Role.DRIVER, is_active=True)
+            helper = User.objects.get(id=helper_id, role=User.Role.HELPER, is_active=True)
+        except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
+            return Response({"detail": "Invalid route, bus, driver, or helper."}, status=400)
+
+        if TripSchedule.objects.filter(
+            bus=bus,
+            driver=driver,
+            helper=helper,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        ).exists():
+            return Response({"detail": "A matching planned schedule already exists."}, status=400)
+
+        schedule = TripSchedule.objects.create(
+            route=route,
+            bus=bus,
+            driver=driver,
+            helper=helper,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        )
+        return Response(
+            {
+                "message": "Trip schedule created successfully.",
+                "schedule": TripScheduleSerializer(schedule).data,
+            },
+            status=201,
+        )
+
+
 class StartTripView(APIView):
     permission_classes = [IsAuthenticated, IsDriver]
 
@@ -74,7 +182,8 @@ class StartTripView(APIView):
         """
         Driver can start from schedule_id OR manual with route_id + bus_id + helper_id.
         """
-        existing_live_trip = Trip.objects.filter(driver=request.user, status=Trip.Status.LIVE).first()
+        acting_driver = request.user
+        existing_live_trip = Trip.objects.filter(driver=acting_driver, status=Trip.Status.LIVE).first()
         if existing_live_trip:
             return Response({"detail": "You already have a LIVE trip"}, status=400)
 
@@ -87,11 +196,18 @@ class StartTripView(APIView):
             except TripSchedule.DoesNotExist:
                 return Response({"detail": "Invalid schedule_id"}, status=400)
 
-            if schedule.driver_id != request.user.id:
+            if schedule.driver_id != acting_driver.id and not request.user.is_superuser:
                 return Response({"detail": "Not your schedule"}, status=403)
 
-            if schedule.trips.filter(status=Trip.Status.LIVE).exists():
-                return Response({"detail": "This schedule already has a LIVE trip"}, status=400)
+            if schedule.status != TripSchedule.Status.PLANNED:
+                return Response({"detail": "This schedule is no longer available to start."}, status=400)
+
+            if schedule.trips.exists():
+                return Response({"detail": "This schedule has already been used."}, status=400)
+
+            conflict = _live_trip_conflict(bus=schedule.bus, driver=schedule.driver, helper=schedule.helper)
+            if conflict:
+                return Response({"detail": conflict}, status=400)
 
             trip = Trip.objects.create(
                 schedule=schedule,
@@ -122,11 +238,15 @@ class StartTripView(APIView):
         except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
             return Response({"detail": "Invalid route_id, bus_id, or helper_id"}, status=400)
 
+        conflict = _live_trip_conflict(bus=bus, driver=acting_driver, helper=helper)
+        if conflict:
+            return Response({"detail": conflict}, status=400)
+
         trip = Trip.objects.create(
             schedule=None,
             route=route,
             bus=bus,
-            driver=request.user,
+            driver=acting_driver,
             helper=helper,
             status=Trip.Status.LIVE,
             started_at=timezone.now(),
@@ -144,7 +264,7 @@ class EndTripView(APIView):
         except Trip.DoesNotExist:
             return Response({"detail": "Trip not found"}, status=404)
 
-        if trip.driver_id != request.user.id:
+        if trip.driver_id != request.user.id and not request.user.is_superuser:
             return Response({"detail": "Not your trip"}, status=403)
 
         if trip.status != Trip.Status.LIVE:
@@ -153,6 +273,11 @@ class EndTripView(APIView):
         trip.status = Trip.Status.ENDED
         trip.ended_at = timezone.now()
         trip.save(update_fields=["status", "ended_at"])
+
+        if trip.schedule and trip.schedule.status == TripSchedule.Status.PLANNED:
+            trip.schedule.status = TripSchedule.Status.COMPLETED
+            trip.schedule.save(update_fields=["status"])
+
         return Response(TripSerializer(trip).data)
 
 
@@ -165,7 +290,7 @@ class PostTripLocationView(APIView):
         except Trip.DoesNotExist:
             return Response({"detail": "Trip not found"}, status=404)
 
-        if trip.driver_id != request.user.id:
+        if trip.driver_id != request.user.id and not request.user.is_superuser:
             return Response({"detail": "Not your trip"}, status=403)
 
         if trip.status != Trip.Status.LIVE:

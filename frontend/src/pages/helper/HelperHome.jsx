@@ -375,7 +375,7 @@ export default function HelperHome() {
             </div>
           </ShellCard>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <ShellCard className="p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Open seats</div>
               <div className="mt-2 text-3xl font-black text-slate-950">{availableSeats.length}</div>
