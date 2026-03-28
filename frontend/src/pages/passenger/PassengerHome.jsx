@@ -6,590 +6,404 @@ import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { snapRouteToRoad } from "../../lib/mapRoute";
+import { useTheme } from "../../ThemeContext";
+import { themeTokens, pillColor } from "../../lib/theme";
 
-function formatDateTime(value) {
-  if (!value) return "-";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+// ─── Pure helpers ─────────────────────────────────────────────
+function fmt(v) { if (!v) return "—"; try { return new Date(v).toLocaleString(); } catch { return v; } }
+function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
+function fmtEta(eta) { if (!eta) return "ETA unavailable"; if (eta.status === "arriving") return "Arriving now"; if (eta.status === "passed") return "Passed pickup"; if (Number.isFinite(eta.minutes)) return `${eta.minutes} min`; return "ETA unavailable"; }
+function toPoint(lat, lng) { const la = Number(lat), lo = Number(lng); return isFinite(la) && isFinite(lo) ? [la, lo] : null; }
+function toLocPoint(loc) { return loc ? toPoint(loc.lat, loc.lng) : null; }
+function distKm(a, b) { if (!a || !b) return 0; const R = 6371, toRad = d => (d * Math.PI) / 180; const dLat = toRad(b[0] - a[0]), dLng = toRad(b[1] - a[1]); const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)); }
+function cumDist(pts) { const c = [0]; for (let i = 1; i < pts.length; i++) c[i] = c[i - 1] + distKm(pts[i - 1], pts[i]); return c; }
+function nearestIdx(pts, t) { if (!pts.length || !t) return -1; let best = 0, bestD = Infinity; pts.forEach((p, i) => { const d = distKm(p, t); if (d < bestD) { bestD = d; best = i; } }); return best; }
+function speedKmh(s) { const n = Number(s); return !isFinite(n) || n <= 0 ? 22 : n <= 30 ? n * 3.6 : n; }
+function estimateEta(busPoint, target, path, speed) {
+  if (!busPoint || !target) return null;
+  const pts = path.length > 1 ? path : [busPoint, target];
+  const cum = cumDist(pts); const bi = nearestIdx(pts, busPoint); const ti = nearestIdx(pts, target);
+  if (bi === -1 || ti === -1) return null;
+  const direct = distKm(busPoint, target);
+  if (direct <= 0.15) return { status: "arriving", minutes: 1 };
+  if (bi > ti + 3 && direct > 0.2) return { status: "passed", minutes: null };
+  const routeDist = ti >= bi ? Math.max(0, cum[ti] - cum[bi]) : direct;
+  return { status: "enroute", minutes: Math.max(1, Math.round((routeDist / speedKmh(speed)) * 60)) };
 }
-
-function formatMoney(value) {
-  const numeric = Number(value || 0);
-  return `NPR ${numeric.toLocaleString()}`;
+function buildFormPost(redirect) {
+  const form = document.createElement("form"); form.method = "POST"; form.action = redirect.url;
+  Object.entries(redirect.fields || {}).forEach(([k, v]) => { const inp = document.createElement("input"); inp.type = "hidden"; inp.name = k; inp.value = v; form.appendChild(inp); });
+  document.body.appendChild(form); form.submit();
 }
-
-function formatEtaLabel(eta) {
-  if (!eta) return "ETA unavailable";
-  if (eta.status === "arriving") return "Arriving now";
-  if (eta.status === "passed") return "Passed pickup";
-  if (Number.isFinite(eta.minutes)) return `${eta.minutes} min`;
-  return "ETA unavailable";
-}
-
-function distanceKm(a, b) {
-  if (!a || !b) return 0;
-  const [lat1, lng1] = a;
-  const [lat2, lng2] = b;
-  const earthRadiusKm = 6371;
-  const toRadians = (degrees) => (degrees * Math.PI) / 180;
-  const dLat = toRadians(lat2 - lat1);
-  const dLng = toRadians(lng2 - lng1);
-  const originLat = toRadians(lat1);
-  const destinationLat = toRadians(lat2);
-  const haversine = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(originLat) * Math.cos(destinationLat) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  return 2 * earthRadiusKm * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-}
-
-function buildCumulativeDistances(points) {
-  const cumulative = [0];
-  for (let index = 1; index < points.length; index += 1) {
-    cumulative[index] = cumulative[index - 1] + distanceKm(points[index - 1], points[index]);
-  }
-  return cumulative;
-}
-
-function findNearestPointIndex(points, target) {
-  if (!points.length || !target) return -1;
-  let nearestIndex = 0;
-  let nearestDistance = Number.POSITIVE_INFINITY;
-  points.forEach((point, index) => {
-    const currentDistance = distanceKm(point, target);
-    if (currentDistance < nearestDistance) {
-      nearestDistance = currentDistance;
-      nearestIndex = index;
-    }
+function createBusIcon({ active = false, heading = 0, label = "BUS" }) {
+  const size = active ? 62 : 50, accent = active ? "#ef4444" : "#2563eb", glow = active ? "rgba(239,68,68,0.35)" : "rgba(37,99,235,0.3)";
+  return divIcon({ className: "", iconSize: [size, size + 18], iconAnchor: [size / 2, size / 2], popupAnchor: [0, -size / 2],
+    html: `<div style="position:relative;width:${size}px;height:${size + 18}px;"><div style="position:absolute;left:50%;bottom:2px;transform:translateX(-50%);padding:2px 8px;border-radius:999px;background:#0f172a;color:white;font-size:10px;font-weight:800;letter-spacing:0.08em;white-space:nowrap;">${label}</div><div style="position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;"><div style="width:${size}px;height:${size}px;filter:drop-shadow(0 16px 20px ${glow});transform:rotate(${heading}deg);"><svg viewBox="0 0 64 64" width="${size}" height="${size}"><ellipse cx="32" cy="56" rx="18" ry="5" fill="rgba(15,23,42,0.14)"/><path d="M18 18c0-5.2 4.2-9 9.4-9h9.2c5.2 0 9.4 3.8 9.4 9v18.2c0 3.2-2.6 5.8-5.8 5.8H23.8c-3.2 0-5.8-2.6-5.8-5.8V18z" fill="${accent}"/><path d="M21 20.5c0-3.4 2.7-6.1 6.1-6.1h9.8c3.4 0 6.1 2.7 6.1 6.1v7.6H21v-7.6z" fill="#dbeafe"/><rect x="20.5" y="31" width="23" height="7.4" rx="3.2" fill="#f8fafc" opacity="0.95"/><circle cx="24" cy="43.5" r="4.5" fill="#0f172a"/><circle cx="40" cy="43.5" r="4.5" fill="#0f172a"/><circle cx="24" cy="43.5" r="1.8" fill="#cbd5e1"/><circle cx="40" cy="43.5" r="1.8" fill="#cbd5e1"/><path d="M32 6l4.8 8h-9.6L32 6z" fill="#0f172a" opacity="0.7"/></svg></div></div></div>`
   });
-  return nearestIndex;
 }
 
-function normalizeSpeedKmh(speed) {
-  const numeric = Number(speed);
-  if (!Number.isFinite(numeric) || numeric <= 0) return 22;
-  if (numeric <= 30) return numeric * 3.6;
-  return numeric;
+// ─── Design primitives ─────────────────────────────────────────
+function GlassCard({ children, className = "", t }) { return <div className={`rounded-2xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>{children}</div>; }
+function Pill({ children, color = "slate", isDark }) { return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>{children}</span>; }
+function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
+  const m = { primary: "bg-indigo-600 hover:bg-indigo-500 text-white", success: "bg-emerald-600 hover:bg-emerald-500 text-white", danger: "bg-red-600 hover:bg-red-500 text-white", ghost: "bg-white/10 hover:bg-white/20 text-white border border-white/10" };
+  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-xl px-5 py-3 text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
-
-function estimateEta(busPoint, targetPoint, routePath, speed) {
-  if (!busPoint || !targetPoint) return null;
-  const path = routePath.length > 1 ? routePath : [busPoint, targetPoint];
-  const cumulative = buildCumulativeDistances(path);
-  const busIndex = findNearestPointIndex(path, busPoint);
-  const targetIndex = findNearestPointIndex(path, targetPoint);
-  if (busIndex === -1 || targetIndex === -1) return null;
-  const directDistance = distanceKm(busPoint, targetPoint);
-  if (directDistance <= 0.15) return { status: "arriving", minutes: 1 };
-  if (busIndex > targetIndex + 3 && directDistance > 0.2) return { status: "passed", minutes: null };
-  const routeDistance = targetIndex >= busIndex ? Math.max(0, cumulative[targetIndex] - cumulative[busIndex]) : directDistance;
-  const speedKmh = normalizeSpeedKmh(speed);
-  const minutes = Math.max(1, Math.round((routeDistance / speedKmh) * 60));
-  return { status: "enroute", minutes };
-}
-
-function toPoint(lat, lng) {
-  const pointLat = Number(lat);
-  const pointLng = Number(lng);
-  if (!Number.isFinite(pointLat) || !Number.isFinite(pointLng)) return null;
-  return [pointLat, pointLng];
-}
-
-function toLocationPoint(location) {
-  if (!location) return null;
-  return toPoint(location.lat, location.lng);
-}
+function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
+function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "☀ Light" : "🌙 Dark"}</button>; }
 
 function MapViewport({ points }) {
   const map = useMap();
-  useEffect(() => {
-    if (!points.length) return;
-    if (points.length === 1) {
-      map.setView(points[0], 14);
-      return;
-    }
-    map.fitBounds(points, { padding: [26, 26] });
-  }, [map, points]);
+  useEffect(() => { if (!points.length) return; if (points.length === 1) { map.setView(points[0], 14); return; } map.fitBounds(points, { padding: [26, 26] }); }, [map, points]);
   return null;
 }
 
-function StepPill({ label, active }) {
-  return <div className={`rounded-full px-3 py-2 text-[11px] font-bold uppercase tracking-[0.18em] ${active ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"}`}>{label}</div>;
-}
+function StopSearch({ label, value, onChange, stops, active, onMapSelect, pickedFromMap, t, isDark }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen]   = useState(false);
+  const sel = stops.find(s => String(s.id) === String(value)) || null;
+  const filtered = useMemo(() => { const q = query.trim().toLowerCase(); return q ? stops.filter(s => s.name.toLowerCase().includes(q)) : stops; }, [query, stops]);
+  useEffect(() => { setQuery(sel?.name || ""); }, [sel?.id]);
 
-function StopField({ label, value, onChange, stops, active, onMapSelect }) {
+  // Button label logic:
+  //  - "Picking…" ONLY when actively picking (map mode clicked) and no stop selected yet
+  //  - "✓ <stop name>" when a stop is chosen (dropdown OR map)
+  //  - "Pick on map" when nothing is selected and not in active mode
+  const mapBtnLabel = active && !value
+    ? "Picking…"
+    : value && sel
+    ? `✓ ${sel.name.split(" ").slice(0, 2).join(" ")}`
+    : "Pick on map";
+
+  const mapBtnClass = active && !value
+    ? "bg-indigo-600 text-white"
+    : value
+    ? pillColor(isDark, "emerald")
+    : isDark
+    ? "bg-white/10 text-slate-400 hover:bg-white/20"
+    : "bg-slate-100 text-slate-500 hover:bg-slate-200";
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-3">
-        <label className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">{label}</label>
-        <button type="button" onClick={onMapSelect} className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${active ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"}`}>
-          Select on map
+        <label className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>{label}</label>
+        <button type="button" onClick={onMapSelect}
+          className={`max-w-[140px] truncate rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wide transition ${mapBtnClass}`}
+          title={sel ? `Change: ${sel.name}` : "Pick on map"}>
+          {mapBtnLabel}
         </button>
       </div>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 outline-none">
-        <option value="">Choose stop</option>
-        {stops.map((stop) => <option key={stop.id} value={stop.id}>{stop.name}</option>)}
-      </select>
+      <div className="relative">
+        <input type="text" value={query} onChange={e => { setQuery(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 120)} placeholder="Search stop name…"
+          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 transition ${t.input}`} />
+        {open && (
+          <div className={`absolute left-0 right-0 top-[calc(100%+0.4rem)] z-[1200] max-h-64 overflow-y-auto rounded-2xl border py-2 shadow-2xl ${t.dropList}`}>
+            {filtered.length ? filtered.map(stop => { const isSel = String(stop.id) === String(value); return <button key={stop.id} type="button" onMouseDown={() => { onChange(String(stop.id)); setQuery(stop.name); setOpen(false); }} className={`flex w-full items-center justify-between px-4 py-3 text-left text-sm transition ${isSel ? t.dropSel : t.dropItem}`}><span>{stop.name}</span>{isSel && <span className="text-[10px] text-indigo-400">Selected</span>}</button>; })
+              : <div className={`px-4 py-3 text-sm ${t.textSub}`}>No stops found.</div>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function SeatPill({ seat, selected, onClick }) {
-  const available = seat.available;
-  const classes = available ? (selected ? "border-blue-900 bg-blue-900 text-white" : "border-blue-200 bg-blue-50 text-blue-900 hover:bg-blue-100") : "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed";
-  return (
-    <button type="button" disabled={!available} onClick={onClick} className={`rounded-2xl border px-3 py-3 text-sm font-bold transition ${classes}`}>
-      <div>{seat.seat_no}</div>
-      <div className="mt-1 text-[11px] font-medium uppercase tracking-wide">{available ? (selected ? "Selected" : "Open") : "Taken"}</div>
-    </button>
-  );
+function SeatBtn({ seat, selected, onClick, t }) {
+  const cls = !seat.available ? t.seatTaken : selected ? t.seatSel : t.seatOpen;
+  return <button type="button" disabled={!seat.available} onClick={onClick} className={`rounded-xl border px-2 py-2.5 text-xs font-bold text-center transition-all ${cls}`}><div>{seat.seat_no}</div><div className="text-[9px] uppercase opacity-70 mt-0.5">{seat.available ? (selected ? "Sel" : "Open") : "Taken"}</div></button>;
 }
 
-function PaymentButton({ label, tone, onClick, disabled }) {
-  const tones = { dark: "bg-slate-950 text-white hover:bg-slate-800", green: "bg-slate-800 text-white hover:bg-slate-700", yellow: "bg-slate-100 text-slate-900 hover:bg-slate-200", blue: "bg-blue-900 text-white hover:bg-blue-800" };
-  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-2xl px-4 py-3 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]}`}>{label}</button>;
-}
-
-function buildFormPost(redirect) {
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = redirect.url;
-  Object.entries(redirect.fields || {}).forEach(([key, value]) => {
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = key;
-    input.value = value;
-    form.appendChild(input);
-  });
-  document.body.appendChild(form);
-  form.submit();
-}
-
-function createBusMarkerIcon({ active = false, heading = 0, label = "BUS" }) {
-  const size = active ? 62 : 50;
-  const accent = active ? "#ef4444" : "#2563eb";
-  const glow = active ? "rgba(239,68,68,0.35)" : "rgba(37,99,235,0.3)";
-  return divIcon({
-    className: "",
-    iconSize: [size, size + 18],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -size / 2],
-    html: `
-      <div style="position:relative;width:${size}px;height:${size + 18}px;">
-        <div style="position:absolute;left:50%;bottom:2px;transform:translateX(-50%);padding:2px 8px;border-radius:999px;background:#0f172a;color:white;font-size:10px;font-weight:800;letter-spacing:0.08em;box-shadow:0 10px 22px -16px rgba(15,23,42,0.8);white-space:nowrap;">
-          ${label}
-        </div>
-        <div style="position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;">
-          <div style="width:${size}px;height:${size}px;filter:drop-shadow(0 16px 20px ${glow});transform:rotate(${heading}deg);transform-origin:center center;">
-            <svg viewBox="0 0 64 64" width="${size}" height="${size}" aria-hidden="true">
-              <ellipse cx="32" cy="56" rx="18" ry="5" fill="rgba(15,23,42,0.14)" />
-              <g>
-                <path d="M18 18c0-5.2 4.2-9 9.4-9h9.2c5.2 0 9.4 3.8 9.4 9v18.2c0 3.2-2.6 5.8-5.8 5.8H23.8c-3.2 0-5.8-2.6-5.8-5.8V18z" fill="${accent}" />
-                <path d="M21 20.5c0-3.4 2.7-6.1 6.1-6.1h9.8c3.4 0 6.1 2.7 6.1 6.1v7.6H21v-7.6z" fill="#dbeafe" />
-                <path d="M23 17.5h18c1.4 0 2.7.8 3.4 2.1l2.1 3.9H17.5l2.1-3.9c.7-1.3 2-2.1 3.4-2.1z" fill="#93c5fd" />
-                <rect x="20.5" y="31" width="23" height="7.4" rx="3.2" fill="#f8fafc" opacity="0.95" />
-                <circle cx="24" cy="43.5" r="4.5" fill="#0f172a" />
-                <circle cx="40" cy="43.5" r="4.5" fill="#0f172a" />
-                <circle cx="24" cy="43.5" r="1.8" fill="#cbd5e1" />
-                <circle cx="40" cy="43.5" r="1.8" fill="#cbd5e1" />
-                <rect x="24" y="34" width="5.8" height="2.2" rx="1.1" fill="#fbbf24" />
-                <rect x="34.2" y="34" width="5.8" height="2.2" rx="1.1" fill="#fbbf24" />
-                <path d="M32 6l4.8 8h-9.6L32 6z" fill="#0f172a" opacity="0.7" />
-              </g>
-            </svg>
-          </div>
-        </div>
-      </div>
-    `,
-  });
-}
+const PAX_TABS = [{ id: "home", label: "Home", icon: "🗺" }, { id: "settings", label: "Settings", icon: "⚙" }, { id: "profile", label: "Profile", icon: "👤" }];
 
 export default function PassengerHome() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [stops, setStops] = useState([]);
-  const [trips, setTrips] = useState([]);
-  const [tripContexts, setTripContexts] = useState({});
-  const [pickupStopId, setPickupStopId] = useState("");
-  const [dropStopId, setDropStopId] = useState("");
-  const [selectionMode, setSelectionMode] = useState("pickup");
-  const [step, setStep] = useState("plan");
-  const [findingRoutes, setFindingRoutes] = useState(false);
-  const [matchedTrips, setMatchedTrips] = useState([]);
+  const { user, setUser } = useAuth();
+  const { isDark, toggle } = useTheme();
+  const t = themeTokens(isDark);
+
+  const [activeView, setActiveView]         = useState("home");
+  const [stops, setStops]                   = useState([]);
+  const [trips, setTrips]                   = useState([]);
+  const [tripContexts, setTripContexts]     = useState({});
+  const [pickupStopId, setPickupStopId]     = useState("");
+  const [dropStopId, setDropStopId]         = useState("");
+  const [selectionMode, setSelectionMode]   = useState("pickup");
+  const [step, setStep]                     = useState("plan");
+  const [findingRoutes, setFindingRoutes]   = useState(false);
+  const [matchedTrips, setMatchedTrips]     = useState([]);
   const [selectedTripId, setSelectedTripId] = useState("");
-  const [seats, setSeats] = useState([]);
+  const [seats, setSeats]                   = useState([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingSeats, setLoadingSeats] = useState(false);
-  const [bookingBusy, setBookingBusy] = useState(false);
-  const [paymentBusy, setPaymentBusy] = useState(false);
-  const [lastBookingId, setLastBookingId] = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [loadingSeats, setLoadingSeats]     = useState(false);
+  const [bookingBusy, setBookingBusy]       = useState(false);
+  const [paymentBusy, setPaymentBusy]       = useState(false);
+  const [lastBookingId, setLastBookingId]   = useState(null);
   const [lastBookingSummary, setLastBookingSummary] = useState(null);
-  const [roadPolyline, setRoadPolyline] = useState([]);
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
+  const [roadPolyline, setRoadPolyline]     = useState([]);
+  const [selSrc, setSelSrc]                 = useState({ pickup: "dropdown", drop: "dropdown" });
+  const [profileForm, setProfileForm]       = useState({ full_name: "", email: "" });
+  const [profileBusy, setProfileBusy]       = useState(false);
+  const [settings, setSettings]             = useState({ liveTracking: true, arrivalAlerts: true, compactMap: false });
+  const [msg, setMsg]                       = useState("");
+  const [err, setErr]                       = useState("");
 
-  const pickupStop = stops.find((stop) => String(stop.id) === String(pickupStopId)) || null;
-  const dropStop = stops.find((stop) => String(stop.id) === String(dropStopId)) || null;
-  const selectedTrip = matchedTrips.find((trip) => String(trip.id) === String(selectedTripId)) || matchedTrips[0] || null;
-  const selectedContext = selectedTrip ? tripContexts[selectedTrip.id] : null;
-  const routeStops = selectedContext?.route_stops || [];
-  const routePolyline = useMemo(() => routeStops.map((item) => toPoint(item.stop?.lat, item.stop?.lng)).filter(Boolean), [routeStops]);
-  const displayedRoutePolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
-  const selectedSeatLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
-  const estimatedFare = lastBookingSummary?.fare_total || (selectedTrip && selectedSeatIds.length > 0 ? selectedTrip.fare_estimate * selectedSeatIds.length : 0);
+  const pickupStop  = stops.find(s => String(s.id) === String(pickupStopId)) || null;
+  const dropStop    = stops.find(s => String(s.id) === String(dropStopId)) || null;
+  const selTrip     = matchedTrips.find(x => String(x.id) === String(selectedTripId)) || matchedTrips[0] || null;
+  const selCtx      = selTrip ? tripContexts[selTrip.id] : null;
+  const routeStops  = selCtx?.route_stops || [];
+  const routePoly   = useMemo(() => routeStops.map(item => toPoint(item.stop?.lat, item.stop?.lng)).filter(Boolean), [routeStops]);
+  const dispPoly    = roadPolyline.length > 1 ? roadPolyline : routePoly;
+  const selLabels   = seats.filter(s => selectedSeatIds.includes(s.seat_id)).map(s => s.seat_no);
+  const estFare     = lastBookingSummary?.fare_total || (selTrip && selectedSeatIds.length > 0 ? (selTrip.fare_estimate || 50) * selectedSeatIds.length : 0);
 
-  const mapPoints = useMemo(() => {
-    const points = [...displayedRoutePolyline];
-    stops.forEach((stop) => {
-      const point = toPoint(stop.lat, stop.lng);
-      if (point) points.push(point);
-    });
-    matchedTrips.forEach((trip) => {
-      const point = toLocationPoint(trip.latest_location);
-      if (point) points.push(point);
-    });
-    return points;
-  }, [displayedRoutePolyline, stops, matchedTrips]);
+  const mapPoints = useMemo(() => { const pts = [...dispPoly]; stops.forEach(s => { const p = toPoint(s.lat, s.lng); if (p) pts.push(p); }); matchedTrips.forEach(x => { const p = toLocPoint(x.latest_location); if (p) pts.push(p); }); return pts; }, [dispPoly, stops, matchedTrips]);
 
-  const loadBaseData = async ({ silent = false } = {}) => {
+  const loadBase = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
-    try {
-      const [stopsRes, tripsRes] = await Promise.all([api.get("/api/transport/stops/"), api.get("/api/trips/live/")]);
-      setStops(stopsRes.data.stops || []);
-      setTrips(tripsRes.data || []);
-      setErr("");
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to load passenger map data.");
-    } finally {
-      if (!silent) setLoading(false);
-    }
+    try { const [sR, tR] = await Promise.all([api.get("/api/transport/stops/"), api.get("/api/trips/live/")]); setStops(sR.data.stops || []); setTrips(tR.data || []); setErr(""); }
+    catch (e) { setErr(e?.response?.data?.detail || "Unable to load map data."); } finally { if (!silent) setLoading(false); }
   };
 
-  const ensureTripContexts = async (tripList) => {
-    const missingTrips = tripList.filter((trip) => !tripContexts[trip.id]);
-    if (!missingTrips.length) return tripContexts;
-    const detailPairs = await Promise.all(missingTrips.map(async (trip) => [trip.id, (await api.get(`/api/trips/${trip.id}/`)).data]));
-    const merged = { ...tripContexts };
-    detailPairs.forEach(([tripId, detail]) => {
-      merged[tripId] = detail;
-    });
-    setTripContexts(merged);
-    return merged;
+  const ensureCtx = async (tripList) => {
+    const missing = tripList.filter(x => !tripContexts[x.id]);
+    if (!missing.length) return tripContexts;
+    const pairs = await Promise.all(missing.map(async x => [x.id, (await api.get(`/api/trips/${x.id}/`)).data]));
+    const merged = { ...tripContexts }; pairs.forEach(([id, data]) => { merged[id] = data; }); setTripContexts(merged); return merged;
   };
 
-  const loadSeatsForTrip = async (tripId, fromOrder, toOrder) => {
-    if (!tripId || !fromOrder || !toOrder) {
-      setSeats([]);
-      setSelectedSeatIds([]);
-      return;
-    }
+  const loadSeats = async (tid, from, to) => {
+    if (!tid || !from || !to) { setSeats([]); setSelectedSeatIds([]); return; }
     setLoadingSeats(true);
-    try {
-      const res = await api.get(`/api/bookings/trips/${tripId}/availability/?from=${fromOrder}&to=${toOrder}`);
-      setSeats(res.data.seats || []);
-      setSelectedSeatIds([]);
-      setErr("");
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to load seat availability.");
-      setSeats([]);
-      setSelectedSeatIds([]);
-    } finally {
-      setLoadingSeats(false);
-    }
+    try { const res = await api.get(`/api/bookings/trips/${tid}/availability/?from=${from}&to=${to}`); setSeats(res.data.seats || []); setSelectedSeatIds([]); }
+    catch (e) { setErr(e?.response?.data?.detail || "Unable to load seats."); setSeats([]); setSelectedSeatIds([]); } finally { setLoadingSeats(false); }
   };
 
-  useEffect(() => {
-    loadBaseData();
-    const intervalId = window.setInterval(() => loadBaseData({ silent: true }), 4000);
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  useEffect(() => {
-    if (!(pickupStopId && dropStopId && matchedTrips.length)) return;
-    const syncMatchedTrips = async () => {
-      try {
-        await findRoutes({ silent: true });
-      } catch {
-        // keep existing results if sync fails
-      }
-    };
-    syncMatchedTrips();
-  }, [trips]);
-
-  useEffect(() => {
-    if (!selectedTrip) {
-      setSeats([]);
-      return;
-    }
-    loadSeatsForTrip(selectedTrip.id, selectedTrip.from_order, selectedTrip.to_order);
-  }, [selectedTripId, matchedTrips]);
-
-  useEffect(() => {
-    if (routePolyline.length < 2) {
-      setRoadPolyline([]);
-      return;
-    }
-    const controller = new AbortController();
-    const loadRoadRoute = async () => {
-      try {
-        const snappedPath = await snapRouteToRoad(routePolyline, controller.signal);
-        setRoadPolyline(snappedPath.length > 1 ? snappedPath : []);
-      } catch (error) {
-        if (error.name === "AbortError") return;
-        setRoadPolyline([]);
-      }
-    };
-    loadRoadRoute();
-    return () => controller.abort();
-  }, [routePolyline]);
+  useEffect(() => { loadBase(); const id = setInterval(() => loadBase({ silent: true }), 4000); return () => clearInterval(id); }, []);
+  useEffect(() => { setProfileForm({ full_name: user?.full_name || "", email: user?.email || "" }); }, [user?.full_name, user?.email]);
+  useEffect(() => { try { const raw = localStorage.getItem("metrobus_passenger_settings"); if (raw) setSettings(c => ({ ...c, ...JSON.parse(raw) })); } catch { /* ignore */ } }, []);
+  useEffect(() => { localStorage.setItem("metrobus_passenger_settings", JSON.stringify(settings)); }, [settings]);
+  useEffect(() => { if (!(pickupStopId && dropStopId && matchedTrips.length)) return; findRoutes({ silent: true }).catch(() => {}); }, [trips]);
+  useEffect(() => { if (!selTrip) { setSeats([]); return; } loadSeats(selTrip.id, selTrip.from_order, selTrip.to_order); }, [selectedTripId, matchedTrips]);
+  useEffect(() => { if (routePoly.length < 2) { setRoadPolyline([]); return; } const c = new AbortController(); snapRouteToRoad(routePoly, c.signal).then(p => setRoadPolyline(p.length > 1 ? p : [])).catch(e => { if (e.name !== "AbortError") setRoadPolyline([]); }); return () => c.abort(); }, [routePoly]);
 
   const findRoutes = async ({ silent = false } = {}) => {
-    if (!pickupStopId || !dropStopId) {
-      setErr("Choose both pickup and drop points first.");
-      return;
-    }
-    if (String(pickupStopId) === String(dropStopId)) {
-      setErr("Pickup and drop point must be different.");
-      return;
-    }
-    if (!silent) {
-      setFindingRoutes(true);
-      setErr("");
-      setMsg("");
-    }
+    if (!pickupStopId || !dropStopId) { setErr("Choose both pickup and drop points first."); return; }
+    if (String(pickupStopId) === String(dropStopId)) { setErr("Pickup and drop must be different."); return; }
+    if (!silent) { setFindingRoutes(true); setErr(""); setMsg(""); }
     try {
-      const contextMap = await ensureTripContexts(trips);
-      const matches = [];
+      const ctxMap = await ensureCtx(trips); const matches = [];
       for (const trip of trips) {
-        const detail = contextMap[trip.id];
-        const routeStopRows = detail?.route_stops || [];
-        const pickupRow = routeStopRows.find((item) => String(item.stop?.id) === String(pickupStopId));
-        const dropRow = routeStopRows.find((item) => String(item.stop?.id) === String(dropStopId));
-        if (!pickupRow || !dropRow) continue;
-        if (Number(dropRow.stop_order) <= Number(pickupRow.stop_order)) continue;
-        const availability = await api.get(`/api/bookings/trips/${trip.id}/availability/?from=${pickupRow.stop_order}&to=${dropRow.stop_order}`);
-        const seatsData = availability.data.seats || [];
-        const openSeats = seatsData.filter((seat) => seat.available).length;
-        const occupancyPercent = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
-        const routePoints = routeStopRows.map((item) => toPoint(item.stop?.lat, item.stop?.lng)).filter(Boolean);
-        const eta = estimateEta(toLocationPoint(trip.latest_location), toPoint(pickupRow.stop?.lat, pickupRow.stop?.lng), routePoints, trip.latest_location?.speed);
-        matches.push({ ...trip, from_order: Number(pickupRow.stop_order), to_order: Number(dropRow.stop_order), open_seats: openSeats, total_seats: seatsData.length, occupancy_percent: occupancyPercent, occupancy_label: occupancyPercent >= 80 ? "Busy" : occupancyPercent >= 50 ? "Moderate" : "Comfortable", eta, availability: seatsData, fare_estimate: 50 });
+        const rs = ctxMap[trip.id]?.route_stops || [];
+        const pR = rs.find(item => String(item.stop?.id) === String(pickupStopId)); const dR = rs.find(item => String(item.stop?.id) === String(dropStopId));
+        if (!pR || !dR || Number(dR.stop_order) <= Number(pR.stop_order)) continue;
+        const avail = await api.get(`/api/bookings/trips/${trip.id}/availability/?from=${pR.stop_order}&to=${dR.stop_order}`);
+        const seatsData = avail.data.seats || []; const open = seatsData.filter(s => s.available).length; const occ = seatsData.length ? Math.round(((seatsData.length - open) / seatsData.length) * 100) : 0;
+        const routePts = rs.map(item => toPoint(item.stop?.lat, item.stop?.lng)).filter(Boolean);
+        const eta = estimateEta(toLocPoint(trip.latest_location), toPoint(pR.stop?.lat, pR.stop?.lng), routePts, trip.latest_location?.speed);
+        matches.push({ ...trip, from_order: +pR.stop_order, to_order: +dR.stop_order, open_seats: open, total_seats: seatsData.length, occupancy_percent: occ, occupancy_label: occ >= 80 ? "Busy" : occ >= 50 ? "Moderate" : "Comfortable", eta, availability: seatsData, fare_estimate: 50 });
       }
-      setMatchedTrips(matches);
-      setSelectedTripId(matches[0] ? String(matches[0].id) : "");
-      setLastBookingId(null);
-      setLastBookingSummary(null);
-      setSelectedSeatIds([]);
-      if (!matches.length) {
-        setSeats([]);
-        setErr("No live buses were found for the selected pickup and drop points.");
-        if (!silent) setStep("plan");
-      } else if (!silent) {
-        setMsg(`${matches.length} live bus${matches.length === 1 ? "" : "es"} found for your route.`);
-        setStep("buses");
-      }
-    } catch (error) {
-      if (!silent) setErr(error?.response?.data?.detail || "Unable to find matching live routes right now.");
-    } finally {
-      if (!silent) setFindingRoutes(false);
-    }
+      setMatchedTrips(matches); setSelectedTripId(matches[0] ? String(matches[0].id) : "");
+      setLastBookingId(null); setLastBookingSummary(null); setSelectedSeatIds([]);
+      if (!matches.length) { setSeats([]); setErr("No live buses found."); if (!silent) setStep("plan"); }
+      else if (!silent) { setMsg(`${matches.length} live bus${matches.length !== 1 ? "es" : ""} found.`); setStep("buses"); }
+    } catch (e) { if (!silent) setErr(e?.response?.data?.detail || "Unable to find routes."); }
+    finally { if (!silent) setFindingRoutes(false); }
   };
 
-  const handleMapStopPick = (stopId) => {
-    if (selectionMode === "drop") {
-      setDropStopId(String(stopId));
-      setSelectionMode("");
-      return;
-    }
-    if (!pickupStopId || selectionMode === "pickup") {
-      setPickupStopId(String(stopId));
-      setSelectionMode("drop");
-      return;
-    }
-    setDropStopId(String(stopId));
-    setSelectionMode("");
+  const handleMapPick = stopId => {
+    if (selectionMode === "drop") { setDropStopId(String(stopId)); setSelSrc(c => ({ ...c, drop: "map" })); setSelectionMode(""); return; }
+    if (!pickupStopId || selectionMode === "pickup") { setPickupStopId(String(stopId)); setSelSrc(c => ({ ...c, pickup: "map" })); setSelectionMode("drop"); return; }
+    setDropStopId(String(stopId)); setSelSrc(c => ({ ...c, drop: "map" })); setSelectionMode("");
   };
 
-  const selectBus = (tripId) => {
-    setSelectedTripId(String(tripId));
-    const selected = matchedTrips.find((trip) => String(trip.id) === String(tripId));
-    if (selected?.availability) {
-      setSeats(selected.availability);
-      setSelectedSeatIds([]);
-    }
-    setStep("seats");
+  const selectBus = id => { setSelectedTripId(String(id)); const x = matchedTrips.find(m => String(m.id) === String(id)); if (x?.availability) { setSeats(x.availability); setSelectedSeatIds([]); } setStep("seats"); };
+  const toggleSeat = id => setSelectedSeatIds(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
+
+  const bookSeats = async () => {
+    if (!selTrip || !selectedSeatIds.length) { setErr("Select a bus and at least one seat."); return; }
+    setBookingBusy(true); setErr(""); setMsg("");
+    try { const res = await api.post(`/api/bookings/trips/${selTrip.id}/book/`, { from_stop_order: selTrip.from_order, to_stop_order: selTrip.to_order, seat_ids: selectedSeatIds }); setLastBookingId(res.data.id); setLastBookingSummary(res.data); setMsg(`Booking #${res.data.id} confirmed!`); await loadSeats(selTrip.id, selTrip.from_order, selTrip.to_order); }
+    catch (e) { setErr(e?.response?.data?.detail || "Booking failed."); } finally { setBookingBusy(false); }
   };
 
-  const toggleSeat = (seatId) => {
-    setSelectedSeatIds((current) => current.includes(seatId) ? current.filter((item) => item !== seatId) : [...current, seatId]);
+  const pay = async method => {
+    if (!lastBookingId) { setErr("Create a booking first."); return; }
+    setPaymentBusy(true); setErr(""); setMsg("");
+    try { const res = await api.post("/api/payments/create/", { booking_id: lastBookingId, method }); const { redirect, payment } = res.data; if (redirect?.type === "REDIRECT" && redirect.url) { window.location.href = redirect.url; return; } if (redirect?.type === "FORM_POST" && redirect.url) { buildFormPost(redirect); return; } setMsg(`Payment ${payment?.status || "PENDING"}.`); }
+    catch (e) { setErr(e?.response?.data?.detail || "Payment failed."); } finally { setPaymentBusy(false); }
   };
 
-  const handleBookSeats = async () => {
-    if (!selectedTrip || selectedSeatIds.length === 0) {
-      setErr("Select a bus and at least one seat first.");
-      return;
-    }
-    setBookingBusy(true);
-    setErr("");
-    setMsg("");
-    try {
-      const res = await api.post(`/api/bookings/trips/${selectedTrip.id}/book/`, { from_stop_order: selectedTrip.from_order, to_stop_order: selectedTrip.to_order, seat_ids: selectedSeatIds });
-      setLastBookingId(res.data.id);
-      setLastBookingSummary(res.data);
-      setMsg(`Booking #${res.data.id} confirmed. Continue with payment below.`);
-      await loadSeatsForTrip(selectedTrip.id, selectedTrip.from_order, selectedTrip.to_order);
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Booking failed.");
-    } finally {
-      setBookingBusy(false);
-    }
+  const saveProfile = async () => {
+    setProfileBusy(true); setErr(""); setMsg("");
+    try { const res = await api.patch("/api/auth/me/", profileForm); setUser(res.data); setMsg("Profile updated."); }
+    catch (e) { setErr(e?.response?.data?.email?.[0] || e?.response?.data?.full_name?.[0] || "Update failed."); } finally { setProfileBusy(false); }
   };
 
-  const handlePayment = async (method) => {
-    if (!lastBookingId) {
-      setErr("Create a booking before choosing payment.");
-      return;
-    }
-    setPaymentBusy(true);
-    setErr("");
-    setMsg("");
-    try {
-      const res = await api.post("/api/payments/create/", { booking_id: lastBookingId, method });
-      const redirect = res.data.redirect;
-      const payment = res.data.payment;
-      if (redirect?.type === "REDIRECT" && redirect.url) {
-        window.location.href = redirect.url;
-        return;
-      }
-      if (redirect?.type === "FORM_POST" && redirect.url) {
-        buildFormPost(redirect);
-        return;
-      }
-      setMsg(`Payment created with status ${payment?.status || "PENDING"}.`);
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Payment request failed.");
-    } finally {
-      setPaymentBusy(false);
-    }
-  };
+  const handleLogout = () => { clearToken(); setUser(null); navigate("/auth/login", { replace: true }); };
 
-  const handleLogout = () => {
-    clearToken();
-    navigate("/auth/login");
-  };
+  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading your dashboard…</p></div></div>;
 
-  if (loading) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#eef5ff] px-4 text-slate-900"><div className="w-full max-w-md rounded-[2rem] bg-white p-8 text-center shadow-lg">Loading passenger app...</div></div>;
-  }
+  const rowBg = isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50";
 
   return (
-    <div className="min-h-screen bg-[#f3f6f8] text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col">
-        <header className="px-4 pb-3 pt-4">
-          <div className="rounded-[1.6rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.22)]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-[1rem] bg-slate-900 text-sm font-black text-white">MB</div>
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">MetroBus</div>
-                  <div className="mt-1 text-xl font-bold text-slate-950">Passenger</div>
-                  <div className="mt-1 text-sm text-slate-500">{user?.full_name || "Passenger"}</div>
-                </div>
-              </div>
-              <button type="button" onClick={handleLogout} className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">Logout</button>
-            </div>
+    <div className={`min-h-screen font-sans transition-colors duration-200 pb-24 ${t.page}`}>
+      <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 py-3 ${t.nav}`}>
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-black text-white">MB</div>
+            <div><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus</p><p className={`text-sm font-bold leading-none ${t.text}`}>Hello, {user?.full_name?.split(" ")[0] || "Passenger"} 👋</p></div>
           </div>
-        </header>
+          <div className="flex items-center gap-2"><ThemeToggle isDark={isDark} toggle={toggle} /><Btn tone="ghost" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn></div>
+        </div>
+      </header>
 
-        <section className="px-4">
-          <div className="overflow-hidden rounded-[1.7rem] border border-slate-200 bg-white shadow-[0_24px_48px_-34px_rgba(15,23,42,0.26)]">
-            <div className="h-[43vh] min-h-[20rem] w-full bg-slate-100">
-              <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-                <TileLayer attribution='&copy; OpenStreetMap &copy; CARTO' url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-                <MapViewport points={mapPoints} />
-                {displayedRoutePolyline.length > 0 ? <Polyline positions={displayedRoutePolyline} pathOptions={{ color: "#334155", weight: 5, opacity: 0.9 }} /> : null}
-                {stops.map((stop) => {
-                  const point = toPoint(stop.lat, stop.lng);
-                  if (!point) return null;
-                  const isPickup = String(stop.id) === String(pickupStopId);
-                  const isDrop = String(stop.id) === String(dropStopId);
-                  const fillColor = isPickup ? "#0f766e" : isDrop ? "#334155" : "#94a3b8";
-                  const radius = isPickup || isDrop ? 9 : 6;
-                  return <CircleMarker key={stop.id} center={point} radius={radius} eventHandlers={{ click: () => handleMapStopPick(stop.id) }} pathOptions={{ color: "#1e3a8a", fillColor, fillOpacity: 0.95 }}><Popup><div className="space-y-1"><div className="font-bold">{stop.name}</div><div className="text-xs text-slate-500">Tap to use as {selectionMode === "drop" ? "drop" : !pickupStopId ? "pickup" : "next point"}</div></div></Popup></CircleMarker>;
-                })}
-                {matchedTrips.map((trip) => {
-                  const point = toLocationPoint(trip.latest_location);
-                  if (!point) return null;
-                  const active = String(trip.id) === String(selectedTripId);
-                  const heading = Number(trip.latest_location?.heading || 0);
-                  return (
-                    <Marker
-                      key={trip.id}
-                      position={point}
-                      icon={createBusMarkerIcon({
-                        active,
-                        heading: Number.isFinite(heading) ? heading : 0,
-                        label: trip.bus_plate || `Bus ${trip.id}`,
-                      })}
-                      eventHandlers={{ click: () => setSelectedTripId(String(trip.id)) }}
-                    >
-                      <Tooltip direction="top" offset={[0, -24]} opacity={1} permanent={active}>
-                        {active ? `Live bus ${trip.bus_plate}` : trip.bus_plate}
-                      </Tooltip>
-                      <Popup>
-                        <div className="space-y-1">
-                          <div className="font-bold">Bus {trip.bus_plate}</div>
-                          <div>ETA {formatEtaLabel(trip.eta)}</div>
-                          <div>Open seats {trip.open_seats}</div>
+      <div className="mx-auto max-w-6xl px-4 py-5 space-y-5">
+        {err && <div className={`rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
+        {msg && <div className={`rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {msg}</div>}
+
+        {/* HOME */}
+        {activeView === "home" && (
+          <div className="grid gap-5 xl:grid-cols-[1.4fr_0.95fr]">
+            {/* Map */}
+            <GlassCard t={t} className="!p-0 overflow-hidden">
+              <div className={`${settings.compactMap ? "h-56" : "h-[44vh] min-h-[18rem]"} w-full`}>
+                <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+                  <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={t.mapTile} />
+                  <MapViewport points={mapPoints} />
+                  {dispPoly.length > 0 && <Polyline positions={dispPoly} pathOptions={{ color: "#818cf8", weight: 4, opacity: 0.9 }} />}
+                  {stops.map(stop => {
+                    const pt = toPoint(stop.lat, stop.lng); if (!pt) return null;
+                    const isP = String(stop.id) === String(pickupStopId); const isD = String(stop.id) === String(dropStopId);
+                    return <CircleMarker key={stop.id} center={pt} radius={isP || isD ? 9 : 5} eventHandlers={{ click: () => handleMapPick(stop.id) }} pathOptions={{ color: isP ? "#10b981" : isD ? "#818cf8" : "#475569", fillColor: isP ? "#10b981" : isD ? "#818cf8" : "#64748b", fillOpacity: 0.95 }}><Popup><div className="font-bold">{stop.name}</div><div className="text-xs text-slate-500">Tap to use as {selectionMode === "drop" ? "drop" : !pickupStopId ? "pickup" : "next"}</div></Popup></CircleMarker>;
+                  })}
+                  {matchedTrips.map(trip => {
+                    const pt = toLocPoint(trip.latest_location); if (!pt) return null; const active = String(trip.id) === String(selectedTripId);
+                    return <Marker key={trip.id} position={pt} icon={createBusIcon({ active, heading: Number(trip.latest_location?.heading || 0), label: trip.bus_plate || `Bus ${trip.id}` })} eventHandlers={{ click: () => setSelectedTripId(String(trip.id)) }}>{active && <Tooltip direction="top" offset={[0, -24]} opacity={1} permanent>{trip.bus_plate}</Tooltip>}<Popup><div className="font-bold">Bus {trip.bus_plate}</div><div>ETA {fmtEta(trip.eta)}</div><div>Open {trip.open_seats} seats</div></Popup></Marker>;
+                  })}
+                </MapContainer>
+              </div>
+            </GlassCard>
+
+            {/* Booking panel */}
+            <div className="space-y-4">
+              {/* Step breadcrumbs */}
+              <div className="flex gap-2 flex-wrap">
+                {[{ id: "plan", label: "1. Plan" }, { id: "buses", label: "2. Choose Bus" }, { id: "seats", label: "3. Seat & Pay" }].map(s => (
+                  <span key={s.id} className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${step === s.id ? "bg-indigo-600 text-white" : isDark ? "bg-white/5 text-slate-500" : "bg-slate-100 text-slate-400"}`}>{s.label}</span>
+                ))}
+              </div>
+
+              {/* Plan step */}
+              {step === "plan" && (
+                <GlassCard t={t}>
+                  <SLabel t={t}>Plan Your Ride</SLabel>
+                  <div className="space-y-3">
+                    <StopSearch label="Pickup Point" value={pickupStopId} onChange={v => { setPickupStopId(v); setSelSrc(c => ({ ...c, pickup: "dropdown" })); }} stops={stops} active={selectionMode === "pickup"} pickedFromMap={selSrc.pickup === "map"} onMapSelect={() => setSelectionMode("pickup")} t={t} isDark={isDark} />
+                    <StopSearch label="Drop Point" value={dropStopId} onChange={v => { setDropStopId(v); setSelSrc(c => ({ ...c, drop: "dropdown" })); }} stops={stops} active={selectionMode === "drop"} pickedFromMap={selSrc.drop === "map"} onMapSelect={() => setSelectionMode("drop")} t={t} isDark={isDark} />
+                    <Btn tone="primary" onClick={() => findRoutes()} disabled={findingRoutes} className="w-full !py-4">{findingRoutes ? "Finding buses…" : "🔍 Find Available Buses"}</Btn>
+                  </div>
+                </GlassCard>
+              )}
+
+              {/* Buses step */}
+              {step === "buses" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between"><SLabel t={t}>{matchedTrips.length} Bus{matchedTrips.length !== 1 ? "es" : ""} Available</SLabel><button type="button" onClick={() => setStep("plan")} className={`text-xs hover:underline ${t.textSub}`}>← Edit route</button></div>
+                  {matchedTrips.map(trip => {
+                    const active = String(trip.id) === String(selectedTripId);
+                    return (
+                      <button key={trip.id} type="button" onClick={() => selectBus(trip.id)}
+                        className={`w-full rounded-2xl border text-left p-4 transition-all ${active ? "border-indigo-500 bg-indigo-500/10" : isDark ? "border-white/10 bg-white/5 hover:border-white/20" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                        <div className="flex items-start justify-between gap-3"><div><p className={`text-sm font-bold ${t.text}`}>Bus {trip.bus_plate}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{trip.route_name}</p></div><Pill color="sky" isDark={isDark}>ETA {fmtEta(trip.eta)}</Pill></div>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          {[{ label: "Occupancy", v: `${trip.occupancy_percent}%` }, { label: "Status", v: trip.occupancy_label }, { label: "Open Seats", v: trip.open_seats }].map(cell => (
+                            <div key={cell.label} className={`rounded-xl border px-3 py-2 text-center ${rowBg}`}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{cell.label}</p><p className={`text-sm font-bold mt-0.5 ${t.text}`}>{cell.v}</p></div>
+                          ))}
                         </div>
-                      </Popup>
-                    </Marker>
-                  );
-                })}
-              </MapContainer>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Seats step */}
+              {step === "seats" && selTrip && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between"><div><SLabel t={t}>Bus {selTrip.bus_plate}</SLabel><p className={`text-xs -mt-2 ${t.textSub}`}>{pickupStop?.name} → {dropStop?.name}</p></div><button type="button" onClick={() => setStep("buses")} className={`text-xs hover:underline ${t.textSub}`}>← Change</button></div>
+                  <GlassCard t={t}>
+                    <SLabel t={t}>Choose Seats</SLabel>
+                    {seats.length === 0 ? <p className={`text-sm py-2 ${t.textSub}`}>{loadingSeats ? "Loading seat map…" : "No seat map available."}</p>
+                      : <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">{seats.map(s => <SeatBtn key={s.seat_id} seat={s} selected={selectedSeatIds.includes(s.seat_id)} onClick={() => toggleSeat(s.seat_id)} t={t} />)}</div>}
+                    {selLabels.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{selLabels.map(l => <span key={l} className={`rounded-full border px-2.5 py-0.5 text-xs ${pillColor(isDark, "indigo")}`}>{l}</span>)}</div>}
+                  </GlassCard>
+                  <GlassCard t={t} className={`bg-gradient-to-br ${isDark ? "from-indigo-900/40 to-transparent" : "from-indigo-50 to-transparent"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div><SLabel t={t}>Booking Summary</SLabel><p className={`text-sm -mt-2 ${t.text}`}>{pickupStop?.name} → {dropStop?.name}</p><p className={`text-xs mt-1 ${t.textSub}`}>{selLabels.length} seat{selLabels.length !== 1 ? "s" : ""}</p></div>
+                      <p className={`text-2xl font-black ${t.text}`}>{fmtMoney(lastBookingSummary?.fare_total || estFare)}</p>
+                    </div>
+                    <Btn tone="primary" onClick={bookSeats} disabled={bookingBusy || !selectedSeatIds.length} className="mt-4 w-full !py-3.5">{bookingBusy ? "Confirming…" : "Confirm Booking"}</Btn>
+                  </GlassCard>
+                  {lastBookingId && (
+                    <GlassCard t={t}>
+                      <SLabel t={t}>Payment Method</SLabel>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[{ label: "💵 Cash", method: "CASH", tone: "ghost" }, { label: "🔗 Mock Online", method: "MOCK_ONLINE", tone: "success" }, { label: "💚 eSewa", method: "ESEWA", tone: "success" }, { label: "💜 Khalti", method: "KHALTI", tone: "primary" }].map(p => (
+                          <Btn key={p.method} tone={p.tone} onClick={() => pay(p.method)} disabled={paymentBusy} className="!py-3 w-full text-sm">{paymentBusy ? "…" : p.label}</Btn>
+                        ))}
+                      </div>
+                    </GlassCard>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        </section>
+        )}
 
-        <section className="-mt-6 flex-1 rounded-t-[2rem] border-t border-slate-200 bg-white px-4 pb-6 pt-5 shadow-[0_-18px_36px_-28px_rgba(15,23,42,0.18)]">
-          <div className="flex flex-wrap gap-2">
-            <StepPill label="Plan" active />
-            <StepPill label="Choose Bus" active={step === "buses" || step === "seats"} />
-            <StepPill label="Choose Seat" active={step === "seats"} />
-          </div>
-          {err ? <div className="mt-4 rounded-[1.4rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
-          {msg ? <div className="mt-4 rounded-[1.4rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
+        {/* SETTINGS */}
+        {activeView === "settings" && (
+          <GlassCard t={t} className="max-w-2xl">
+            <SLabel t={t}>Passenger Preferences</SLabel>
+            <p className={`text-xs mb-5 ${t.textSub}`}>Stored on this device.</p>
+            <div className="space-y-4">
+              {[{ key: "liveTracking", title: "Live Bus Tracking", desc: "Show live bus movement on the map." }, { key: "arrivalAlerts", title: "Arrival Alerts", desc: "Show ETA when bus approaches pickup." }, { key: "compactMap", title: "Compact Map", desc: "Reduce map height for more booking space." }].map(item => (
+                <div key={item.key} className={`flex items-center justify-between gap-4 border-b pb-4 last:border-0 last:pb-0 ${t.divider}`}>
+                  <div><p className={`text-sm font-semibold ${t.text}`}>{item.title}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{item.desc}</p></div>
+                  <button type="button" onClick={() => setSettings(c => ({ ...c, [item.key]: !c[item.key] }))}
+                    className={`relative h-6 w-11 rounded-full flex-shrink-0 transition-colors ${settings[item.key] ? "bg-indigo-500" : t.toggleOff}`}>
+                    <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${settings[item.key] ? "translate-x-5" : ""}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+        )}
 
-          <div className="mt-4">
-            {step === "plan" ? (
-              <div className="space-y-4">
-                <div><div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Trip planner</div><div className="mt-1 text-[1.8rem] font-bold text-slate-950">Plan your ride</div></div>
-                <StopField label="Pickup point" value={pickupStopId} onChange={setPickupStopId} stops={stops} active={selectionMode === "pickup"} onMapSelect={() => setSelectionMode("pickup")} />
-                <StopField label="Drop point" value={dropStopId} onChange={setDropStopId} stops={stops} active={selectionMode === "drop"} onMapSelect={() => setSelectionMode("drop")} />
-                <button type="button" onClick={() => findRoutes()} disabled={findingRoutes} className="w-full rounded-[1.2rem] bg-slate-900 px-4 py-4 text-base font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60">{findingRoutes ? "Finding live buses..." : "Find Route"}</button>
-              </div>
-            ) : null}
+        {/* PROFILE */}
+        {activeView === "profile" && (
+          <GlassCard t={t} className="max-w-2xl">
+            <SLabel t={t}>Your Profile</SLabel>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Full Name</label><input type="text" value={profileForm.full_name} onChange={e => setProfileForm(c => ({ ...c, full_name: e.target.value }))} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} /></div>
+              <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Phone (read-only)</label><input type="text" value={user?.phone || ""} readOnly className={`w-full rounded-xl border px-4 py-3 text-sm outline-none opacity-50 ${t.input}`} /></div>
+              <div className="sm:col-span-2"><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Email</label><input type="email" value={profileForm.email} onChange={e => setProfileForm(c => ({ ...c, email: e.target.value }))} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} /></div>
+            </div>
+            <Btn tone="primary" onClick={saveProfile} disabled={profileBusy} className="mt-5 !py-3">{profileBusy ? "Saving…" : "Save Profile"}</Btn>
+          </GlassCard>
+        )}
+      </div>
 
-            {step === "buses" ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3"><div><div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Available buses</div><div className="mt-1 text-[1.8rem] font-bold text-slate-950">Choose a bus</div></div><button type="button" onClick={() => setStep("plan")} className="text-sm font-semibold text-slate-700">Edit route</button></div>
-                <div className="space-y-3">{matchedTrips.map((trip) => <button key={trip.id} type="button" onClick={() => selectBus(trip.id)} className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 p-4 text-left transition hover:border-slate-300 hover:bg-white"><div className="flex items-start justify-between gap-3"><div><div className="text-lg font-semibold text-slate-950">Bus {trip.bus_plate}</div><div className="mt-1 text-sm text-slate-500">{trip.route_name}</div></div><div className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700">ETA {formatEtaLabel(trip.eta)}</div></div><div className="mt-3 grid grid-cols-3 gap-3"><div className="rounded-[1rem] bg-white px-3 py-3 text-center"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Occupancy</div><div className="mt-2 text-lg font-semibold text-slate-950">{trip.occupancy_percent}%</div></div><div className="rounded-[1rem] bg-white px-3 py-3 text-center"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Status</div><div className="mt-2 text-sm font-semibold text-slate-950">{trip.occupancy_label}</div></div><div className="rounded-[1rem] bg-white px-3 py-3 text-center"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Open seats</div><div className="mt-2 text-lg font-semibold text-slate-950">{trip.open_seats}</div></div></div></button>)}</div>
-              </div>
-            ) : null}
-
-            {step === "seats" && selectedTrip ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between gap-3"><div><div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Selected bus</div><div className="mt-1 text-[1.8rem] font-bold text-slate-950">Bus {selectedTrip.bus_plate}</div><div className="mt-2 text-sm text-slate-500">{pickupStop?.name} to {dropStop?.name} | GPS {selectedTrip.latest_location ? formatDateTime(selectedTrip.latest_location.recorded_at) : "Waiting"}</div></div><button type="button" onClick={() => setStep("buses")} className="text-sm font-semibold text-slate-700">Change bus</button></div>
-                <div><div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Seat selection</div><div className="mt-1 text-2xl font-bold text-slate-950">Choose seats</div></div>
-                <div className="grid grid-cols-4 gap-3">{seats.map((seat) => <SeatPill key={seat.seat_id} seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => toggleSeat(seat.seat_id)} />)}</div>
-                {seats.length === 0 ? <div className="rounded-[1.35rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">{loadingSeats ? "Loading seats..." : "No seat map available for this trip yet."}</div> : null}
-                <div className="rounded-[1.5rem] border border-slate-200 bg-slate-900 p-5 text-white"><div className="flex items-start justify-between gap-3"><div><div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-300">Booking summary</div><div className="mt-2 text-xl font-semibold">{pickupStop?.name} to {dropStop?.name}</div></div><div className="text-right"><div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300">Seats</div><div className="mt-2 text-sm font-medium">{selectedSeatLabels.join(", ") || "None"}</div></div></div><div className="mt-4 text-3xl font-bold">{formatMoney(lastBookingSummary?.fare_total || estimatedFare)}</div><button type="button" onClick={handleBookSeats} disabled={bookingBusy || selectedSeatIds.length === 0} className="mt-4 w-full rounded-[1.2rem] bg-white px-4 py-4 text-base font-semibold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">{bookingBusy ? "Confirming booking..." : "Confirm Booking"}</button></div>
-                {lastBookingId ? <div className="space-y-3 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4"><div><div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Payment</div><div className="mt-1 text-2xl font-bold text-slate-950">Choose payment method</div></div><div className="grid grid-cols-2 gap-3"><PaymentButton label={paymentBusy ? "Processing..." : "Cash"} tone="dark" onClick={() => handlePayment("CASH")} disabled={paymentBusy} /><PaymentButton label={paymentBusy ? "Processing..." : "Mock Online"} tone="green" onClick={() => handlePayment("MOCK_ONLINE")} disabled={paymentBusy} /><PaymentButton label={paymentBusy ? "Processing..." : "eSewa"} tone="yellow" onClick={() => handlePayment("ESEWA")} disabled={paymentBusy} /><PaymentButton label={paymentBusy ? "Processing..." : "Khalti"} tone="blue" onClick={() => handlePayment("KHALTI")} disabled={paymentBusy} /></div></div> : null}
-              </div>
-            ) : null}
-          </div>
-        </section>
+      {/* Bottom nav */}
+      <div className={`fixed bottom-4 left-1/2 z-[1200] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl border p-1.5 shadow-2xl backdrop-blur-md ${isDark ? "bg-[#0a0e1a]/95 border-white/10" : "bg-white/95 border-slate-200"}`}>
+        <div className="flex gap-1.5">
+          {PAX_TABS.map(tab => (
+            <button key={tab.id} type="button" onClick={() => setActiveView(tab.id)}
+              className={`flex flex-1 flex-col items-center gap-1 rounded-xl py-2.5 transition-all ${activeView === tab.id ? "bg-indigo-600 text-white" : t.tabInactive}`}>
+              <span className="text-lg">{tab.icon}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide">{tab.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -1,1138 +1,596 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { snapRouteToRoad } from "../../lib/mapRoute";
+import { useTheme } from "../../ThemeContext";
+import { themeTokens, pillColor } from "../../lib/theme";
 
-const TABS = [
-  { id: "home", label: "Home", short: "HM" },
-  { id: "active", label: "Active Trip", short: "AT" },
-  { id: "history", label: "History", short: "HS" },
-  { id: "earnings", label: "Earnings", short: "NR" },
-];
-
-function formatDateTime(value) {
-  if (!value) return "-";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
-}
-
-function formatTimeOnly(value) {
-  if (!value) return "-";
-  try {
-    return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  } catch {
-    return value;
-  }
-}
-
-function minutesUntil(value) {
-  if (!value) return null;
-  const diff = Math.round((new Date(value).getTime() - Date.now()) / 60000);
-  if (Number.isNaN(diff)) return null;
-  return diff;
-}
-
-function distanceBetween(pointA, pointB) {
-  if (!pointA || !pointB) return Number.POSITIVE_INFINITY;
-  const latDelta = Number(pointA[0]) - Number(pointB[0]);
-  const lngDelta = Number(pointA[1]) - Number(pointB[1]);
-  return Math.sqrt(latDelta * latDelta + lngDelta * lngDelta);
-}
-
-function HeaderIcon({ children, active = false, className = "" }) {
-  const palette = active
-    ? "bg-gradient-to-br from-teal-500 to-cyan-700 text-white shadow-lg shadow-cyan-200/60"
-    : "bg-slate-100 text-slate-700";
-
+// ─── Shared primitives ───────────────────────────────────────
+function GlassCard({ children, className = "", t }) {
   return (
-    <div className={`flex h-14 w-14 items-center justify-center rounded-3xl ${palette} ${className}`}>
+    <div className={`rounded-2xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>
       {children}
     </div>
   );
 }
-
-function BottomTab({ tab, active, onClick }) {
+function Pill({ children, color = "slate", isDark }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex flex-1 flex-col items-center gap-2 rounded-3xl px-3 py-3 text-center transition ${
-        active ? "bg-indigo-100 text-indigo-950" : "text-slate-500"
-      }`}
-    >
-      <div
-        className={`flex h-11 w-11 items-center justify-center rounded-2xl text-xs font-black ${
-          active ? "bg-indigo-900 text-white" : "bg-slate-100 text-slate-500"
-        }`}
-      >
-        {tab.short}
-      </div>
-      <span className={`text-sm font-semibold ${active ? "text-indigo-950" : "text-slate-500"}`}>
-        {tab.label}
-      </span>
-    </button>
-  );
-}
-
-function SectionCard({ children, className = "" }) {
-  return (
-    <section className={`rounded-[2.15rem] bg-white p-6 shadow-[0_24px_50px_-28px_rgba(15,23,42,0.35)] ${className}`}>
+    <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>
       {children}
-    </section>
+    </span>
   );
 }
-
-function InfoBadge({ children, tone = "green" }) {
-  const tones = {
-    green: "bg-emerald-100 text-emerald-900",
-    blue: "bg-indigo-100 text-indigo-900",
-    slate: "bg-slate-100 text-slate-700",
-    red: "bg-red-100 text-red-700",
-    amber: "bg-amber-100 text-amber-900",
+function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
+  const map = {
+    primary: "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/40",
+    success: "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40",
+    danger:  "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/40",
+    ghost:   "bg-white/10 hover:bg-white/20 text-white border border-white/10",
   };
-
-  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
-}
-
-function ActionButton({ children, onClick, disabled = false, tone = "green", className = "", type = "button" }) {
-  const tones = {
-    green: "bg-green-800 text-white hover:bg-green-700",
-    blue: "bg-indigo-900 text-white hover:bg-indigo-800",
-    light: "bg-white text-slate-900 hover:bg-slate-50",
-    red: "bg-red-700 text-white hover:bg-red-600",
-  };
-
   return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-[1.65rem] px-5 py-4 text-base font-black tracking-wide transition disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]} ${className}`}
-    >
+    <button type="button" onClick={onClick} disabled={disabled}
+      className={`rounded-xl px-5 py-3 text-sm font-bold tracking-wide transition-all duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${map[tone]} ${className}`}>
       {children}
     </button>
   );
 }
+function SectionLabel({ children, t }) {
+  return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>;
+}
+function LiveDot({ active }) {
+  return (
+    <span className="relative flex h-2.5 w-2.5">
+      {active && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
+      <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${active ? "bg-emerald-400" : "bg-slate-500"}`} />
+    </span>
+  );
+}
+
+function SelectField({ label, value, onChange, options, t }) {
+  return (
+    <div>
+      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:ring-1 focus:ring-indigo-500 transition ${t.input}`}
+        style={{ backgroundColor: "var(--select-bg)", color: "var(--input-text)" }}>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function StopTimeline({ stops, progressIndex, liveBusPoint, t }) {
+  if (!stops.length) return <p className={`text-sm py-2 ${t.textSub}`}>Start a trip to see progress.</p>;
+  return (
+    <div className="space-y-0">
+      {stops.map((item, i) => {
+        const isDone    = progressIndex !== -1 && i < progressIndex && liveBusPoint;
+        const isCurrent = progressIndex !== -1 && i === progressIndex && liveBusPoint;
+        const isLast    = i === stops.length - 1;
+        return (
+          <div key={`${item.stop_order}-${item.stop?.name}`} className="flex gap-3">
+            <div className="flex flex-col items-center">
+              <span className={`mt-0.5 h-3.5 w-3.5 rounded-full border-2 flex-shrink-0 transition-colors ${isDone ? t.dotDone : isCurrent ? t.dotCurrent : t.dotPending}`} />
+              {!isLast && <span className={`w-px flex-1 min-h-[2rem] ${t.timelineLine}`} />}
+            </div>
+            <div className="pb-4">
+              <p className={`text-[10px] uppercase tracking-widest ${t.label}`}>Stop {i + 1}</p>
+              <p className={`text-sm font-semibold mt-0.5 ${isDone ? "text-emerald-500" : isCurrent ? "text-indigo-400" : t.textSub}`}>
+                {item.stop?.name || "—"}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Helpers ─────────────────────────────────────────────────
+function fmt(v) { if (!v) return "—"; try { return new Date(v).toLocaleString(); } catch { return v; } }
+function fmtTime(v) { if (!v) return "—"; try { return new Date(v).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch { return v; } }
+function minutesUntil(v) { if (!v) return null; const d = Math.round((new Date(v).getTime() - Date.now()) / 60000); return Number.isNaN(d) ? null : d; }
+function distanceBetween(a, b) { if (!a || !b) return Infinity; return Math.sqrt((Number(a[0]) - Number(b[0])) ** 2 + (Number(a[1]) - Number(b[1])) ** 2); }
 
 function MapViewport({ points }) {
   const map = useMap();
-
   useEffect(() => {
     if (!points.length) return;
-
-    if (points.length === 1) {
-      map.setView(points[0], 14);
-      return;
-    }
-
+    if (points.length === 1) { map.setView(points[0], 14); return; }
     map.fitBounds(points, { padding: [32, 32] });
   }, [map, points]);
-
   return null;
 }
 
-function StopTimelineItem({ stop, index, status }) {
-  const dotClass =
-    status === "done"
-      ? "border-emerald-600 bg-emerald-600"
-      : status === "current"
-        ? "border-indigo-900 bg-indigo-900"
-        : "border-slate-300 bg-white";
-  const textClass =
-    status === "done"
-      ? "text-emerald-700"
-      : status === "current"
-        ? "text-indigo-900"
-        : "text-slate-500";
+const TABS = [
+  { id: "home",     label: "Home",        icon: "⌂" },
+  { id: "active",   label: "Active Trip", icon: "▶" },
+  { id: "history",  label: "History",     icon: "⏱" },
+  { id: "earnings", label: "Earnings",    icon: "₨" },
+];
 
+// ─── ThemeToggle button ──────────────────────────────────────
+function ThemeToggle({ isDark, toggle }) {
   return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <span className={`h-4 w-4 rounded-full border-4 ${dotClass}`} />
-        {status !== "last" ? <span className="mt-1 h-full min-h-[2.5rem] w-px bg-slate-200" /> : null}
-      </div>
-      <div className="pb-5">
-        <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Stop {index + 1}</div>
-        <div className={`mt-1 text-lg font-black ${textClass}`}>{stop.stop?.name || "-"}</div>
-      </div>
-    </div>
+    <button type="button" onClick={toggle}
+      className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-xs font-bold transition hover:bg-white/20"
+      style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }}
+      title={isDark ? "Switch to light mode" : "Switch to dark mode"}>
+      {isDark ? "☀ Light" : "🌙 Dark"}
+    </button>
   );
 }
 
 export default function DriverHome() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isDark, toggle } = useTheme();
+  const t = themeTokens(isDark);
 
-  const [dashboard, setDashboard] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [locationBusy, setLocationBusy] = useState(false);
-  const [autoShare, setAutoShare] = useState(false);
+  const [dashboard, setDashboard]         = useState(null);
+  const [loading, setLoading]             = useState(true);
+  const [busy, setBusy]                   = useState(false);
+  const [locationBusy, setLocationBusy]   = useState(false);
+  const [autoShare, setAutoShare]         = useState(false);
   const [latestLocation, setLatestLocation] = useState(null);
   const [locationStatus, setLocationStatus] = useState("");
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
+  const [msg, setMsg]                     = useState("");
+  const [err, setErr]                     = useState("");
   const [deviationMode, setDeviationMode] = useState(false);
-  const [routeId, setRouteId] = useState("");
-  const [busId, setBusId] = useState("");
-  const [helperId, setHelperId] = useState("");
-  const [manualLat, setManualLat] = useState("");
-  const [manualLng, setManualLng] = useState("");
-  const [routeStops, setRouteStops] = useState([]);
-  const [roadPolyline, setRoadPolyline] = useState([]);
-  const [activeTab, setActiveTab] = useState("home");
+  const [routeId, setRouteId]             = useState("");
+  const [busId, setBusId]                 = useState("");
+  const [helperId, setHelperId]           = useState("");
+  const [manualLat, setManualLat]         = useState("");
+  const [manualLng, setManualLng]         = useState("");
+  const [routeStops, setRouteStops]       = useState([]);
+  const [roadPolyline, setRoadPolyline]   = useState([]);
+  const [activeTab, setActiveTab]         = useState("home");
   const locationWatch = useMemo(() => ({ id: null }), []);
 
-  const activeTrip = dashboard?.active_trip ?? null;
-  const schedules = dashboard?.schedules ?? [];
+  const activeTrip    = dashboard?.active_trip ?? null;
+  const schedules     = dashboard?.schedules ?? [];
   const manualOptions = dashboard?.manual_start_options ?? { routes: [], buses: [], helpers: [] };
-  const nextSchedule = schedules[0] ?? null;
+  const nextSchedule  = schedules[0] ?? null;
 
   const routePolyline = useMemo(
-    () =>
-      routeStops
-        .map((item) => [Number(item.stop?.lat), Number(item.stop?.lng)])
-        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)),
+    () => routeStops.map(s => [Number(s.stop?.lat), Number(s.stop?.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)),
     [routeStops]
   );
-  const displayedRoutePolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
+  const displayedPolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
 
   const liveBusPoint = useMemo(() => {
     if (!latestLocation) return null;
-    const lat = Number(latestLocation.lat);
-    const lng = Number(latestLocation.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return [lat, lng];
+    const lat = Number(latestLocation.lat), lng = Number(latestLocation.lng);
+    return isFinite(lat) && isFinite(lng) ? [lat, lng] : null;
   }, [latestLocation]);
 
   const mapPoints = useMemo(() => {
-    const all = [...displayedRoutePolyline];
+    const all = [...displayedPolyline];
     if (liveBusPoint) all.push(liveBusPoint);
     return all;
-  }, [displayedRoutePolyline, liveBusPoint]);
+  }, [displayedPolyline, liveBusPoint]);
 
   const stopProgressIndex = useMemo(() => {
-    if (!liveBusPoint || routePolyline.length === 0) return -1;
-
-    let bestIndex = -1;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    routePolyline.forEach((point, index) => {
-      const distance = distanceBetween(point, liveBusPoint);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = index;
-      }
-    });
-
-    return bestIndex;
+    if (!liveBusPoint || !routePolyline.length) return -1;
+    let best = -1, bestDist = Infinity;
+    routePolyline.forEach((pt, i) => { const d = distanceBetween(pt, liveBusPoint); if (d < bestDist) { bestDist = d; best = i; } });
+    return best;
   }, [liveBusPoint, routePolyline]);
 
-  const currentBus = useMemo(() => {
-    if (activeTrip) return activeTrip.bus_plate;
-    if (nextSchedule) return nextSchedule.bus_plate;
-    return (
-      manualOptions.buses.find((bus) => String(bus.id) === String(busId))?.plate_number ||
-      manualOptions.buses[0]?.plate_number ||
-      "Bus #1024"
-    );
-  }, [activeTrip, nextSchedule, manualOptions, busId]);
-
-  const currentRoute =
-    activeTrip?.route_name ||
-    nextSchedule?.route_name ||
-    manualOptions.routes.find((route) => String(route.id) === String(routeId))?.name ||
-    "Pokhara-Lakeside";
-  const helperName =
-    activeTrip?.helper_name ||
-    nextSchedule?.helper_name ||
-    manualOptions.helpers.find((helper) => String(helper.id) === String(helperId))?.full_name ||
-    manualOptions.helpers[0]?.full_name ||
-    "Helper";
+  const currentBus    = activeTrip?.bus_plate    || nextSchedule?.bus_plate    || manualOptions.buses.find(b => String(b.id) === busId)?.plate_number || "—";
+  const currentRoute  = activeTrip?.route_name   || nextSchedule?.route_name   || manualOptions.routes.find(r => String(r.id) === routeId)?.name || "—";
+  const helperName    = activeTrip?.helper_name  || nextSchedule?.helper_name  || manualOptions.helpers.find(h => String(h.id) === helperId)?.full_name || "—";
   const minutesToNext = minutesUntil(nextSchedule?.scheduled_start_time);
-  const nextStop =
-    routeStops[Math.min(stopProgressIndex + 1, routeStops.length - 1)]?.stop?.name ||
-    routeStops[1]?.stop?.name ||
-    routeStops[0]?.stop?.name ||
-    "Prithvi Chowk";
-  const previousStop =
-    routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || routeStops[0]?.stop?.name || "Route start";
-  const capacity = activeTrip
-    ? Number(manualOptions.buses.find((bus) => bus.id === activeTrip.bus)?.capacity || 40)
-    : Number(manualOptions.buses.find((bus) => String(bus.id) === busId)?.capacity || 40);
-  const occupiedSeats = activeTrip ? Math.min(32, capacity) : Math.min(18, capacity);
-  const occupancyPercent = capacity ? Math.round((occupiedSeats / capacity) * 100) : 0;
+  const nextStop      = routeStops[Math.min(stopProgressIndex + 1, routeStops.length - 1)]?.stop?.name || routeStops[1]?.stop?.name || "—";
+  const prevStop      = routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || "—";
+  const capacity      = Number(manualOptions.buses.find(b => b.id === activeTrip?.bus)?.capacity || 40);
+  const occupied      = activeTrip ? Math.min(32, capacity) : Math.min(18, capacity);
+  const occupancyPct  = capacity ? Math.round((occupied / capacity) * 100) : 0;
   const todaysEarnings = activeTrip ? 4500 : 1250;
   const completedTrips = activeTrip ? 8 : 7;
   const totalPassengers = activeTrip ? 124 : 42;
-  const fuelLevel = activeTrip ? 84 : 76;
-  const routeDuration = activeTrip ? 45 : 42;
-  const predictedPassengers = activeTrip ? "3-5 passengers" : "2-4 passengers";
-  const pickups = activeTrip ? 5 : 3;
-  const drops = activeTrip ? 2 : 1;
+  const fuelLevel     = activeTrip ? 84 : 76;
+  const predictedPax  = activeTrip ? "3–5" : "2–4";
 
   const loadDashboard = async ({ silent = false } = {}) => {
-    if (!silent) {
-      setLoading(true);
-    }
-
-    try {
-      const res = await api.get("/api/trips/driver/dashboard/");
-      setDashboard(res.data);
-      setLatestLocation(res.data.latest_location || null);
-      setErr("");
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to load driver dashboard.");
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
+    if (!silent) setLoading(true);
+    try { const res = await api.get("/api/trips/driver/dashboard/"); setDashboard(res.data); setLatestLocation(res.data.latest_location || null); setErr(""); }
+    catch (e) { setErr(e?.response?.data?.detail || "Failed to load driver dashboard."); }
+    finally { if (!silent) setLoading(false); }
   };
 
+  useEffect(() => { loadDashboard(); }, []);
+  useEffect(() => { if (activeTrip) setActiveTab("active"); }, [activeTrip?.id]);
   useEffect(() => {
-    loadDashboard();
-  }, []);
+    if (!routeId && manualOptions.routes.length) setRouteId(String(manualOptions.routes[0].id));
+    if (!busId   && manualOptions.buses.length)   setBusId(String(manualOptions.buses[0].id));
+    if (!helperId && manualOptions.helpers.length) setHelperId(String(manualOptions.helpers[0].id));
+  }, [manualOptions]);
 
   useEffect(() => {
-    if (activeTrip) {
-      setActiveTab("active");
-    }
+    if (!activeTrip?.id) { setRouteStops([]); setRoadPolyline([]); return; }
+    api.get(`/api/trips/${activeTrip.id}/`).then(r => setRouteStops(r.data.route_stops || [])).catch(() => setRouteStops([]));
   }, [activeTrip?.id]);
 
   useEffect(() => {
-    if (!routeId && manualOptions.routes.length > 0) {
-      setRouteId(String(manualOptions.routes[0].id));
-    }
-    if (!busId && manualOptions.buses.length > 0) {
-      setBusId(String(manualOptions.buses[0].id));
-    }
-    if (!helperId && manualOptions.helpers.length > 0) {
-      setHelperId(String(manualOptions.helpers[0].id));
-    }
-  }, [manualOptions, routeId, busId, helperId]);
-
-  useEffect(() => {
-    const loadTripDetail = async () => {
-      if (!activeTrip?.id) {
-        setRouteStops([]);
-        setRoadPolyline([]);
-        return;
-      }
-
-      try {
-        const res = await api.get(`/api/trips/${activeTrip.id}/`);
-        setRouteStops(res.data.route_stops || []);
-      } catch {
-        setRouteStops([]);
-      }
-    };
-
-    loadTripDetail();
-  }, [activeTrip?.id]);
-
-  useEffect(() => {
-    if (routePolyline.length < 2) {
-      setRoadPolyline([]);
-      return;
-    }
-
-    const controller = new AbortController();
-    const loadRoadRoute = async () => {
-      try {
-        const snappedPath = await snapRouteToRoad(routePolyline, controller.signal);
-        setRoadPolyline(snappedPath.length > 1 ? snappedPath : []);
-      } catch (error) {
-        if (error.name === "AbortError") return;
-        setRoadPolyline([]);
-      }
-    };
-
-    loadRoadRoute();
-    return () => controller.abort();
+    if (routePolyline.length < 2) { setRoadPolyline([]); return; }
+    const ctrl = new AbortController();
+    snapRouteToRoad(routePolyline, ctrl.signal).then(p => setRoadPolyline(p.length > 1 ? p : [])).catch(e => { if (e.name !== "AbortError") setRoadPolyline([]); });
+    return () => ctrl.abort();
   }, [routePolyline]);
 
-  const runAction = async (action, successMessage) => {
-    setBusy(true);
-    setErr("");
-    setMsg("");
-
-    try {
-      await action();
-      setMsg(successMessage);
-      await loadDashboard({ silent: true });
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Action failed.");
-    } finally {
-      setBusy(false);
-    }
+  const runAction = async (fn, successMsg) => {
+    setBusy(true); setErr(""); setMsg("");
+    try { await fn(); setMsg(successMsg); await loadDashboard({ silent: true }); }
+    catch (e) { setErr(e?.response?.data?.detail || "Action failed."); }
+    finally { setBusy(false); }
   };
 
-  const startScheduledTrip = async (scheduleId) => {
-    await runAction(
-      () => api.post("/api/trips/start/", { schedule_id: scheduleId, deviation_mode: deviationMode }),
-      "Trip started successfully."
-    );
-    setActiveTab("active");
+  const startScheduledTrip = async id => { await runAction(() => api.post("/api/trips/start/", { schedule_id: id, deviation_mode: deviationMode }), "Trip started!"); setActiveTab("active"); };
+  const startManualTrip    = async () => {
+    if (!(routeId && busId && helperId)) { setErr("Select route, bus, and helper first."); return; }
+    await runAction(() => api.post("/api/trips/start/", { route_id: +routeId, bus_id: +busId, helper_id: +helperId, deviation_mode: deviationMode }), "Manual trip started!"); setActiveTab("active");
   };
-
-  const startManualTrip = async () => {
-    if (!(routeId && busId && helperId)) {
-      setErr("Select route, bus, and helper first.");
-      return;
-    }
-
-    await runAction(
-      () =>
-        api.post("/api/trips/start/", {
-          route_id: Number(routeId),
-          bus_id: Number(busId),
-          helper_id: Number(helperId),
-          deviation_mode: deviationMode,
-        }),
-      "Manual trip started successfully."
-    );
-    setActiveTab("active");
-  };
-
   const endTrip = async () => {
     if (!activeTrip) return;
-
-    await runAction(() => api.post(`/api/trips/${activeTrip.id}/end/`), "Trip ended successfully.");
-    setAutoShare(false);
-    setLocationStatus("");
-    setRouteStops([]);
-    setActiveTab("history");
+    await runAction(() => api.post(`/api/trips/${activeTrip.id}/end/`), "Trip ended.");
+    setAutoShare(false); setLocationStatus(""); setRouteStops([]); setActiveTab("history");
   };
 
-  const postLocation = async (payload, successLabel = "Location sent.") => {
-    if (!activeTrip) {
-      setErr("Start a trip before sending location.");
-      return;
-    }
-
-    setLocationBusy(true);
-    setErr("");
-
-    try {
-      const res = await api.post(`/api/trips/${activeTrip.id}/location/`, payload);
-      setLatestLocation(res.data);
-      setLocationStatus(successLabel);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to send location.");
-    } finally {
-      setLocationBusy(false);
-    }
+  const postLocation = async (payload, label = "Location sent.") => {
+    if (!activeTrip) { setErr("Start a trip first."); return; }
+    setLocationBusy(true); setErr("");
+    try { const res = await api.post(`/api/trips/${activeTrip.id}/location/`, payload); setLatestLocation(res.data); setLocationStatus(label); }
+    catch (e) { setErr(e?.response?.data?.detail || "Failed to send location."); }
+    finally { setLocationBusy(false); }
   };
 
-  const clearAutoLocationWatch = () => {
-    if (locationWatch.id !== null && navigator.geolocation) {
-      navigator.geolocation.clearWatch(locationWatch.id);
-      locationWatch.id = null;
-    }
+  const clearWatch = () => {
+    if (locationWatch.id !== null && navigator.geolocation) { navigator.geolocation.clearWatch(locationWatch.id); locationWatch.id = null; }
   };
 
-  const sendBrowserLocation = async () => {
-    if (!navigator.geolocation) {
-      setErr("Geolocation is not supported in this browser.");
-      setAutoShare(false);
-      return;
-    }
-
+  const sendBrowserLocation = () => {
+    if (!navigator.geolocation) { setErr("Geolocation not supported."); setAutoShare(false); return; }
     navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude, speed, heading } = position.coords;
-        await postLocation(
-          {
-            lat: latitude,
-            lng: longitude,
-            speed: Number.isFinite(speed) ? speed : null,
-            heading: Number.isFinite(heading) ? heading : null,
-          },
-          "Live location updated."
-        );
-      },
-      (geoError) => {
-        setErr(geoError.message || "Unable to fetch current location.");
-        setAutoShare(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 5000,
-      }
+      pos => postLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, speed: isFinite(pos.coords.speed) ? pos.coords.speed : null, heading: isFinite(pos.coords.heading) ? pos.coords.heading : null }, "Live location updated."),
+      e => { setErr(e.message); setAutoShare(false); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
     );
   };
 
+  const sendManualLocation = () => {
+    const lat = Number(manualLat), lng = Number(manualLng);
+    if (isNaN(lat) || isNaN(lng)) { setErr("Enter valid lat/lng."); return; }
+    postLocation({ lat, lng, speed: null, heading: null }, "Manual location updated.");
+  };
+
+  useEffect(() => { setAutoShare(Boolean(activeTrip?.id)); }, [activeTrip?.id]);
   useEffect(() => {
-    if (activeTrip?.id) {
-      setAutoShare(true);
-      return;
-    }
-
-    setAutoShare(false);
-  }, [activeTrip?.id]);
-
-  useEffect(() => {
-    if (!activeTrip?.id || !autoShare) {
-      clearAutoLocationWatch();
-      return;
-    }
-
-    if (!navigator.geolocation) {
-      setErr("Geolocation is not supported in this browser.");
-      setAutoShare(false);
-      return;
-    }
-
+    if (!activeTrip?.id || !autoShare) { clearWatch(); return; }
+    if (!navigator.geolocation) { setErr("Geolocation not supported."); setAutoShare(false); return; }
     sendBrowserLocation();
-
-    const nextWatchId = navigator.geolocation.watchPosition(
-      async (position) => {
-        const { latitude, longitude, speed, heading } = position.coords;
-        await postLocation(
-          {
-            lat: latitude,
-            lng: longitude,
-            speed: Number.isFinite(speed) ? speed : null,
-            heading: Number.isFinite(heading) ? heading : null,
-          },
-          "Auto GPS is live."
-        );
-      },
-      (geoError) => {
-        setErr(geoError.message || "Unable to keep live GPS running.");
-        setAutoShare(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 3000,
-      }
+    const id = navigator.geolocation.watchPosition(
+      pos => postLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, speed: isFinite(pos.coords.speed) ? pos.coords.speed : null, heading: isFinite(pos.coords.heading) ? pos.coords.heading : null }, "Auto GPS is live."),
+      e => { setErr(e.message); setAutoShare(false); },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
     );
+    locationWatch.id = id;
+    return () => { navigator.geolocation.clearWatch(id); if (locationWatch.id === id) locationWatch.id = null; };
+  }, [autoShare, activeTrip?.id]);
 
-    locationWatch.id = nextWatchId;
-
-    return () => {
-      navigator.geolocation.clearWatch(nextWatchId);
-      if (locationWatch.id === nextWatchId) {
-        locationWatch.id = null;
-      }
-    };
-  }, [autoShare, activeTrip?.id, locationWatch]);
-
-  const sendManualLocation = async () => {
-    const lat = Number(manualLat);
-    const lng = Number(manualLng);
-
-    if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      setErr("Enter valid latitude and longitude.");
-      return;
-    }
-
-    await postLocation({ lat, lng, speed: null, heading: null }, "Manual location updated.");
-  };
-
-  const handleLogout = () => {
-    clearAutoLocationWatch();
-    clearToken();
-    navigate("/auth/login");
-  };
+  const handleLogout = () => { clearWatch(); clearToken(); navigate("/auth/login"); };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f4f7fb] px-4 py-8 text-slate-900">
-        <div className="mx-auto max-w-md rounded-[2.2rem] bg-white p-8 text-center shadow-lg">
-          Loading driver dashboard...
+      <div className={`min-h-screen flex items-center justify-center ${t.page}`}>
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" />
+          <p className={`mt-4 text-sm font-medium ${t.textSub}`}>Loading driver dashboard…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f6f8] text-slate-900">
-      <div className="mx-auto flex min-h-screen max-w-md flex-col px-5 py-5">
-        <header className="rounded-[1.6rem] border border-slate-200 bg-white px-4 py-4 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.22)]">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <HeaderIcon active>
-                <span className="text-lg font-black">DR</span>
-              </HeaderIcon>
-              <div>
-                <div className="text-2xl font-bold leading-tight text-slate-950 sm:text-[1.9rem]">{currentBus} • Active</div>
-                <div className="mt-1 flex items-center gap-2 text-sm font-semibold text-green-700">
-                  <span className="h-3 w-3 rounded-full bg-green-700" />
-                  <span>ON DUTY</span>
-                  <span className="text-slate-400">•</span>
-                  <span>{helperName}</span>
-                </div>
-                <div className="mt-1 text-sm text-slate-500">{user?.full_name || "Driver"} • {currentRoute}</div>
+    <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
+      {/* Navbar */}
+      <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 py-3 ${t.nav}`}>
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-black text-white">MB</div>
+            <div>
+              <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus</p>
+              <p className={`text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Driver"}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Pill color={activeTrip ? "emerald" : "slate"} isDark={isDark}><LiveDot active={Boolean(activeTrip)} /><span className="ml-1.5">{activeTrip ? "TRIP LIVE" : "STANDBY"}</span></Pill>
+            <ThemeToggle isDark={isDark} toggle={toggle} />
+            <Btn tone="ghost" onClick={() => loadDashboard()} className="!py-2 !px-3 text-xs">↻ Refresh</Btn>
+            <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-5xl px-4 py-5 pb-32">
+        {err && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
+        {msg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {msg}</div>}
+
+        {/* Hero */}
+        <div className={`relative mb-5 overflow-hidden rounded-2xl bg-gradient-to-br border p-6 ${t.heroCard}`}>
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_rgba(99,102,241,0.1),transparent_60%)]" />
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-indigo-500 mb-1">{activeTrip ? "Active Route" : nextSchedule ? "Next Scheduled" : "Ready to depart"}</p>
+              <h1 className={`text-3xl font-black tracking-tight leading-tight ${t.text}`}>{currentRoute}</h1>
+              <div className={`mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm ${t.textSub}`}>
+                <span>🚌 {currentBus}</span><span className={t.textMuted}>•</span><span>👤 {helperName}</span>
+                {minutesToNext !== null && !activeTrip && (<><span className={t.textMuted}>•</span><span className="text-amber-500">{minutesToNext > 0 ? `${minutesToNext} min to depart` : "Ready now"}</span></>)}
               </div>
             </div>
-            <div className="flex flex-col gap-2">
-              <button type="button" onClick={() => loadDashboard()} className="rounded-2xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">
-                Refresh
-              </button>
-              <button type="button" onClick={handleLogout} className="rounded-2xl bg-slate-950 px-3 py-2 text-xs font-bold text-white">
-                Logout
-              </button>
+            <div className="flex gap-3 flex-wrap">
+              {!activeTrip
+                ? <Btn tone="success" onClick={() => nextSchedule ? startScheduledTrip(nextSchedule.id) : startManualTrip()} disabled={busy || (!nextSchedule && (!routeId || !busId || !helperId))} className="!px-6 !py-3 !text-base">{busy ? "Starting…" : nextSchedule ? "▶ Start Scheduled" : "▶ Start Manual"}</Btn>
+                : <Btn tone="danger" onClick={endTrip} disabled={busy} className="!px-6 !py-3 !text-base">{busy ? "Ending…" : "■ End Trip"}</Btn>}
             </div>
           </div>
-        </header>
-
-        {err ? (
-          <div className="mt-4 rounded-[1.75rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {err}
-          </div>
-        ) : null}
-
-        {msg ? (
-          <div className="mt-4 rounded-[1.75rem] border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
-            {msg}
-          </div>
-        ) : null}
-
-        <div className="mt-5 flex-1 space-y-5">
-          {activeTab === "home" ? (
-            <>
-              <SectionCard className="overflow-hidden border border-slate-200 bg-slate-900 text-white">
-                <div className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-100/80">Upcoming Schedule</div>
-                <div className="mt-5 text-5xl font-black leading-[1.02] tracking-tight">
-                  {nextSchedule?.route_name || activeTrip?.route_name || "Pokhara-Lakeside"}
+          {activeTrip && (
+            <div className="relative mt-5 grid grid-cols-3 gap-3">
+              {[
+                { label: "Occupancy", value: `${occupied}/${capacity}`, sub: <div className="mt-2 h-1 rounded-full bg-white/10"><div className="h-1 rounded-full bg-emerald-400" style={{ width: `${occupancyPct}%` }} /></div> },
+                { label: "Next Stop", value: nextStop, sub: <p className={`text-[10px] mt-1 truncate ${t.label}`}>prev: {prevStop}</p> },
+                { label: "GPS", value: <div className="flex items-center gap-2 mt-1"><LiveDot active={autoShare} /><span className="text-sm font-bold">{autoShare ? "Live" : "Off"}</span></div>, sub: <p className={`text-[10px] mt-1 truncate ${t.label}`}>{locationStatus || "Waiting…"}</p> },
+              ].map(cell => (
+                <div key={cell.label} className={`rounded-xl border px-4 py-3 ${t.heroInner}`}>
+                  <p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{cell.label}</p>
+                  <p className={`text-sm font-bold truncate ${t.text}`}>{cell.value}</p>
+                  {cell.sub}
                 </div>
-                <div className="mt-4 flex items-center gap-2 text-lg text-indigo-100/90">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-sm font-black">CL</span>
-                  <span>
-                    {minutesToNext !== null
-                      ? minutesToNext > 0
-                        ? `Departs in ${minutesToNext} mins`
-                        : "Ready to depart"
-                      : "Manual trip ready"}
-                  </span>
-                  <span>•</span>
-                  <span>{nextSchedule ? `Route ${nextSchedule.id}` : "Driver route"}</span>
-                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-                <div className="mt-8 space-y-3">
-                  <ActionButton
-                    onClick={() => (nextSchedule ? startScheduledTrip(nextSchedule.id) : startManualTrip())}
-                    disabled={busy || (!nextSchedule && (!routeId || !busId || !helperId))}
-                    tone="green"
-                    className="w-full bg-[#2d7f2d] py-5 text-2xl"
-                  >
-                    {busy ? "STARTING..." : nextSchedule ? "START NEXT TRIP" : "START MANUAL TRIP"}
-                  </ActionButton>
-                  <div className="flex items-center justify-between rounded-[1.5rem] bg-white/10 px-4 py-3 text-sm text-indigo-50">
-                    <span>{deviationMode ? "Deviation mode enabled" : "Normal route mode"}</span>
-                    <button
-                      type="button"
-                      onClick={() => setDeviationMode((value) => !value)}
-                      className="rounded-full bg-white/20 px-3 py-1 font-semibold"
-                    >
-                      Toggle
-                    </button>
-                  </div>
-                </div>
-              </SectionCard>
+        {/* Tab bar */}
+        <div className={`flex gap-1.5 rounded-2xl border p-1.5 mb-5 backdrop-blur ${t.tabBar}`}>
+          {TABS.map(tab => (
+            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+              className={`flex flex-1 flex-col items-center gap-1 rounded-xl py-3 text-center transition-all duration-150 ${activeTab === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/50" : t.tabInactive}`}>
+              <span className="text-lg">{tab.icon}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wide hidden sm:block">{tab.label}</span>
+            </button>
+          ))}
+        </div>
 
-              <SectionCard>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Trip Setup</div>
-                    <div className="mt-2 text-3xl font-black text-slate-950">Manual start workspace</div>
-                  </div>
-                  <InfoBadge tone="blue">Route • Bus • Helper</InfoBadge>
+        {/* ── HOME ── */}
+        {activeTab === "home" && (
+          <div className="space-y-5">
+            <GlassCard t={t}>
+              <SectionLabel t={t}>Manual Trip Setup</SectionLabel>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <SelectField label="Route" value={routeId} onChange={setRouteId} t={t} options={manualOptions.routes.map(r => ({ value: r.id, label: `${r.name} (${r.city})` }))} />
+                <SelectField label="Bus" value={busId} onChange={setBusId} t={t} options={manualOptions.buses.map(b => ({ value: b.id, label: `${b.plate_number} (${b.capacity})` }))} />
+                <SelectField label="Helper" value={helperId} onChange={setHelperId} t={t} options={manualOptions.helpers.map(h => ({ value: h.id, label: h.full_name }))} />
+              </div>
+              {!manualOptions.helpers.length && <p className={`mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400`}>⚠ No helpers available.</p>}
+              <div className={`mt-4 flex items-center justify-between rounded-xl border px-4 py-3 ${isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"}`}>
+                <div>
+                  <p className={`text-xs font-semibold ${t.text}`}>Deviation Mode</p>
+                  <p className={`text-[10px] mt-0.5 ${t.textSub}`}>Enable for off-route situations</p>
                 </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-3">
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Route</label>
-                    <select
-                      value={routeId}
-                      onChange={(e) => setRouteId(e.target.value)}
-                      className="w-full rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium outline-none"
-                    >
-                      {manualOptions.routes.map((route) => (
-                        <option key={route.id} value={route.id}>
-                          {route.name} ({route.city})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Bus</label>
-                      <select
-                        value={busId}
-                        onChange={(e) => setBusId(e.target.value)}
-                        className="w-full rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium outline-none"
-                      >
-                        {manualOptions.buses.map((bus) => (
-                          <option key={bus.id} value={bus.id}>
-                            {bus.plate_number} ({bus.capacity})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Helper</label>
-                      <select
-                        value={helperId}
-                        onChange={(e) => setHelperId(e.target.value)}
-                        className="w-full rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium outline-none"
-                      >
-                        {manualOptions.helpers.map((helper) => (
-                          <option key={helper.id} value={helper.id}>
-                            {helper.full_name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {!manualOptions.helpers.length ? (
-                  <div className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    No helper is available yet. Create or assign a helper from the admin schedule panel before starting a manual trip.
-                  </div>
-                ) : null}
-
-                <div className="mt-5 grid grid-cols-2 gap-4">
-                  <div className="rounded-[1.5rem] bg-slate-50 px-5 py-5">
-                    <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Planned trips</div>
-                    <div className="mt-4 text-5xl font-black text-slate-950">{schedules.length}</div>
-                  </div>
-                  <div className="rounded-[1.5rem] bg-slate-50 px-5 py-5">
-                    <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Live status</div>
-                    <div className="mt-4 text-2xl font-black text-slate-950">{activeTrip ? "ACTIVE" : "STANDBY"}</div>
-                  </div>
-                </div>
-              </SectionCard>
-              <div className="flex items-center justify-between px-2">
-                <h2 className="text-[2.1rem] font-black tracking-tight text-slate-950">Today's Performance</h2>
-                <button type="button" className="text-lg font-black uppercase tracking-wide text-indigo-900" onClick={() => setActiveTab("earnings")}>
-                  View Report
+                <button type="button" onClick={() => setDeviationMode(v => !v)}
+                  className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${deviationMode ? "bg-indigo-500" : t.toggleOff}`}>
+                  <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${deviationMode ? "translate-x-5" : ""}`} />
                 </button>
               </div>
+            </GlassCard>
 
-              <SectionCard>
-                <div className="flex items-center justify-between gap-5">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Total Earnings</div>
-                    <div className="mt-3 text-[4rem] font-black leading-none text-indigo-950">NPR {todaysEarnings.toLocaleString()}</div>
-                    <div className="mt-2 text-sm text-slate-500">Driver analytics are still using local demo metrics for now.</div>
-                  </div>
-                  <div className="flex h-24 w-24 items-center justify-center rounded-[1.75rem] bg-green-200/80 text-3xl font-black text-green-900">NR</div>
-                </div>
-              </SectionCard>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { label: "Planned Trips", value: schedules.length, accent: "text-indigo-500" },
+                { label: "Status", value: activeTrip ? "LIVE" : "IDLE", accent: activeTrip ? "text-emerald-500" : t.textSub },
+                { label: "Today's Earnings", value: `NPR ${todaysEarnings.toLocaleString()}`, accent: t.text, sub: "Demo metric" },
+                { label: "Fuel Level", value: `${fuelLevel}%`, accent: fuelLevel > 50 ? "text-emerald-500" : "text-amber-500" },
+              ].map(c => (
+                <GlassCard key={c.label} t={t}>
+                  <p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{c.label}</p>
+                  <p className={`text-3xl font-black mt-2 leading-none ${c.accent}`}>{c.value}</p>
+                  {c.sub && <p className={`text-xs mt-1 ${t.textSub}`}>{c.sub}</p>}
+                </GlassCard>
+              ))}
+            </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <SectionCard className="bg-slate-50/90">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-[1.3rem] bg-indigo-100 text-lg font-black text-indigo-950">BS</div>
-                  <div className="mt-10 text-6xl font-black leading-none text-slate-950">{completedTrips}</div>
-                  <div className="mt-2 text-base font-semibold uppercase tracking-[0.24em] text-slate-600">Completed Trips</div>
-                </SectionCard>
-                <SectionCard className="bg-slate-100/95">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-[1.3rem] bg-slate-200 text-lg font-black text-slate-800">PX</div>
-                  <div className="mt-10 text-6xl font-black leading-none text-slate-950">{totalPassengers}</div>
-                  <div className="mt-2 text-base font-semibold uppercase tracking-[0.24em] text-slate-600">Total Passengers</div>
-                </SectionCard>
-              </div>
-
-              <SectionCard>
-                <div className="flex gap-4">
-                  <div className="relative flex h-28 w-28 flex-shrink-0 items-center justify-center rounded-[1.6rem] bg-[linear-gradient(145deg,#f2f5eb,#c9d5c3)] text-3xl font-black text-slate-700">
-                    BUS
-                    <span className="absolute right-3 top-3 h-5 w-5 rounded-full border-4 border-white bg-green-700" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <InfoBadge tone="green">Vehicle Healthy</InfoBadge>
-                      <span className="text-sm font-medium text-slate-500">Last checked 2h ago</span>
-                    </div>
-                    <div className="mt-4 text-2xl font-black text-slate-950">Fuel Level: {fuelLevel}%</div>
-                    <div className="mt-4 h-3 rounded-full bg-green-100">
-                      <div className="h-3 rounded-full bg-green-700" style={{ width: `${fuelLevel}%` }} />
-                    </div>
-                    <div className="mt-4 flex gap-3">
-                      <ActionButton onClick={() => setActiveTab("active")} tone="blue" className="flex-1 py-3 text-sm">
-                        OPEN ACTIVE TRIP
-                      </ActionButton>
-                    </div>
-                  </div>
-                </div>
-              </SectionCard>
-
-              <SectionCard>
-                <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Upcoming Runs</div>
-                <div className="mt-4 space-y-3">
-                  {schedules.length === 0 ? (
-                    <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">No planned schedules yet. Use manual start when needed.</div>
-                  ) : (
-                    schedules.slice(0, 3).map((schedule) => (
-                      <div key={schedule.id} className="rounded-[1.5rem] bg-slate-50 px-4 py-4">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-lg font-black text-slate-950">{schedule.route_name}</div>
-                            <div className="mt-1 text-sm text-slate-500">{schedule.bus_plate} • {formatDateTime(schedule.scheduled_start_time)}</div>
-                          </div>
-                          <ActionButton
-                            onClick={() => startScheduledTrip(schedule.id)}
-                            disabled={busy || Boolean(activeTrip)}
-                            tone="green"
-                            className="py-3 text-sm"
-                          >
-                            START
-                          </ActionButton>
-                        </div>
+            <GlassCard t={t}>
+              <SectionLabel t={t}>Upcoming Schedules</SectionLabel>
+              {schedules.length === 0
+                ? <p className={`text-sm py-2 ${t.textSub}`}>No planned schedules.</p>
+                : schedules.slice(0, 5).map(sch => {
+                  const mins = minutesUntil(sch.scheduled_start_time);
+                  return (
+                    <div key={sch.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 gap-3 mb-2 ${isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-bold truncate ${t.text}`}>{sch.route_name}</p>
+                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{sch.bus_plate} • {fmt(sch.scheduled_start_time)}</p>
                       </div>
-                    ))
-                  )}
-                </div>
-              </SectionCard>
-            </>
-          ) : null}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {mins !== null && <Pill color={mins > 0 ? "sky" : "emerald"} isDark={isDark}>{mins > 0 ? `${mins}m` : "Now"}</Pill>}
+                        <Btn tone="success" onClick={() => startScheduledTrip(sch.id)} disabled={busy || Boolean(activeTrip)} className="!py-1.5 !px-3 !text-xs">Start</Btn>
+                      </div>
+                    </div>
+                  );
+                })}
+            </GlassCard>
+          </div>
+        )}
 
-          {activeTab === "active" ? (
-            <>
-              <SectionCard className="bg-[radial-gradient(circle_at_top_left,#f3fbff_0%,#ffffff_44%,#edf6ff_100%)]">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Next Stop</div>
-                    <div className="mt-3 text-6xl font-black leading-[0.92] tracking-tight text-indigo-950">{nextStop}</div>
-                    <div className="mt-3 text-sm text-slate-500">Previous waypoint: {previousStop}</div>
+        {/* ── ACTIVE TRIP ── */}
+        {activeTab === "active" && (
+          <div className="space-y-5">
+            {!activeTrip
+              ? <GlassCard t={t}><p className={`text-sm text-center py-4 ${t.textSub}`}>No active trip. Go to Home to start one.</p></GlassCard>
+              : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      { label: "Occupancy", value: `${occupancyPct}%`, sub: `${occupied}/${capacity} seats`, accent: "text-emerald-500" },
+                      { label: "Next Stop", value: nextStop, accent: "text-indigo-500" },
+                      { label: "AI Prediction", value: `${predictedPax} pax`, sub: "at next stop", accent: "text-amber-500" },
+                      { label: "Route Status", value: "ON TIME", accent: "text-emerald-500" },
+                    ].map(c => (
+                      <GlassCard key={c.label} t={t}>
+                        <p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{c.label}</p>
+                        <p className={`text-2xl font-black mt-2 leading-none ${c.accent}`}>{c.value}</p>
+                        {c.sub && <p className={`text-xs mt-1 ${t.textSub}`}>{c.sub}</p>}
+                      </GlassCard>
+                    ))}
                   </div>
-                  <div className="rounded-[1.6rem] bg-green-200 px-5 py-4 text-center text-green-950">
-                    <div className="text-5xl font-black leading-none">4</div>
-                    <div className="mt-1 text-lg font-semibold uppercase tracking-[0.2em]">Min</div>
-                  </div>
-                </div>
 
-                <div className="mt-8 grid grid-cols-2 gap-4">
-                  <div className="rounded-[1.75rem] bg-slate-50 px-5 py-5">
-                    <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Pickups</div>
-                    <div className="mt-4 text-5xl font-black text-slate-950">{pickups}</div>
-                  </div>
-                  <div className="rounded-[1.75rem] bg-slate-50 px-5 py-5">
-                    <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Drops</div>
-                    <div className="mt-4 text-5xl font-black text-slate-950">{drops}</div>
-                  </div>
-                </div>
-              </SectionCard>
-
-              <SectionCard className="overflow-hidden">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Route Map</div>
-                    <div className="mt-1 text-2xl font-black text-slate-950">Live route tracking</div>
-                  </div>
-                  {liveBusPoint ? <InfoBadge tone="green">Bus live</InfoBadge> : <InfoBadge tone="slate">No GPS yet</InfoBadge>}
-                </div>
-
-                <div className="mt-4 overflow-hidden rounded-[1.6rem] border border-slate-200">
-                  <div className="h-72 w-full bg-slate-100">
-                    <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-                      <TileLayer
-                        attribution='&copy; OpenStreetMap &copy; CARTO'
-                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                      />
-                      <MapViewport points={mapPoints} />
-                      {displayedRoutePolyline.length > 0 ? (
-                        <Polyline positions={displayedRoutePolyline} pathOptions={{ color: "#334155", weight: 5, opacity: 0.9 }} />
-                      ) : null}
-
-                      {routeStops.map((item, index) => {
-                        const lat = Number(item.stop?.lat);
-                        const lng = Number(item.stop?.lng);
-                        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-
-                        const isCurrent = index === Math.max(stopProgressIndex, 0) && liveBusPoint;
-
-                        return (
-                          <CircleMarker
-                            key={`${item.stop_order}-${item.stop?.name}`}
-                            center={[lat, lng]}
-                            radius={isCurrent ? 8 : 6}
-                            pathOptions={{
-                              color: isCurrent ? "#0f172a" : "#475569",
-                              fillColor: isCurrent ? "#0f172a" : "#94a3b8",
-                              fillOpacity: 0.95,
-                            }}
-                          >
-                            <Popup>
-                              Stop {item.stop_order}: {item.stop?.name}
-                            </Popup>
+                  {/* Map */}
+                  <GlassCard t={t} className="!p-0 overflow-hidden">
+                    <div className={`flex items-center justify-between px-5 py-4 border-b ${t.divider}`}>
+                      <div>
+                        <SectionLabel t={t}>Live Route Map</SectionLabel>
+                        <p className={`text-sm font-bold -mt-2 ${t.text}`}>{currentRoute}</p>
+                      </div>
+                      <Pill color={liveBusPoint ? "emerald" : "slate"} isDark={isDark}><LiveDot active={Boolean(liveBusPoint)} /><span className="ml-1.5">{liveBusPoint ? "Bus Live" : "No GPS"}</span></Pill>
+                    </div>
+                    <div className="h-72 w-full">
+                      <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+                        <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={t.mapTile} />
+                        <MapViewport points={mapPoints} />
+                        {displayedPolyline.length > 0 && <Polyline positions={displayedPolyline} pathOptions={{ color: "#818cf8", weight: 4, opacity: 0.9 }} />}
+                        {routeStops.map((item, index) => {
+                          const lat = Number(item.stop?.lat), lng = Number(item.stop?.lng);
+                          if (!isFinite(lat) || !isFinite(lng)) return null;
+                          const isCur = index === Math.max(stopProgressIndex, 0) && liveBusPoint;
+                          return (
+                            <CircleMarker key={`${item.stop_order}-${item.stop?.name}`} center={[lat, lng]} radius={isCur ? 8 : 5}
+                              pathOptions={{ color: isCur ? "#818cf8" : "#475569", fillColor: isCur ? "#818cf8" : "#94a3b8", fillOpacity: 0.95 }}>
+                              <Popup>Stop {item.stop_order}: {item.stop?.name}</Popup>
+                            </CircleMarker>
+                          );
+                        })}
+                        {liveBusPoint && (
+                          <CircleMarker center={liveBusPoint} radius={11} pathOptions={{ color: "#10b981", fillColor: "#34d399", fillOpacity: 1 }}>
+                            <Popup>Live bus position</Popup>
                           </CircleMarker>
-                        );
-                      })}
-
-                      {liveBusPoint ? (
-                        <CircleMarker
-                          center={liveBusPoint}
-                          radius={10}
-                          pathOptions={{ color: "#991b1b", fillColor: "#ef4444", fillOpacity: 1 }}
-                        >
-                          <Popup>Live bus position</Popup>
-                        </CircleMarker>
-                      ) : null}
-                    </MapContainer>
-                  </div>
-                </div>
-              </SectionCard>
-
-                <SectionCard className="border border-slate-200 bg-slate-900 text-white">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-[1.3rem] bg-green-200 text-lg font-black text-green-950">AI</div>
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-100/80">AI Predictor</div>
-                    <div className="mt-3 text-3xl font-black leading-snug text-white">
-                      High Prospect: <span className="text-green-200">{predictedPassengers}</span> likely at next stop
+                        )}
+                      </MapContainer>
                     </div>
-                  </div>
-                </div>
-                <div className="mt-6 rounded-[1.7rem] bg-[#0d2a72] px-5 py-5 text-lg text-indigo-100">
-                  Based on active route context near {nextStop}. This is still a demo placeholder until the prediction module is added.
-                </div>
-              </SectionCard>
-              <div className="grid grid-cols-[1.1fr_0.9fr] gap-4">
-                <SectionCard>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Route Status</div>
-                      <div className="mt-4 flex items-center gap-3 text-4xl font-black text-slate-950">
-                        <span className="h-4 w-4 rounded-full bg-green-700" />
-                        ON TIME
+                  </GlassCard>
+
+                  {/* GPS controls */}
+                  <GlassCard t={t}>
+                    <SectionLabel t={t}>GPS Control</SectionLabel>
+                    <div className={`flex items-center justify-between rounded-xl border px-4 py-3 mb-3 ${isDark ? "border-white/5 bg-white/5" : "border-slate-200 bg-slate-50"}`}>
+                      <div>
+                        <p className={`text-sm font-semibold ${t.text}`}>Auto GPS Sharing</p>
+                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{locationStatus || (autoShare ? "Broadcasting…" : "Paused")}</p>
                       </div>
+                      <button type="button" onClick={() => setAutoShare(v => !v)}
+                        className={`relative h-6 w-11 rounded-full transition-colors duration-200 ${autoShare ? "bg-emerald-500" : t.toggleOff}`}>
+                        <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform duration-200 ${autoShare ? "translate-x-5" : ""}`} />
+                      </button>
                     </div>
-                    <div>
-                      <div className="text-sm font-semibold uppercase tracking-[0.22em] text-slate-500">Occupancy</div>
-                      <div className="mt-4 text-4xl font-black text-slate-950">{occupancyPercent}%</div>
-                      <div className="mt-2 text-lg text-slate-500">({occupiedSeats}/{capacity})</div>
+                    <div className="grid grid-cols-2 gap-3 mb-3">
+                      <input className={`rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} placeholder="Latitude" value={manualLat} onChange={e => setManualLat(e.target.value)} />
+                      <input className={`rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} placeholder="Longitude" value={manualLng} onChange={e => setManualLng(e.target.value)} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Btn tone="ghost" onClick={sendManualLocation} disabled={locationBusy}>Send Coordinates</Btn>
+                      <Btn tone="primary" onClick={sendBrowserLocation} disabled={locationBusy}>{locationBusy ? "Sending…" : "Send My Location"}</Btn>
+                    </div>
+                  </GlassCard>
+
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <GlassCard t={t}>
+                      <div className="flex items-center justify-between mb-4">
+                        <SectionLabel t={t}>Stop Timeline</SectionLabel>
+                        <Pill color="amber" isDark={isDark}>{routeStops.length} stops</Pill>
+                      </div>
+                      <StopTimeline stops={routeStops} progressIndex={stopProgressIndex} liveBusPoint={liveBusPoint} t={t} />
+                    </GlassCard>
+                    <div className="space-y-3">
+                      <GlassCard t={t}>
+                        <SectionLabel t={t}>Trip Controls</SectionLabel>
+                        <Btn tone="danger" onClick={endTrip} disabled={busy} className="w-full !py-4 !text-base">{busy ? "Ending…" : "■ End Trip"}</Btn>
+                      </GlassCard>
+                      <GlassCard t={t}>
+                        <SectionLabel t={t}>Current GPS</SectionLabel>
+                        {latestLocation
+                          ? <><p className="text-sm font-mono text-indigo-500">{Number(latestLocation.lat).toFixed(6)}, {Number(latestLocation.lng).toFixed(6)}</p><p className={`text-xs mt-1 ${t.textSub}`}>Updated {fmt(latestLocation.recorded_at)}</p></>
+                          : <p className={`text-sm ${t.textSub}`}>No location yet</p>}
+                      </GlassCard>
+                      <Btn tone="danger" className="w-full !py-5 !text-xl font-black tracking-widest shadow-2xl shadow-red-900/50">🚨 SOS</Btn>
                     </div>
                   </div>
-                </SectionCard>
-                <div className="flex items-end">
-                  <ActionButton tone="red" className="w-full rounded-[1.9rem] py-5 text-2xl">
-                    SOS
-                  </ActionButton>
-                </div>
-              </div>
-
-              <SectionCard className="border border-slate-200 bg-slate-900 text-white">
-                <div className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-100/80">Current Occupancy</div>
-                <div className="mt-4 text-[5rem] font-black leading-none">{occupiedSeats}/{capacity}</div>
-                <div className="mt-6 flex items-center gap-4">
-                  <div className="h-5 flex-1 overflow-hidden rounded-full bg-white/20">
-                    <div className="h-5 rounded-full bg-green-200" style={{ width: `${occupancyPercent}%` }} />
-                  </div>
-                  <div className="text-2xl font-black">{occupancyPercent}%</div>
-                </div>
-              </SectionCard>
-
-              <SectionCard>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Live GPS</div>
-                    <div className="mt-2 text-xl font-black text-slate-950">
-                      {latestLocation ? `${latestLocation.lat}, ${latestLocation.lng}` : "No location yet"}
-                    </div>
-                    <div className="mt-2 text-sm text-slate-500">
-                      {latestLocation ? `Updated ${formatDateTime(latestLocation.recorded_at)}` : "Waiting for driver update"}
-                    </div>
-                  </div>
-                  {locationStatus ? <InfoBadge tone="blue">{locationStatus}</InfoBadge> : null}
-                </div>
-
-                <div className="mt-6 grid grid-cols-2 gap-3">
-                  <ActionButton onClick={() => setAutoShare((value) => !value)} disabled={locationBusy} tone="green" className="py-4 text-sm">
-                    {autoShare ? "AUTO GPS RUNNING" : "RESUME AUTO GPS"}
-                  </ActionButton>
-                  <ActionButton onClick={sendBrowserLocation} disabled={locationBusy} tone="blue" className="py-4 text-sm">
-                    {locationBusy ? "SENDING..." : "SEND CURRENT LOCATION"}
-                  </ActionButton>
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <input
-                    className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium outline-none"
-                    placeholder="Latitude"
-                    value={manualLat}
-                    onChange={(e) => setManualLat(e.target.value)}
-                  />
-                  <input
-                    className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-medium outline-none"
-                    placeholder="Longitude"
-                    value={manualLng}
-                    onChange={(e) => setManualLng(e.target.value)}
-                  />
-                </div>
-
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <ActionButton onClick={sendManualLocation} disabled={locationBusy} tone="light" className="border border-slate-200 py-4 text-sm text-slate-900">
-                    SEND MANUAL COORDINATES
-                  </ActionButton>
-                  <ActionButton onClick={endTrip} disabled={busy} tone="red" className="py-4 text-sm">
-                    {busy ? "ENDING..." : "END TRIP"}
-                  </ActionButton>
-                </div>
-              </SectionCard>
-
-              <SectionCard>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Stop Timeline</div>
-                    <div className="mt-1 text-2xl font-black text-slate-950">Route progression</div>
-                  </div>
-                  <InfoBadge tone="amber">{routeStops.length} stops</InfoBadge>
-                </div>
-                <div className="mt-6">
-                  {routeStops.length === 0 ? (
-                    <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">No route stops loaded yet. Start a trip to see progression.</div>
-                  ) : (
-                    routeStops.map((stop, index) => {
-                      const status =
-                        stopProgressIndex === -1
-                          ? "upcoming"
-                          : index < stopProgressIndex
-                            ? "done"
-                            : index === stopProgressIndex
-                              ? "current"
-                              : "upcoming";
-                      return (
-                        <StopTimelineItem
-                          key={`${stop.stop_order}-${stop.stop?.name}`}
-                          stop={stop}
-                          index={index}
-                          status={index === routeStops.length - 1 && status === "upcoming" ? "last" : status}
-                        />
-                      );
-                    })
-                  )}
-                </div>
-              </SectionCard>
-            </>
-          ) : null}
-
-          {activeTab === "history" ? (
-            <>
-              <SectionCard className="bg-gradient-to-br from-[#0f2f84] via-[#13388f] to-[#0b2a77] text-white">
-                <div className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-100/80">Trip Completed Successfully</div>
-                <div className="mt-4 text-[5rem] font-black leading-none">NPR 1,250</div>
-                <div className="mt-3 text-2xl text-indigo-100">Total earnings from the last completed shift</div>
-              </SectionCard>
-
-              <div className="grid grid-cols-2 gap-4">
-                <SectionCard>
-                  <div className="text-sm font-semibold uppercase tracking-[0.24em] text-green-700">Capacity OK</div>
-                  <div className="mt-5 text-6xl font-black text-slate-950">42</div>
-                  <div className="mt-2 text-xl text-slate-600">Total Passengers</div>
-                </SectionCard>
-                <SectionCard>
-                  <div className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Route Duration</div>
-                  <div className="mt-5 text-6xl font-black text-slate-950">{routeDuration}</div>
-                  <div className="mt-2 text-xl text-slate-600">mins</div>
-                </SectionCard>
-              </div>
-
-              <SectionCard className="bg-slate-100/90">
-                <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Efficiency Metrics</div>
-                <div className="mt-8 space-y-7 text-2xl font-semibold text-slate-900">
-                  <div className="flex items-center justify-between gap-3">
-                    <span>Fuel Efficiency</span>
-                    <span className="font-black">12.4 km/L</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span>On-Time Performance</span>
-                    <InfoBadge tone="green">98%</InfoBadge>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span>Last route completed</span>
-                    <span className="font-black">{formatTimeOnly(activeTrip?.ended_at || nextSchedule?.scheduled_start_time)}</span>
-                  </div>
-                </div>
-              </SectionCard>
-
-              <ActionButton tone="green" className="w-full py-6 text-3xl">
-                SHIFT COMPLETE
-              </ActionButton>
-            </>
-          ) : null}
-
-          {activeTab === "earnings" ? (
-            <>
-              <SectionCard className="bg-gradient-to-br from-[#0f2f84] via-[#13388f] to-[#0b2a77] text-white">
-                <div className="text-sm font-semibold uppercase tracking-[0.28em] text-indigo-100/80">Today's Earnings</div>
-                <div className="mt-4 text-[5rem] font-black leading-none">NPR {todaysEarnings.toLocaleString()}</div>
-                <div className="mt-3 text-xl text-indigo-100">Driver earnings analytics are currently shown as demo placeholders.</div>
-              </SectionCard>
-
-              <div className="grid grid-cols-2 gap-4">
-                <SectionCard>
-                  <div className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Completed Trips</div>
-                  <div className="mt-6 text-6xl font-black text-slate-950">{completedTrips}</div>
-                </SectionCard>
-                <SectionCard>
-                  <div className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Passengers</div>
-                  <div className="mt-6 text-6xl font-black text-slate-950">{totalPassengers}</div>
-                </SectionCard>
-              </div>
-
-              <SectionCard className="bg-slate-100/90">
-                <div className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">Breakdown</div>
-                <div className="mt-6 space-y-5 text-xl text-slate-900">
-                  <div className="flex items-center justify-between gap-3">
-                    <span>App bookings</span>
-                    <span className="font-black">NPR 2,800</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span>Cash collections</span>
-                    <span className="font-black">NPR 1,700</span>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span>Manual entries</span>
-                    <span className="font-black">8 pax</span>
-                  </div>
-                </div>
-              </SectionCard>
-
-              <SectionCard>
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-500">Vehicle Health</div>
-                    <div className="mt-3 text-3xl font-black text-slate-950">Fuel Level {fuelLevel}%</div>
-                  </div>
-                  <InfoBadge tone="green">GOOD</InfoBadge>
-                </div>
-                <div className="mt-5 h-4 rounded-full bg-green-100">
-                  <div className="h-4 rounded-full bg-green-700" style={{ width: `${fuelLevel}%` }} />
-                </div>
-              </SectionCard>
-            </>
-          ) : null}
-        </div>
-
-        <div className="pointer-events-none fixed bottom-28 left-1/2 z-20 w-full max-w-md -translate-x-1/2 px-5">
-          <div className="flex justify-end">
-            <ActionButton tone="red" className="pointer-events-auto min-w-[9rem] rounded-[1.9rem] py-5 text-2xl shadow-[0_22px_36px_-20px_rgba(185,28,28,0.7)]">
-              SOS
-            </ActionButton>
+                </>
+              )}
           </div>
-        </div>
+        )}
 
-        <nav className="sticky bottom-0 mt-6 rounded-[2rem] bg-white/95 p-3 shadow-[0_-18px_40px_-28px_rgba(15,23,42,0.28)] backdrop-blur">
-          <div className="flex gap-2">
-            {TABS.map((tab) => (
-              <BottomTab key={tab.id} tab={tab} active={activeTab === tab.id} onClick={() => setActiveTab(tab.id)} />
-            ))}
+        {/* ── HISTORY ── */}
+        {activeTab === "history" && (
+          <div className="space-y-5">
+            <GlassCard t={t} className={`bg-gradient-to-br ${isDark ? "from-indigo-900/60 to-[#0a0e1a]" : "from-indigo-50 to-[#f0f4f8]"}`}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Last Shift Summary</p>
+              <p className={`text-5xl font-black mt-3 ${t.text}`}>NPR 1,250</p>
+              <p className={`text-sm mt-2 ${t.textSub}`}>Total earnings from last completed trip</p>
+            </GlassCard>
+            <div className="grid grid-cols-2 gap-3">
+              <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>Passengers</p><p className={`text-4xl font-black mt-2 ${t.text}`}>42</p></GlassCard>
+              <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>Duration</p><p className={`text-4xl font-black mt-2 text-indigo-500`}>42 min</p></GlassCard>
+            </div>
+            <GlassCard t={t}>
+              <SectionLabel t={t}>Efficiency Report</SectionLabel>
+              {[{ label: "Fuel Efficiency", value: "12.4 km/L" }, { label: "On-Time Performance", value: "98%" }, { label: "Last Route", value: fmtTime(nextSchedule?.scheduled_start_time) }].map(row => (
+                <div key={row.label} className={`flex items-center justify-between text-sm border-b pb-4 last:border-0 last:pb-0 mb-4 ${t.divider}`}>
+                  <span className={t.textSub}>{row.label}</span>
+                  <span className={`font-bold ${t.text}`}>{row.value}</span>
+                </div>
+              ))}
+            </GlassCard>
+            <Btn tone="success" className="w-full !py-4 !text-base">✓ Mark Shift Complete</Btn>
           </div>
-        </nav>
+        )}
+
+        {/* ── EARNINGS ── */}
+        {activeTab === "earnings" && (
+          <div className="space-y-5">
+            <GlassCard t={t} className={`bg-gradient-to-br ${isDark ? "from-indigo-900/60 to-[#0a0e1a]" : "from-indigo-50 to-[#f0f4f8]"}`}>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Today's Earnings</p>
+              <p className={`text-5xl font-black mt-3 ${t.text}`}>NPR {todaysEarnings.toLocaleString()}</p>
+              <p className={`text-sm mt-2 ${t.textSub}`}>Demo placeholder — real API coming soon</p>
+            </GlassCard>
+            <div className="grid grid-cols-2 gap-3">
+              <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>Completed Trips</p><p className={`text-4xl font-black mt-2 text-indigo-500`}>{completedTrips}</p></GlassCard>
+              <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>Passengers</p><p className={`text-4xl font-black mt-2 ${t.text}`}>{totalPassengers}</p></GlassCard>
+            </div>
+            <GlassCard t={t}>
+              <SectionLabel t={t}>Breakdown</SectionLabel>
+              {[{ label: "App Bookings", value: "NPR 2,800" }, { label: "Cash Collections", value: "NPR 1,700" }, { label: "Manual Entries", value: "8 pax" }].map(row => (
+                <div key={row.label} className={`flex items-center justify-between text-sm border-b pb-4 last:border-0 last:pb-0 mb-4 ${t.divider}`}>
+                  <span className={t.textSub}>{row.label}</span><span className={`font-bold ${t.text}`}>{row.value}</span>
+                </div>
+              ))}
+            </GlassCard>
+            <GlassCard t={t}>
+              <div className="flex items-center justify-between mb-3"><SectionLabel t={t}>Fuel Level</SectionLabel><Pill color="emerald" isDark={isDark}>GOOD</Pill></div>
+              <p className={`text-2xl font-black mb-3 ${t.text}`}>{fuelLevel}%</p>
+              <div className={`h-2 rounded-full ${isDark ? "bg-white/10" : "bg-slate-200"}`}><div className="h-2 rounded-full bg-emerald-400 transition-all" style={{ width: `${fuelLevel}%` }} /></div>
+            </GlassCard>
+          </div>
+        )}
       </div>
+
+      {activeTab === "active" && activeTrip && (
+        <div className="fixed bottom-6 right-6 z-50 lg:hidden">
+          <button type="button" className="h-16 w-16 rounded-full bg-red-600 text-white text-xl font-black shadow-2xl shadow-red-900/60 animate-pulse hover:animate-none hover:bg-red-500 transition-all">SOS</button>
+        </div>
+      )}
     </div>
   );
 }

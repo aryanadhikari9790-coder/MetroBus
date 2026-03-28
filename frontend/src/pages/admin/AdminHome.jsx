@@ -5,931 +5,443 @@ import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { snapRouteToRoad } from "../../lib/mapRoute";
+import { useTheme } from "../../ThemeContext";
+import { themeTokens, pillColor } from "../../lib/theme";
 
-function formatDateTime(value) {
-  if (!value) return "-";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
+function GlassCard({ children, className = "", t }) { return <div className={`rounded-2xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>{children}</div>; }
+function Pill({ children, color = "slate", isDark }) { return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>{children}</span>; }
+function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
+  const m = { primary: "bg-indigo-600 hover:bg-indigo-500 text-white", success: "bg-emerald-600 hover:bg-emerald-500 text-white", danger: "bg-red-600 hover:bg-red-500 text-white", ghost: "bg-white/10 hover:bg-white/20 text-white border border-white/10" };
+  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-xl px-5 py-3 text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
-
-function formatMoney(value) {
-  const numeric = Number(value || 0);
-  return `NPR ${numeric.toLocaleString()}`;
+function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
+function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "☀ Light" : "🌙 Dark"}</button>; }
+function StatCard({ label, value, sub, accent = "", t }) {
+  return <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{label}</p><p className={`text-3xl font-black mt-2 leading-none ${accent || t.text}`}>{value}</p>{sub && <p className={`text-xs mt-1.5 ${t.textSub}`}>{sub}</p>}</GlassCard>;
 }
-
-function ShellCard({ children, className = "" }) {
-  return (
-    <section
-      className={`rounded-[2rem] bg-white p-5 shadow-[0_24px_48px_-30px_rgba(15,23,42,0.35)] ${className}`}
-    >
-      {children}
-    </section>
-  );
+function InputField({ label, value, onChange, placeholder, type = "text", t }) {
+  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 transition ${t.input}`} /></div>;
 }
-
-function StatusPill({ children, tone = "blue" }) {
-  const tones = {
-    blue: "bg-blue-100 text-blue-900",
-    green: "bg-emerald-100 text-emerald-900",
-    amber: "bg-amber-100 text-amber-900",
-    slate: "bg-slate-100 text-slate-700",
-    red: "bg-red-100 text-red-700",
-  };
-
-  return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${tones[tone]}`}>{children}</span>;
+function SelectField({ label, value, onChange, options, t }) {
+  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><select value={value} onChange={e => onChange(e.target.value)} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 transition ${t.input}`} style={{ backgroundColor: "var(--select-bg)", color: "var(--input-text)" }}>{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>;
 }
-
-function MetricCard({ label, value, subtext, tone = "slate" }) {
-  const accents = {
-    slate: "from-slate-50 to-white text-slate-950",
-    blue: "from-blue-50 to-white text-blue-950",
-    green: "from-emerald-50 to-white text-emerald-950",
-    amber: "from-amber-50 to-white text-amber-950",
-  };
-
-  return (
-    <div className={`rounded-[1.7rem] bg-gradient-to-br p-5 ${accents[tone]}`}>
-      <div className="text-xs font-semibold uppercase tracking-[0.26em] text-slate-500">{label}</div>
-      <div className="mt-3 text-4xl font-black leading-none">{value}</div>
-      {subtext ? <div className="mt-3 text-sm text-slate-500">{subtext}</div> : null}
-    </div>
-  );
-}
-
-function SectionTitle({ eyebrow, title, action }) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        {eyebrow ? <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">{eyebrow}</div> : null}
-        <div className="mt-1 text-2xl font-black text-slate-950">{title}</div>
-      </div>
-      {action}
-    </div>
-  );
-}
-
 function MapViewport({ points }) {
   const map = useMap();
-
-  useEffect(() => {
-    if (!points.length) return;
-
-    if (points.length === 1) {
-      map.setView(points[0], 14);
-      return;
-    }
-
-    map.fitBounds(points, { padding: [32, 32] });
-  }, [map, points]);
-
+  useEffect(() => { if (!points.length) return; if (points.length === 1) { map.setView(points[0], 14); return; } map.fitBounds(points, { padding: [32, 32] }); }, [map, points]);
   return null;
 }
+function fmt(v) { if (!v) return "—"; try { return new Date(v).toLocaleString(); } catch { return v; } }
+function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
+
+const TABS = [{ id: "overview", label: "Overview", icon: "◈" }, { id: "routes", label: "Routes", icon: "⊕" }, { id: "schedules", label: "Schedules", icon: "⏰" }, { id: "activity", label: "Activity", icon: "⚡" }, { id: "manage", label: "Manage", icon: "🛠" }];
 
 export default function AdminHome() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { isDark, toggle } = useTheme();
+  const t = themeTokens(isDark);
+  const [activeTab, setActiveTab] = useState("overview");
 
-  const [dashboard, setDashboard] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
-  const [builderStops, setBuilderStops] = useState([]);
-  const [recentRoutes, setRecentRoutes] = useState([]);
-  const [routeBusy, setRouteBusy] = useState(false);
-  const [routeMsg, setRouteMsg] = useState("");
-  const [scheduleMsg, setScheduleMsg] = useState("");
-  const [routeName, setRouteName] = useState("");
-  const [routeCity, setRouteCity] = useState("Pokhara");
-  const [routeActive, setRouteActive] = useState(true);
+  const [dashboard, setDashboard]           = useState(null);
+  const [loading, setLoading]               = useState(true);
+  const [err, setErr]                       = useState("");
+  const [builderStops, setBuilderStops]     = useState([]);
+  const [recentRoutes, setRecentRoutes]     = useState([]);
+  const [routeBusy, setRouteBusy]           = useState(false);
+  const [routeMsg, setRouteMsg]             = useState("");
+  const [scheduleMsg, setScheduleMsg]       = useState("");
+  const [routeName, setRouteName]           = useState("");
+  const [routeCity, setRouteCity]           = useState("Pokhara");
+  const [routeActive, setRouteActive]       = useState(true);
   const [selectedStopIds, setSelectedStopIds] = useState([]);
-  const [segmentFares, setSegmentFares] = useState([]);
-  const [roadPolyline, setRoadPolyline] = useState([]);
-  const [scheduleBusy, setScheduleBusy] = useState(false);
-  const [scheduleOptions, setScheduleOptions] = useState({ routes: [], buses: [], drivers: [], helpers: [], recent_schedules: [] });
-  const [scheduleRouteId, setScheduleRouteId] = useState("");
-  const [scheduleBusId, setScheduleBusId] = useState("");
-  const [scheduleDriverId, setScheduleDriverId] = useState("");
-  const [scheduleHelperId, setScheduleHelperId] = useState("");
-  const [scheduleStartTime, setScheduleStartTime] = useState("");
+  const [segmentFares, setSegmentFares]     = useState([]);
+  const [roadPolyline, setRoadPolyline]     = useState([]);
+  const [scheduleBusy, setScheduleBusy]     = useState(false);
+  const [schedOpts, setSchedOpts]           = useState({ routes: [], buses: [], drivers: [], helpers: [], recent_schedules: [] });
+  const [sRouteId, setSRouteId]             = useState("");
+  const [sBusId, setSBusId]                 = useState("");
+  const [sDriverId, setSDriverId]           = useState("");
+  const [sHelperId, setSHelperId]           = useState("");
+  const [sStartTime, setSStartTime]         = useState("");
+  // Management
+  const [busList, setBusList]               = useState([]);
+  const [userList, setUserList]             = useState([]);
+  const [busPlate, setBusPlate]             = useState("");
+  const [busCap, setBusCap]                 = useState("35");
+  const [busActive, setBusActive]           = useState(true);
+  const [busMgmtBusy, setBusMgmtBusy]       = useState(false);
+  const [busMgmtMsg, setBusMgmtMsg]         = useState("");
+  const [uName, setUName]                   = useState("");
+  const [uPhone, setUPhone]                 = useState("");
+  const [uEmail, setUEmail]                 = useState("");
+  const [uPass, setUPass]                   = useState("");
+  const [uRole, setURole]                   = useState("DRIVER");
+  const [uMgmtBusy, setUMgmtBusy]           = useState(false);
+  const [uMgmtMsg, setUMgmtMsg]             = useState("");
 
-  const loadDashboard = async ({ silent = false } = {}) => {
-    if (!silent) {
-      setLoading(true);
-    }
+  const loadDB     = async ({ silent = false } = {}) => { if (!silent) setLoading(true); try { const r = await api.get("/api/auth/admin/dashboard/"); setDashboard(r.data); setErr(""); } catch (e) { setErr(e?.response?.data?.detail || "Failed to load dashboard."); } finally { if (!silent) setLoading(false); } };
+  const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentRoutes(r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
+  const loadSched  = async () => { try { const r = await api.get("/api/trips/admin/schedules/"); setSchedOpts({ routes: r.data.routes || [], buses: r.data.buses || [], drivers: r.data.drivers || [], helpers: r.data.helpers || [], recent_schedules: r.data.recent_schedules || [] }); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load schedules."); } };
+  const loadBuses  = async () => { try { const r = await api.get("/api/transport/admin/buses/"); setBusList(r.data.buses || []); } catch { /* silent */ } };
+  const loadUsers  = async (role) => { try { const r = await api.get(`/api/auth/admin/users/${role ? `?role=${role}` : ""}`); setUserList(r.data.users || []); } catch { /* silent */ } };
 
-    try {
-      const res = await api.get("/api/auth/admin/dashboard/");
-      setDashboard(res.data);
-      setErr("");
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to load admin dashboard.");
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  };
-
-  const loadRouteBuilder = async () => {
-    try {
-      const res = await api.get("/api/transport/admin/route-builder/");
-      setBuilderStops(res.data.stops || []);
-      setRecentRoutes(res.data.recent_routes || []);
-    } catch (e) {
-      setErr((prev) => prev || e?.response?.data?.detail || "Failed to load route builder data.");
-    }
-  };
-
-  const loadScheduleBuilder = async () => {
-    try {
-      const res = await api.get("/api/trips/admin/schedules/");
-      const nextOptions = {
-        routes: res.data.routes || [],
-        buses: res.data.buses || [],
-        drivers: res.data.drivers || [],
-        helpers: res.data.helpers || [],
-        recent_schedules: res.data.recent_schedules || [],
-      };
-      setScheduleOptions(nextOptions);
-    } catch (e) {
-      setErr((prev) => prev || e?.response?.data?.detail || "Failed to load schedule assignment data.");
-    }
-  };
-
+  useEffect(() => { loadDB(); loadRoute(); loadSched(); loadBuses(); loadUsers(); const id = setInterval(() => loadDB({ silent: true }), 10000); return () => clearInterval(id); }, []);
+  useEffect(() => { setSegmentFares(c => Array.from({ length: Math.max(selectedStopIds.length - 1, 0) }, (_, i) => c[i] || "")); }, [selectedStopIds]);
   useEffect(() => {
-    loadDashboard();
-    loadRouteBuilder();
-    loadScheduleBuilder();
-    const intervalId = window.setInterval(() => {
-      loadDashboard({ silent: true });
-    }, 10000);
-    return () => window.clearInterval(intervalId);
-  }, []);
+    if (!sRouteId && schedOpts.routes.length) setSRouteId(String(schedOpts.routes[0].id));
+    if (!sBusId && schedOpts.buses.length) setSBusId(String(schedOpts.buses[0].id));
+    if (!sDriverId && schedOpts.drivers.length) setSDriverId(String(schedOpts.drivers[0].id));
+    if (!sHelperId && schedOpts.helpers.length) setSHelperId(String(schedOpts.helpers[0].id));
+    if (!sStartTime) { const d = new Date(Date.now() + 15 * 60000); setSStartTime(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)); }
+  }, [schedOpts]);
 
-  useEffect(() => {
-    setSegmentFares((current) => {
-      const requiredLength = Math.max(selectedStopIds.length - 1, 0);
-      return Array.from({ length: requiredLength }, (_, index) => current[index] || "");
-    });
-  }, [selectedStopIds]);
+  const handleLogout = () => { clearToken(); navigate("/auth/login"); };
 
-  useEffect(() => {
-    if (!scheduleRouteId && scheduleOptions.routes.length) {
-      setScheduleRouteId(String(scheduleOptions.routes[0].id));
-    }
-    if (!scheduleBusId && scheduleOptions.buses.length) {
-      setScheduleBusId(String(scheduleOptions.buses[0].id));
-    }
-    if (!scheduleDriverId && scheduleOptions.drivers.length) {
-      setScheduleDriverId(String(scheduleOptions.drivers[0].id));
-    }
-    if (!scheduleHelperId && scheduleOptions.helpers.length) {
-      setScheduleHelperId(String(scheduleOptions.helpers[0].id));
-    }
-    if (!scheduleStartTime) {
-      const date = new Date(Date.now() + 15 * 60000);
-      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-      setScheduleStartTime(local);
-    }
-  }, [scheduleOptions, scheduleRouteId, scheduleBusId, scheduleDriverId, scheduleHelperId, scheduleStartTime]);
+  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || {}; const trips = overview?.trips || {}; const bookings = overview?.bookings || {}; const payments = overview?.payments || {}; const methods = payments?.methods || {};
+  const paymentRows = useMemo(() => Object.entries(methods).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [methods]);
+  const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
+  const selPts = useMemo(() => selectedStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)), [selectedStops]);
+  const dispPts = roadPolyline.length > 1 ? roadPolyline : selPts;
+  const mapPts  = useMemo(() => dispPts.length > 0 ? dispPts : builderStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)).slice(0, 12), [builderStops, dispPts]);
 
-  const handleLogout = () => {
-    clearToken();
-    navigate("/auth/login");
-  };
+  useEffect(() => { if (selPts.length < 2) { setRoadPolyline([]); return; } const c = new AbortController(); snapRouteToRoad(selPts, c.signal).then(p => setRoadPolyline(p.length > 1 ? p : [])).catch(e => { if (e.name !== "AbortError") setRoadPolyline([]); }); return () => c.abort(); }, [selPts]);
 
-  const overview = dashboard?.overview;
-  const roleCounts = overview?.role_counts || {};
-  const transport = overview?.transport || {};
-  const trips = overview?.trips || {};
-  const bookings = overview?.bookings || {};
-  const payments = overview?.payments || {};
-  const methods = payments?.methods || {};
-
-  const paymentMethodRows = useMemo(
-    () =>
-      Object.entries(methods).map(([method, stats]) => ({
-        method,
-        total: stats.total || 0,
-        success: stats.success || 0,
-        successRate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0,
-      })),
-    [methods]
-  );
-
-  const selectedStops = useMemo(
-    () => selectedStopIds.map((id) => builderStops.find((stop) => stop.id === id)).filter(Boolean),
-    [builderStops, selectedStopIds]
-  );
-
-  const selectedRoutePoints = useMemo(
-    () =>
-      selectedStops
-        .map((stop) => [Number(stop.lat), Number(stop.lng)])
-        .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)),
-    [selectedStops]
-  );
-  const displayedRoutePoints = roadPolyline.length > 1 ? roadPolyline : selectedRoutePoints;
-
-  const mapPoints = useMemo(() => {
-    if (displayedRoutePoints.length > 0) return displayedRoutePoints;
-    const allStops = builderStops
-      .map((stop) => [Number(stop.lat), Number(stop.lng)])
-      .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
-    return allStops.slice(0, 12);
-  }, [builderStops, displayedRoutePoints]);
-
-  useEffect(() => {
-    if (selectedRoutePoints.length < 2) {
-      setRoadPolyline([]);
-      return;
-    }
-
-    const controller = new AbortController();
-    const loadRoadRoute = async () => {
-      try {
-        const snappedPath = await snapRouteToRoad(selectedRoutePoints, controller.signal);
-        setRoadPolyline(snappedPath.length > 1 ? snappedPath : []);
-      } catch (error) {
-        if (error.name === "AbortError") return;
-        setRoadPolyline([]);
-      }
-    };
-
-    loadRoadRoute();
-    return () => controller.abort();
-  }, [selectedRoutePoints]);
-
-  const toggleStopSelection = (stopId) => {
-    setSelectedStopIds((current) =>
-      current.includes(stopId) ? current.filter((item) => item !== stopId) : [...current, stopId]
-    );
-  };
-
-  const moveStop = (index, direction) => {
-    setSelectedStopIds((current) => {
-      const targetIndex = index + direction;
-      if (targetIndex < 0 || targetIndex >= current.length) return current;
-      const next = [...current];
-      [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
-      return next;
-    });
-  };
-
-  const clearRouteBuilder = () => {
-    setRouteName("");
-    setRouteCity("Pokhara");
-    setRouteActive(true);
-    setSelectedStopIds([]);
-    setSegmentFares([]);
-    setRouteMsg("");
-  };
-
-  const clearScheduleBuilder = () => {
-    setScheduleMsg("");
-    setScheduleStartTime("");
-  };
+  const toggleStop = id => setSelectedStopIds(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
+  const moveStop = (i, dir) => setSelectedStopIds(c => { const ti = i + dir; if (ti < 0 || ti >= c.length) return c; const n = [...c]; [n[i], n[ti]] = [n[ti], n[i]]; return n; });
+  const clearRoute  = () => { setRouteName(""); setRouteCity("Pokhara"); setRouteActive(true); setSelectedStopIds([]); setSegmentFares([]); setRouteMsg(""); };
 
   const createRoute = async () => {
-    if (!routeName.trim()) {
-      setErr("Enter a route name before creating the route.");
-      return;
-    }
-    if (selectedStopIds.length < 2) {
-      setErr("Select at least two stops on the map to create a route.");
-      return;
-    }
-    if (segmentFares.some((fare) => fare === "" || Number(fare) < 0)) {
-      setErr("Fill every segment fare with a valid amount.");
-      return;
-    }
-
-    setRouteBusy(true);
-    setErr("");
-    setRouteMsg("");
-
-    try {
-      const res = await api.post("/api/transport/admin/route-builder/", {
-        name: routeName.trim(),
-        city: routeCity.trim() || "Pokhara",
-        is_active: routeActive,
-        stop_ids: selectedStopIds,
-        segment_fares: segmentFares.map((fare) => Number(fare)),
-      });
-
-      setRouteMsg(res.data.message || "Route created successfully.");
-      clearRouteBuilder();
-      await Promise.all([loadDashboard({ silent: true }), loadRouteBuilder()]);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to create route.");
-    } finally {
-      setRouteBusy(false);
-    }
+    if (!routeName.trim()) { setErr("Enter a route name."); return; } if (selectedStopIds.length < 2) { setErr("Select at least two stops."); return; } if (segmentFares.some(f => f === "" || Number(f) < 0)) { setErr("Fill every segment fare."); return; }
+    setRouteBusy(true); setErr(""); setRouteMsg("");
+    try { const r = await api.post("/api/transport/admin/route-builder/", { name: routeName.trim(), city: routeCity.trim() || "Pokhara", is_active: routeActive, stop_ids: selectedStopIds, segment_fares: segmentFares.map(Number) }); setRouteMsg(r.data.message || "Route created."); clearRoute(); await Promise.all([loadDB({ silent: true }), loadRoute()]); }
+    catch (e) { setErr(e?.response?.data?.detail || "Failed to create route."); } finally { setRouteBusy(false); }
   };
 
   const createSchedule = async () => {
-    if (!(scheduleRouteId && scheduleBusId && scheduleDriverId && scheduleHelperId && scheduleStartTime)) {
-      setErr("Fill route, bus, driver, helper, and start time before creating a schedule.");
-      return;
-    }
-
-    setScheduleBusy(true);
-    setErr("");
-    setScheduleMsg("");
-
-    try {
-      const res = await api.post("/api/trips/admin/schedules/", {
-        route_id: Number(scheduleRouteId),
-        bus_id: Number(scheduleBusId),
-        driver_id: Number(scheduleDriverId),
-        helper_id: Number(scheduleHelperId),
-        scheduled_start_time: new Date(scheduleStartTime).toISOString(),
-      });
-      setScheduleMsg(res.data.message || "Trip schedule created successfully.");
-      clearScheduleBuilder();
-      await Promise.all([loadDashboard({ silent: true }), loadScheduleBuilder()]);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to create trip schedule.");
-    } finally {
-      setScheduleBusy(false);
-    }
+    if (!(sRouteId && sBusId && sDriverId && sHelperId && sStartTime)) { setErr("Fill all schedule fields."); return; }
+    setScheduleBusy(true); setErr(""); setScheduleMsg("");
+    try { const r = await api.post("/api/trips/admin/schedules/", { route_id: +sRouteId, bus_id: +sBusId, driver_id: +sDriverId, helper_id: +sHelperId, scheduled_start_time: new Date(sStartTime).toISOString() }); setScheduleMsg(r.data.message || "Schedule created."); setSStartTime(""); await Promise.all([loadDB({ silent: true }), loadSched()]); }
+    catch (e) { setErr(e?.response?.data?.detail || "Failed to create schedule."); } finally { setScheduleBusy(false); }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,#eff8ff_0%,#f7fbff_38%,#f8fafc_100%)] px-4 py-8 text-slate-900">
-        <div className="mx-auto max-w-7xl rounded-[2rem] bg-white p-8 shadow-lg">Loading admin dashboard...</div>
-      </div>
-    );
-  }
+  const createBus = async () => {
+    if (!busPlate.trim()) { setErr("Enter a plate number."); return; }
+    const cap = parseInt(busCap); if (isNaN(cap) || cap < 1 || cap > 200) { setErr("Capacity must be 1–200."); return; }
+    setBusMgmtBusy(true); setErr(""); setBusMgmtMsg("");
+    try { const r = await api.post("/api/transport/admin/buses/", { plate_number: busPlate.trim(), capacity: cap, is_active: busActive }); setBusMgmtMsg(r.data.message || "Bus created."); setBusPlate(""); setBusCap("35"); setBusActive(true); await loadBuses(); }
+    catch (e) { setErr(e?.response?.data?.detail || "Failed to create bus."); } finally { setBusMgmtBusy(false); }
+  };
+
+  const createUser = async () => {
+    if (!uName.trim() || !uPhone.trim() || !uPass.trim()) { setErr("Name, phone, and password are required."); return; }
+    setUMgmtBusy(true); setErr(""); setUMgmtMsg("");
+    try { const r = await api.post("/api/auth/admin/users/", { full_name: uName.trim(), phone: uPhone.trim(), email: uEmail.trim() || undefined, password: uPass, role: uRole }); setUMgmtMsg(r.data.message || "User created."); setUName(""); setUPhone(""); setUEmail(""); setUPass(""); await loadUsers(); await loadSched(); }
+    catch (e) { const d = e?.response?.data; setErr(d?.phone?.[0] || d?.email?.[0] || d?.detail || "Failed to create user."); } finally { setUMgmtBusy(false); }
+  };
+
+  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading admin dashboard…</p></div></div>;
+
+  const rowBg = isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-200";
 
   return (
-    <div className="min-h-screen bg-[#f3f6f8] text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-6">
-        <header className="rounded-[1.6rem] border border-slate-200 bg-white px-5 py-5 shadow-[0_18px_36px_-30px_rgba(15,23,42,0.22)]">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-[1.2rem] bg-slate-900 text-lg font-black text-white">
-                AD
-              </div>
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">MetroBus Control</div>
-                <div className="mt-1 text-3xl font-bold text-slate-950">Admin Dashboard</div>
-                <div className="mt-2 max-w-3xl text-sm text-slate-500">
-                  Monitor users, transport inventory, live operations, bookings, payments, and system activity from one control center.
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <StatusPill tone="blue">{user?.full_name || "Admin"}</StatusPill>
-                  <StatusPill tone="green">{trips.live || 0} live trips</StatusPill>
-                  <StatusPill tone="amber">{payments.pending || 0} pending payments</StatusPill>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  loadDashboard();
-                  loadRouteBuilder();
-                }}
-                className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-bold text-slate-700"
-              >
-                Refresh
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white"
-              >
-                Logout
-              </button>
-            </div>
+    <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
+      <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 py-3 ${t.nav}`}>
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-sm font-black text-white">MB</div>
+            <div><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus Admin</p><p className={`text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Admin"}</p></div>
           </div>
-        </header>
-
-        {err ? (
-          <div className="mt-4 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {err}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Pill color="emerald" isDark={isDark}>{trips.live || 0} live</Pill>
+            <Pill color="amber" isDark={isDark}>{payments.pending || 0} pending</Pill>
+            <ThemeToggle isDark={isDark} toggle={toggle} />
+            <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); }} className="!py-2 !px-3 text-xs">↻</Btn>
+            <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
           </div>
-        ) : null}
+        </div>
+      </header>
 
-        {routeMsg ? (
-          <div className="mt-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-            {routeMsg}
-          </div>
-        ) : null}
+      <div className="mx-auto max-w-7xl px-4 py-5">
+        {err && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
+        {routeMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {routeMsg}</div>}
+        {scheduleMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>✓ {scheduleMsg}</div>}
 
-        {scheduleMsg ? (
-          <div className="mt-4 rounded-[1.5rem] border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-medium text-blue-700">
-            {scheduleMsg}
-          </div>
-        ) : null}
-
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <MetricCard
-            label="Users"
-            value={overview?.users_total ?? 0}
-            subtext={`Passengers ${roleCounts.PASSENGER || 0} • Drivers ${roleCounts.DRIVER || 0}`}
-            tone="blue"
-          />
-          <MetricCard
-            label="Live Trips"
-            value={trips.live ?? 0}
-            subtext={`Total ${trips.total || 0} • Ended ${trips.ended || 0}`}
-            tone="green"
-          />
-          <MetricCard
-            label="Bookings"
-            value={bookings.total ?? 0}
-            subtext={`Confirmed ${bookings.confirmed || 0} • Cancelled ${bookings.cancelled || 0}`}
-            tone="amber"
-          />
-          <MetricCard
-            label="Revenue"
-            value={formatMoney(payments.revenue_success ?? 0)}
-            subtext={`Successful payments ${payments.success || 0}`}
-            tone="slate"
-          />
+        {/* Tabs */}
+        <div className={`flex gap-1.5 rounded-2xl border p-1.5 mb-6 backdrop-blur ${t.tabBar}`}>
+          {TABS.map(tab => (
+            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+              className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/50" : t.tabInactive}`}>
+              <span>{tab.icon}</span><span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
         </div>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <ShellCard>
-            <SectionTitle
-              eyebrow="Transport Builder"
-              title="Create route from the map"
-              action={<StatusPill tone="blue">{selectedStopIds.length} selected stops</StatusPill>}
-            />
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-              <div className="space-y-4">
-                <div className="grid gap-3">
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Route name</label>
-                    <input
-                      type="text"
-                      value={routeName}
-                      onChange={(e) => setRouteName(e.target.value)}
-                      placeholder="Lakeside to Prithvi Chowk"
-                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
-                    />
+        {/* OVERVIEW */}
+        {activeTab === "overview" && (
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers · ${roleCounts.DRIVER || 0} drivers`} accent="text-indigo-500" t={t} />
+              <StatCard label="Live Trips" value={trips.live ?? 0} sub={`${trips.total || 0} total`} accent="text-emerald-500" t={t} />
+              <StatCard label="Bookings" value={bookings.total ?? 0} sub={`${bookings.confirmed || 0} confirmed`} accent="text-amber-500" t={t} />
+              <StatCard label="Revenue" value={fmtMoney(payments.revenue_success ?? 0)} sub={`${payments.success || 0} successful`} t={t} />
+            </div>
+            <GlassCard t={t}>
+              <SLabel t={t}>Payment Method Performance</SLabel>
+              <div className="space-y-3">
+                {paymentRows.length === 0 && <p className={`text-sm ${t.textSub}`}>No payment data yet.</p>}
+                {paymentRows.map(row => (
+                  <div key={row.method} className="flex items-center gap-4">
+                    <p className={`w-24 text-xs font-bold flex-shrink-0 ${t.text}`}>{row.method}</p>
+                    <div className={`flex-1 h-2 rounded-full ${isDark ? "bg-white/10" : "bg-slate-200"}`}><div className="h-2 rounded-full bg-indigo-500 transition-all" style={{ width: `${row.rate}%` }} /></div>
+                    <div className="flex items-center gap-2 flex-shrink-0"><Pill color={row.rate >= 70 ? "emerald" : row.rate > 0 ? "amber" : "slate"} isDark={isDark}>{row.rate}%</Pill><span className={`text-xs ${t.textMuted}`}>{row.success}/{row.total}</span></div>
                   </div>
+                ))}
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                {[{ label: "Success", v: payments.success || 0, a: "text-emerald-500" }, { label: "Pending", v: payments.pending || 0, a: "text-amber-500" }, { label: "Failed", v: payments.failed || 0, a: "text-red-500" }].map(r => (
+                  <div key={r.label} className={`rounded-xl border px-4 py-3 ${rowBg}`}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{r.label}</p><p className={`text-2xl font-black mt-1 ${r.a}`}>{r.v}</p></div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+        )}
+
+        {/* ROUTES */}
+        {activeTab === "routes" && (
+          <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
+            <div className="space-y-4">
+              <GlassCard t={t}>
+                <SLabel t={t}>Route Builder</SLabel>
+                <div className="space-y-3">
+                  <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" t={t} />
                   <div className="grid grid-cols-[1fr_auto] gap-3">
-                    <div>
-                      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">City</label>
-                      <input
-                        type="text"
-                        value={routeCity}
-                        onChange={(e) => setRouteCity(e.target.value)}
-                        className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Active</label>
-                      <button
-                        type="button"
-                        onClick={() => setRouteActive((value) => !value)}
-                        className={`w-full rounded-[1.35rem] px-4 py-3 text-sm font-bold ${routeActive ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-700"}`}
-                      >
-                        {routeActive ? "YES" : "NO"}
-                      </button>
-                    </div>
+                    <InputField label="City" value={routeCity} onChange={setRouteCity} placeholder="Pokhara" t={t} />
+                    <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
                   </div>
                 </div>
+              </GlassCard>
+              <GlassCard t={t}>
+                <div className="flex items-center justify-between mb-3"><SLabel t={t}>Selected Stops ({selectedStops.length})</SLabel><button type="button" onClick={clearRoute} className={`text-xs hover:text-red-400 transition ${t.textSub}`}>Clear all</button></div>
+                {selectedStops.length === 0 ? <p className={`text-sm ${t.textSub}`}>Click map markers to add stops in order.</p>
+                  : selectedStops.map((stop, i) => (
+                    <div key={stop.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 mb-2 ${rowBg}`}>
+                      <span className="text-xs text-indigo-500 font-bold w-5 flex-shrink-0">{i + 1}</span>
+                      <span className={`text-sm flex-1 truncate ${t.text}`}>{stop.name}</span>
+                      <div className="flex gap-1">
+                        <button type="button" onClick={() => moveStop(i, -1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>↑</button>
+                        <button type="button" onClick={() => moveStop(i, 1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>↓</button>
+                        <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-red-500/20 px-2 py-1 text-xs text-red-400 hover:bg-red-500/30">✕</button>
+                      </div>
+                    </div>
+                  ))}
+              </GlassCard>
+              {selectedStops.length >= 2 && (
+                <GlassCard t={t}>
+                  <SLabel t={t}>Segment Fares (NPR)</SLabel>
+                  {selectedStops.slice(0, -1).map((stop, i) => (
+                    <div key={`${stop.id}-fare`} className="mb-3"><label className={`block text-[10px] mb-1 ${t.textSub}`}>{stop.name} → {selectedStops[i + 1].name}</label><input type="number" min="0" step="0.01" value={segmentFares[i] || ""} placeholder="Enter fare" onChange={e => { const n = [...segmentFares]; n[i] = e.target.value; setSegmentFares(n); }} className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-indigo-500 ${t.input}`} /></div>
+                  ))}
+                </GlassCard>
+              )}
+              <Btn tone="success" onClick={createRoute} disabled={routeBusy} className="w-full !py-4">{routeBusy ? "Creating…" : "Create Route"}</Btn>
+            </div>
+            <div className="space-y-4">
+              <GlassCard t={t} className="!p-0 overflow-hidden">
+                <div className={`px-5 py-4 border-b ${t.divider}`}><SLabel t={t}>Stop Map — Click to add</SLabel><p className={`text-sm font-bold -mt-2 ${t.text}`}>{selectedStopIds.length} stops selected</p></div>
+                <div className="h-80">
+                  <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom={false} className="h-full w-full">
+                    <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={t.mapTile} />
+                    <MapViewport points={mapPts} />
+                    {dispPts.length > 1 && <Polyline positions={dispPts} pathOptions={{ color: "#818cf8", weight: 4, opacity: 0.9 }} />}
+                    {builderStops.map(stop => {
+                      const la = Number(stop.lat), lo = Number(stop.lng); if (!isFinite(la) || !isFinite(lo)) return null;
+                      const oi = selectedStopIds.indexOf(stop.id), sel = oi !== -1;
+                      return <CircleMarker key={stop.id} center={[la, lo]} radius={sel ? 9 : 6} eventHandlers={{ click: () => toggleStop(stop.id) }} pathOptions={{ color: sel ? "#818cf8" : "#475569", fillColor: sel ? "#818cf8" : "#64748b", fillOpacity: 0.95 }}><Popup><div className={`text-sm font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>{stop.name}</div><div className="text-xs text-slate-500 mt-0.5">{sel ? `Stop ${oi + 1}` : "Click to add"}</div></Popup></CircleMarker>;
+                    })}
+                  </MapContainer>
+                </div>
+              </GlassCard>
+              <GlassCard t={t}>
+                <SLabel t={t}>Recent Routes</SLabel>
+                {recentRoutes.length === 0 ? <p className={`text-sm ${t.textSub}`}>No routes yet.</p>
+                  : recentRoutes.map(r => (
+                    <div key={r.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
+                      <div><p className={`text-sm font-bold ${t.text}`}>{r.name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{r.city} · {r.stops_count} stops</p></div>
+                      <Pill color={r.is_active ? "emerald" : "slate"} isDark={isDark}>{r.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
+                    </div>
+                  ))}
+              </GlassCard>
+            </div>
+          </div>
+        )}
 
-                <div className="rounded-[1.5rem] bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-black text-slate-950">Selected stop order</div>
-                    <button type="button" onClick={clearRouteBuilder} className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Clear
+        {/* SCHEDULES */}
+        {activeTab === "schedules" && (
+          <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
+            <GlassCard t={t}>
+              <SLabel t={t}>Create Trip Schedule</SLabel>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <SelectField label="Route" value={sRouteId} onChange={setSRouteId} t={t} options={schedOpts.routes.map(r => ({ value: r.id, label: r.name }))} />
+                  <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.plate_number} (${b.capacity})` }))} />
+                  <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} t={t} options={schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))} />
+                  <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} t={t} options={schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))} />
+                </div>
+                <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} t={t} />
+                <div className={`rounded-xl border px-4 py-3 text-xs ${isDark ? "border-white/5 bg-white/5 text-slate-400" : "border-slate-200 bg-slate-50 text-slate-500"}`}>Schedules appear on the driver's dashboard so they can start assigned trips without manual setup.</div>
+                <Btn tone="primary" onClick={createSchedule} disabled={scheduleBusy} className="w-full !py-4">{scheduleBusy ? "Creating…" : "Create Trip Schedule"}</Btn>
+              </div>
+            </GlassCard>
+            <div className="space-y-3">
+              <SLabel t={t}>Recent Schedules ({schedOpts.recent_schedules.length})</SLabel>
+              {schedOpts.recent_schedules.length === 0 ? <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No schedules yet.</p></GlassCard>
+                : schedOpts.recent_schedules.map(s => (
+                  <GlassCard key={s.id} t={t} className="!p-4">
+                    <div className="flex items-start justify-between gap-3"><div><p className={`text-sm font-bold ${t.text}`}>{s.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{s.bus_plate} · {s.driver_name || "—"} · {s.helper_name || "—"}</p></div><Pill color={s.status === "PLANNED" ? "amber" : s.status === "COMPLETED" ? "emerald" : "slate"} isDark={isDark}>{s.status}</Pill></div>
+                    <p className={`mt-2 text-xs ${t.textMuted}`}>Starts {fmt(s.scheduled_start_time)}</p>
+                  </GlassCard>
+                ))}
+            </div>
+          </div>
+        )}
+
+        {/* ACTIVITY */}
+        {activeTab === "activity" && (
+          <div className="grid gap-5 xl:grid-cols-2">
+            <div>
+              <SLabel t={t}>Live Trips</SLabel>
+              {dashboard?.live_trips?.length ? dashboard.live_trips.map(trip => (
+                <GlassCard key={trip.id} t={t} className="!p-4 mb-3">
+                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>{trip.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Bus {trip.bus_plate} · {trip.driver_name} · {trip.helper_name}</p></div><Pill color={trip.deviation_mode ? "amber" : "emerald"} isDark={isDark}>{trip.deviation_mode ? "Deviation" : "Normal"}</Pill></div>
+                  <div className="mt-3 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Started {fmt(trip.started_at)}</div><div className={`rounded-xl px-3 py-2 text-xs truncate ${t.textSub} ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS yet"}</div></div>
+                </GlassCard>
+              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No live trips right now.</p></GlassCard>}
+            </div>
+            <div>
+              <SLabel t={t}>Recent Bookings</SLabel>
+              {dashboard?.recent_bookings?.length ? dashboard.recent_bookings.map(b => (
+                <GlassCard key={b.id} t={t} className="!p-4 mb-3">
+                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Booking #{b.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{b.route_name} · {b.bus_plate}</p></div><Pill color={b.status === "CONFIRMED" ? "emerald" : b.status === "CANCELLED" ? "red" : "amber"} isDark={isDark}>{b.status}</Pill></div>
+                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.passenger_name}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.seats_count} seats · {fmtMoney(b.fare_total)}</div></div>
+                </GlassCard>
+              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No bookings yet.</p></GlassCard>}
+            </div>
+            <div>
+              <SLabel t={t}>Recent Payments</SLabel>
+              {dashboard?.recent_payments?.length ? dashboard.recent_payments.map(p => (
+                <GlassCard key={p.id} t={t} className="!p-4 mb-3">
+                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Payment #{p.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Booking #{p.booking_id} · {p.route_name}</p></div><Pill color={p.status === "SUCCESS" ? "emerald" : p.status === "FAILED" ? "red" : "amber"} isDark={isDark}>{p.status}</Pill></div>
+                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.method} · {fmtMoney(p.amount)}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.created_by_name}</div></div>
+                </GlassCard>
+              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No payments yet.</p></GlassCard>}
+            </div>
+            <div>
+              <SLabel t={t}>Newest Users</SLabel>
+              {dashboard?.recent_users?.length ? dashboard.recent_users.map(u => (
+                <GlassCard key={u.id} t={t} className="!p-4 mb-3">
+                  <div className="flex items-center justify-between"><div><p className={`text-sm font-bold ${t.text}`}>{u.full_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{u.phone}</p></div><Pill color="indigo" isDark={isDark}>{u.role}</Pill></div>
+                  <p className={`mt-1 text-xs ${t.textMuted}`}>Joined {fmt(u.created_at)}</p>
+                </GlassCard>
+              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No users yet.</p></GlassCard>}
+            </div>
+          </div>
+        )}
+
+        {/* MANAGE */}
+        {activeTab === "manage" && (
+          <div className="grid gap-5 xl:grid-cols-2">
+            {/* ── Add Bus ── */}
+            <div className="space-y-4">
+              <GlassCard t={t}>
+                <SLabel t={t}>Add New Bus</SLabel>
+                <p className={`text-xs mb-4 ${t.textSub}`}>Seats are auto-generated in a 4-column A1–Zn layout.</p>
+                {busMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {busMgmtMsg}</div>}
+                <div className="space-y-3">
+                  <InputField label="Plate Number" value={busPlate} onChange={setBusPlate} placeholder="BA 1 CHA 2233" t={t} />
+                  <InputField label="Seat Capacity" value={busCap} onChange={setBusCap} type="number" placeholder="35" t={t} />
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Status</label>
+                    <button type="button" onClick={() => setBusActive(v => !v)}
+                      className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${busActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
+                      {busActive ? "✓ Active" : "Inactive"}
                     </button>
                   </div>
-                  <div className="mt-3 space-y-3">
-                    {selectedStops.length ? (
-                      selectedStops.map((stop, index) => (
-                        <div key={stop.id} className="rounded-[1.2rem] bg-white p-3">
-                          <div className="flex items-center justify-between gap-3">
-                            <div>
-                              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Stop {index + 1}</div>
-                              <div className="mt-1 text-sm font-black text-slate-950">{stop.name}</div>
-                            </div>
-                            <div className="flex gap-2">
-                              <button type="button" onClick={() => moveStop(index, -1)} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Up</button>
-                              <button type="button" onClick={() => moveStop(index, 1)} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">Down</button>
-                              <button type="button" onClick={() => toggleStopSelection(stop.id)} className="rounded-xl bg-red-100 px-3 py-2 text-xs font-bold text-red-700">Remove</button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-[1.2rem] bg-white px-3 py-3 text-sm text-slate-500">Click map markers to choose the route in order.</div>
-                    )}
-                  </div>
+                  <Btn tone="primary" onClick={createBus} disabled={busMgmtBusy} className="w-full !py-4">
+                    {busMgmtBusy ? "Creating…" : "🚌 Add Bus"}
+                  </Btn>
                 </div>
+              </GlassCard>
 
-                <div className="rounded-[1.5rem] bg-slate-50 p-4">
-                  <div className="text-sm font-black text-slate-950">Segment fares</div>
-                  <div className="mt-3 space-y-3">
-                    {selectedStops.length >= 2 ? (
-                      selectedStops.slice(0, -1).map((stop, index) => (
-                        <div key={`${stop.id}-${selectedStops[index + 1].id}`} className="rounded-[1.2rem] bg-white p-3">
-                          <div className="text-sm font-semibold text-slate-700">
-                            {stop.name} to {selectedStops[index + 1].name}
-                          </div>
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={segmentFares[index] || ""}
-                            onChange={(e) => {
-                              const next = [...segmentFares];
-                              next[index] = e.target.value;
-                              setSegmentFares(next);
-                            }}
-                            placeholder="Enter fare"
-                            className="mt-2 w-full rounded-[1rem] border border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium outline-none"
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-[1.2rem] bg-white px-3 py-3 text-sm text-slate-500">Add at least two stops to configure fares.</div>
-                    )}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={createRoute}
-                  disabled={routeBusy}
-                  className="w-full rounded-[1.5rem] bg-slate-950 px-4 py-4 text-base font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {routeBusy ? "Creating route..." : "Create route"}
-                </button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="overflow-hidden rounded-[1.6rem] border border-slate-200">
-                  <div className="h-[26rem] w-full bg-slate-100">
-                    <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom={false} className="h-full w-full">
-                      <TileLayer
-                        attribution='&copy; OpenStreetMap &copy; CARTO'
-                        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                      />
-                      <MapViewport points={mapPoints} />
-                      {displayedRoutePoints.length > 1 ? (
-                        <Polyline positions={displayedRoutePoints} pathOptions={{ color: "#334155", weight: 5, opacity: 0.9 }} />
-                      ) : null}
-                      {builderStops.map((stop) => {
-                        const lat = Number(stop.lat);
-                        const lng = Number(stop.lng);
-                        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-                        const orderIndex = selectedStopIds.indexOf(stop.id);
-                        const selected = orderIndex !== -1;
-
-                        return (
-                          <CircleMarker
-                            key={stop.id}
-                            center={[lat, lng]}
-                            radius={selected ? 9 : 7}
-                            eventHandlers={{ click: () => toggleStopSelection(stop.id) }}
-                            pathOptions={{
-                              color: selected ? "#0f172a" : "#475569",
-                              fillColor: selected ? "#0f172a" : "#94a3b8",
-                              fillOpacity: 0.95,
-                            }}
-                          >
-                            <Popup>
-                              <div className="text-sm font-semibold">{stop.name}</div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {selected ? `Selected as stop ${orderIndex + 1}` : "Click to add to route"}
-                              </div>
-                            </Popup>
-                          </CircleMarker>
-                        );
-                      })}
-                    </MapContainer>
-                  </div>
-                </div>
-
-                <div className="rounded-[1.5rem] bg-slate-50 p-4">
-                  <div className="text-sm font-black text-slate-950">Recent routes</div>
-                  <div className="mt-3 space-y-3">
-                    {recentRoutes.length ? (
-                      recentRoutes.map((route) => (
-                        <div key={route.id} className="rounded-[1.2rem] bg-white p-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-black text-slate-950">{route.name}</div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {route.city} • {route.stops_count} stops
-                              </div>
-                            </div>
-                            <StatusPill tone={route.is_active ? "green" : "slate"}>{route.is_active ? "ACTIVE" : "INACTIVE"}</StatusPill>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="rounded-[1.2rem] bg-white px-3 py-3 text-sm text-slate-500">No recent routes yet.</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </ShellCard>
-
-          <ShellCard>
-            <SectionTitle
-              eyebrow="Trip Assignment"
-              title="Assign route, driver, helper, and bus"
-              action={<StatusPill tone="green">{scheduleOptions.recent_schedules.length} recent schedules</StatusPill>}
-            />
-
-            <div className="mt-5 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-              <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Route</label>
-                    <select
-                      value={scheduleRouteId}
-                      onChange={(e) => setScheduleRouteId(e.target.value)}
-                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
-                    >
-                      {scheduleOptions.routes.map((route) => (
-                        <option key={route.id} value={route.id}>
-                          {route.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Bus</label>
-                    <select
-                      value={scheduleBusId}
-                      onChange={(e) => setScheduleBusId(e.target.value)}
-                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
-                    >
-                      {scheduleOptions.buses.map((bus) => (
-                        <option key={bus.id} value={bus.id}>
-                          {bus.plate_number} | {bus.capacity} seats
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Driver</label>
-                    <select
-                      value={scheduleDriverId}
-                      onChange={(e) => setScheduleDriverId(e.target.value)}
-                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
-                    >
-                      {scheduleOptions.drivers.map((driver) => (
-                        <option key={driver.id} value={driver.id}>
-                          {driver.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Helper</label>
-                    <select
-                      value={scheduleHelperId}
-                      onChange={(e) => setScheduleHelperId(e.target.value)}
-                      className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
-                    >
-                      {scheduleOptions.helpers.map((helper) => (
-                        <option key={helper.id} value={helper.id}>
-                          {helper.full_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Scheduled start</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduleStartTime}
-                    onChange={(e) => setScheduleStartTime(e.target.value)}
-                    className="w-full rounded-[1.35rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium outline-none"
-                  />
-                </div>
-
-                <div className="rounded-[1.5rem] bg-slate-50 p-4 text-sm text-slate-600">
-                  Create schedules here so drivers can see assigned trips on their dashboard and start them without manual setup. Helper selection here also keeps the helper workflow synced with the same trip.
-                </div>
-
-                <button
-                  type="button"
-                  onClick={createSchedule}
-                  disabled={scheduleBusy}
-                  className="w-full rounded-[1.5rem] bg-blue-700 px-4 py-4 text-base font-black text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {scheduleBusy ? "Creating schedule..." : "Create trip schedule"}
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {scheduleOptions.recent_schedules.length ? (
-                  scheduleOptions.recent_schedules.map((schedule) => (
-                    <div key={schedule.id} className="rounded-[1.5rem] border border-slate-200 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-lg font-black text-slate-950">{schedule.route_name}</div>
-                          <div className="mt-1 text-sm text-slate-500">
-                            {schedule.bus_plate} | Driver {schedule.driver_name || "-"} | Helper {schedule.helper_name || "-"}
-                          </div>
-                        </div>
-                        <StatusPill tone={schedule.status === "PLANNED" ? "amber" : schedule.status === "COMPLETED" ? "green" : "slate"}>
-                          {schedule.status}
-                        </StatusPill>
-                      </div>
-                      <div className="mt-3 rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        Starts {formatDateTime(schedule.scheduled_start_time)}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">
-                    No trip schedules yet. Create one to let the driver start an assigned route.
-                  </div>
-                )}
-              </div>
-            </div>
-          </ShellCard>
-
-          <ShellCard>
-            <SectionTitle eyebrow="Payments" title="Method performance" />
-            <div className="mt-5 space-y-3">
-              {paymentMethodRows.map((item) => (
-                <div key={item.method} className="rounded-[1.5rem] bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-black text-slate-950">{item.method}</div>
-                    <StatusPill tone={item.successRate >= 70 ? "green" : item.successRate > 0 ? "amber" : "slate"}>
-                      {item.successRate}% success
-                    </StatusPill>
-                  </div>
-                  <div className="mt-2 text-sm text-slate-500">
-                    Total {item.total} • Success {item.success}
-                  </div>
-                  <div className="mt-3 h-2 rounded-full bg-slate-200">
-                    <div className="h-2 rounded-full bg-slate-900" style={{ width: `${item.successRate}%` }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <div className="rounded-[1.4rem] bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Success</div>
-                <div className="mt-2 text-2xl font-black text-slate-950">{payments.success || 0}</div>
-              </div>
-              <div className="rounded-[1.4rem] bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Pending</div>
-                <div className="mt-2 text-2xl font-black text-slate-950">{payments.pending || 0}</div>
-              </div>
-              <div className="rounded-[1.4rem] bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Failed</div>
-                <div className="mt-2 text-2xl font-black text-slate-950">{payments.failed || 0}</div>
-              </div>
-            </div>
-          </ShellCard>
-        </div>
-
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          <ShellCard>
-            <SectionTitle
-              eyebrow="Live Operations"
-              title="Active trips"
-              action={<StatusPill tone={dashboard?.live_trips?.length ? "green" : "slate"}>{dashboard?.live_trips?.length || 0} live</StatusPill>}
-            />
-
-            <div className="mt-5 space-y-3">
-              {dashboard?.live_trips?.length ? (
-                dashboard.live_trips.map((trip) => (
-                  <div key={trip.id} className="rounded-[1.6rem] border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
+              <GlassCard t={t}>
+                <SLabel t={t}>Existing Buses ({busList.length})</SLabel>
+                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                  {busList.length === 0 && <p className={`text-sm ${t.textSub}`}>No buses registered yet.</p>}
+                  {busList.map(bus => (
+                    <div key={bus.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 ${rowBg}`}>
                       <div>
-                        <div className="text-lg font-black text-slate-950">{trip.route_name}</div>
-                        <div className="mt-1 text-sm text-slate-500">
-                          Bus {trip.bus_plate} • Driver {trip.driver_name} • Helper {trip.helper_name}
-                        </div>
+                        <p className={`text-sm font-bold ${t.text}`}>{bus.plate_number}</p>
+                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{bus.capacity} seats · {bus.seats_count} configured</p>
                       </div>
-                      <StatusPill tone={trip.deviation_mode ? "amber" : "green"}>
-                        {trip.deviation_mode ? "Deviation" : "Normal"}
-                      </StatusPill>
+                      <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
                     </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        Started {formatDateTime(trip.started_at)}
-                      </div>
-                      <div className="rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        {trip.latest_location
-                          ? `GPS ${trip.latest_location.lat}, ${trip.latest_location.lng}`
-                          : "No GPS update yet"}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500">
-                      {trip.latest_location
-                        ? `Last updated ${formatDateTime(trip.latest_location.recorded_at)}`
-                        : "Waiting for driver GPS"}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">No live trips right now.</div>
-              )}
+                  ))}
+                </div>
+              </GlassCard>
             </div>
-          </ShellCard>
 
-          <ShellCard>
-            <SectionTitle eyebrow="Bookings" title="Recent bookings" />
-            <div className="mt-5 space-y-3">
-              {dashboard?.recent_bookings?.length ? (
-                dashboard.recent_bookings.map((booking) => (
-                  <div key={booking.id} className="rounded-[1.6rem] border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-lg font-black text-slate-950">Booking #{booking.id}</div>
-                      <StatusPill tone={booking.status === "CONFIRMED" ? "green" : booking.status === "CANCELLED" ? "red" : "amber"}>
-                        {booking.status}
-                      </StatusPill>
-                    </div>
-                    <div className="mt-2 text-sm text-slate-500">{booking.route_name} • {booking.bus_plate}</div>
-                    <div className="mt-2 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        Passenger {booking.passenger_name}
-                      </div>
-                      <div className="rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        Seats {booking.seats_count} • {formatMoney(booking.fare_total)}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500">{formatDateTime(booking.created_at)}</div>
+            {/* ── Add Staff User ── */}
+            <div className="space-y-4">
+              <GlassCard t={t}>
+                <SLabel t={t}>Add Staff Account</SLabel>
+                <p className={`text-xs mb-4 ${t.textSub}`}>Create driver, helper, or admin accounts. Passengers self-register.</p>
+                {uMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {uMgmtMsg}</div>}
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    {["DRIVER", "HELPER", "ADMIN"].map(role => (
+                      <button key={role} type="button" onClick={() => setURole(role)}
+                        className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-indigo-600 text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                        {role}
+                      </button>
+                    ))}
                   </div>
-                ))
-              ) : (
-                <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">No bookings yet.</div>
-              )}
-            </div>
-          </ShellCard>
-        </div>
+                  <InputField label="Full Name" value={uName} onChange={setUName} placeholder="Ramesh Kumar" t={t} />
+                  <InputField label="Phone (login ID)" value={uPhone} onChange={setUPhone} placeholder="9800000000" t={t} />
+                  <InputField label="Email (optional)" value={uEmail} onChange={setUEmail} placeholder="ramesh@example.com" t={t} />
+                  <InputField label="Password" value={uPass} onChange={setUPass} placeholder="Min 6 characters" type="password" t={t} />
+                  <Btn tone="success" onClick={createUser} disabled={uMgmtBusy} className="w-full !py-4">
+                    {uMgmtBusy ? "Creating…" : `👤 Add ${uRole.charAt(0) + uRole.slice(1).toLowerCase()}`}
+                  </Btn>
+                </div>
+              </GlassCard>
 
-        <div className="mt-5 grid gap-4 xl:grid-cols-2">
-          <ShellCard>
-            <SectionTitle eyebrow="Payments" title="Recent payments" />
-            <div className="mt-5 space-y-3">
-              {dashboard?.recent_payments?.length ? (
-                dashboard.recent_payments.map((payment) => (
-                  <div key={payment.id} className="rounded-[1.6rem] border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-lg font-black text-slate-950">Payment #{payment.id}</div>
-                      <StatusPill tone={payment.status === "SUCCESS" ? "green" : payment.status === "FAILED" ? "red" : "amber"}>
-                        {payment.status}
-                      </StatusPill>
-                    </div>
-                    <div className="mt-2 text-sm text-slate-500">
-                      Booking #{payment.booking_id} • {payment.route_name}
-                    </div>
-                    <div className="mt-2 grid gap-3 md:grid-cols-2">
-                      <div className="rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        {payment.method} • {formatMoney(payment.amount)}
-                      </div>
-                      <div className="rounded-[1.2rem] bg-slate-50 px-3 py-3 text-sm text-slate-600">
-                        Created by {payment.created_by_name}
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500">
-                      Verified by {payment.verified_by_name || "-"} • {formatDateTime(payment.created_at)}
-                    </div>
+              <GlassCard t={t}>
+                <div className="flex items-center justify-between mb-3">
+                  <SLabel t={t}>Staff Accounts ({userList.filter(u => u.role !== "PASSENGER").length})</SLabel>
+                  <div className="flex gap-1">
+                    {["ALL", "DRIVER", "HELPER", "ADMIN"].map(r => (
+                      <button key={r} type="button" onClick={() => loadUsers(r === "ALL" ? null : r)}
+                        className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                        {r}
+                      </button>
+                    ))}
                   </div>
-                ))
-              ) : (
-                <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">No payments yet.</div>
-              )}
-            </div>
-          </ShellCard>
-
-          <ShellCard>
-            <SectionTitle eyebrow="Accounts" title="Newest users" />
-            <div className="mt-5 space-y-3">
-              {dashboard?.recent_users?.length ? (
-                dashboard.recent_users.map((item) => (
-                  <div key={item.id} className="rounded-[1.6rem] border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-lg font-black text-slate-950">{item.full_name}</div>
-                      <StatusPill tone="blue">{item.role}</StatusPill>
+                </div>
+                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                  {userList.length === 0 && <p className={`text-sm ${t.textSub}`}>No users loaded.</p>}
+                  {userList.map(u => (
+                    <div key={u.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 ${rowBg}`}>
+                      <div>
+                        <p className={`text-sm font-bold ${t.text}`}>{u.full_name}</p>
+                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{u.phone}{u.email ? ` · ${u.email}` : ""}</p>
+                      </div>
+                      <Pill color={u.role === "ADMIN" ? "red" : u.role === "DRIVER" ? "sky" : u.role === "HELPER" ? "indigo" : "slate"} isDark={isDark}>{u.role}</Pill>
                     </div>
-                    <div className="mt-2 text-sm text-slate-500">{item.phone}</div>
-                    <div className="mt-2 text-xs text-slate-500">Joined {formatDateTime(item.created_at)}</div>
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-[1.5rem] bg-slate-50 px-4 py-4 text-sm text-slate-500">No users yet.</div>
-              )}
+                  ))}
+                </div>
+              </GlassCard>
             </div>
-          </ShellCard>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

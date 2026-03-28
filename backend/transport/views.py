@@ -4,8 +4,8 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Stop, Route, RouteStop, RouteFare
-from .serializers import StopSerializer, RouteListSerializer, CreateRouteSerializer
+from .models import Stop, Route, RouteStop, RouteFare, Bus, Seat
+from .serializers import StopSerializer, RouteListSerializer, CreateRouteSerializer, BusSerializer
 
 User = get_user_model()
 
@@ -90,3 +90,53 @@ class AdminTransportRouteBuilderView(APIView):
             },
             status=201,
         )
+
+
+class AdminBusManageView(APIView):
+    """GET list of buses, POST to create a new bus with auto-generated seats."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
+            return Response({"detail": "Admin only."}, status=403)
+        return None
+
+    def get(self, request):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+        buses = Bus.objects.prefetch_related("seats").order_by("-id")
+        return Response({"buses": BusSerializer(buses, many=True).data})
+
+    @transaction.atomic
+    def post(self, request):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+        plate = request.data.get("plate_number", "").strip().upper()
+        capacity = int(request.data.get("capacity", 35))
+        is_active = request.data.get("is_active", True)
+        if not plate:
+            return Response({"detail": "plate_number is required."}, status=400)
+        if Bus.objects.filter(plate_number=plate).exists():
+            return Response({"detail": f"Bus '{plate}' already exists."}, status=400)
+        if capacity < 1 or capacity > 200:
+            return Response({"detail": "capacity must be between 1 and 200."}, status=400)
+        bus = Bus.objects.create(plate_number=plate, capacity=capacity, is_active=is_active)
+        # Auto-generate seats: rows A-Z, columns 1-N
+        seats_to_create = []
+        cols = 4
+        rows_needed = (capacity + cols - 1) // cols
+        seat_count = 0
+        for row_idx in range(rows_needed):
+            row_letter = chr(ord('A') + row_idx)
+            for col in range(1, cols + 1):
+                if seat_count >= capacity:
+                    break
+                seats_to_create.append(Seat(bus=bus, seat_no=f"{row_letter}{col}"))
+                seat_count += 1
+        Seat.objects.bulk_create(seats_to_create)
+        return Response({
+            "message": f"Bus '{plate}' created with {capacity} seats.",
+            "bus": BusSerializer(bus).data,
+        }, status=201)

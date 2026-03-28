@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import PhoneTokenObtainPairSerializer
-from .views import RegisterView, MeView, AdminDashboardView
+from .views import RegisterView, MeView, AdminDashboardView, AdminUserListCreateView
 
 
 class PhoneTokenObtainPairView(TokenObtainPairView):
@@ -14,4 +14,5 @@ urlpatterns = [
     path("refresh/", TokenRefreshView.as_view(), name="refresh"),
     path("me/", MeView.as_view(), name="me"),
     path("admin/dashboard/", AdminDashboardView.as_view(), name="admin-dashboard"),
+    path("admin/users/", AdminUserListCreateView.as_view(), name="admin-users"),
 ]

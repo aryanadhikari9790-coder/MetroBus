@@ -9,7 +9,7 @@ from bookings.models import Booking
 from payments.models import Payment
 from transport.models import Route, Stop, Bus, Seat
 from trips.models import Trip
-from .serializers import RegisterSerializer, MeSerializer
+from .serializers import RegisterSerializer, MeSerializer, MeUpdateSerializer, AdminCreateUserSerializer, AdminUserListSerializer
 
 User = get_user_model()
 
@@ -23,6 +23,12 @@ class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        return Response(MeSerializer(request.user).data)
+
+    def patch(self, request):
+        serializer = MeUpdateSerializer(request.user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(MeSerializer(request.user).data)
 
 

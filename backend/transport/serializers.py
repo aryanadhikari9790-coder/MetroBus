@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Stop, Route, RouteStop
+from .models import Stop, Route, RouteStop, Bus
 
 
 class StopSerializer(serializers.ModelSerializer):
@@ -52,4 +52,15 @@ class CreateRouteSerializer(serializers.Serializer):
             raise serializers.ValidationError("One or more selected stops are invalid or inactive.")
 
         return attrs
+
+
+class BusSerializer(serializers.ModelSerializer):
+    seats_count = serializers.SerializerMethodField()
+
+    def get_seats_count(self, obj):
+        return obj.seats.count()
+
+    class Meta:
+        model = Bus
+        fields = ("id", "plate_number", "capacity", "is_active", "seats_count", "created_at")
 
