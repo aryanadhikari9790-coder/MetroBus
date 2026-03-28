@@ -9,7 +9,10 @@ from bookings.models import Booking
 from payments.models import Payment
 from transport.models import Route, Stop, Bus, Seat
 from trips.models import Trip
-from .serializers import RegisterSerializer, MeSerializer, MeUpdateSerializer, AdminCreateUserSerializer, AdminUserListSerializer
+from .serializers import (
+    RegisterSerializer, MeSerializer, MeUpdateSerializer,
+    AdminCreateUserSerializer, AdminUserListSerializer,
+)
 
 User = get_user_model()
 
@@ -177,3 +180,35 @@ class AdminDashboardView(APIView):
             ],
         }
         return Response(data)
+
+
+class AdminUserListCreateView(APIView):
+    """GET all users (filterable by ?role=DRIVER), POST to create a staff user."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
+            return Response({"detail": "Admin only."}, status=403)
+        return None
+
+    def get(self, request):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+        role = request.query_params.get("role")
+        qs = User.objects.all().order_by("-created_at")
+        if role:
+            qs = qs.filter(role=role.upper())
+        return Response({"users": AdminUserListSerializer(qs, many=True).data})
+
+    def post(self, request):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+        serializer = AdminCreateUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response({
+            "message": f"User '{user.full_name}' created as {user.role}.",
+            "user": AdminUserListSerializer(user).data,
+        }, status=201)
