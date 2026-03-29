@@ -56,11 +56,13 @@ class CreateRouteSerializer(serializers.Serializer):
 
 class BusSerializer(serializers.ModelSerializer):
     seats_count = serializers.SerializerMethodField()
+    driver_name = serializers.CharField(source="driver.full_name", read_only=True)
+    helper_name = serializers.CharField(source="helper.full_name", read_only=True)
 
     def get_seats_count(self, obj):
         return obj.seats.count()
 
     class Meta:
         model = Bus
-        fields = ("id", "plate_number", "capacity", "is_active", "seats_count", "created_at")
+        fields = ("id", "plate_number", "capacity", "is_active", "seats_count", "created_at", "driver", "helper", "driver_name", "helper_name")
 

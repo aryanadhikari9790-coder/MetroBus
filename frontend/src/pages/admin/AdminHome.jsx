@@ -71,6 +71,11 @@ export default function AdminHome() {
   const [busActive, setBusActive]           = useState(true);
   const [busMgmtBusy, setBusMgmtBusy]       = useState(false);
   const [busMgmtMsg, setBusMgmtMsg]         = useState("");
+  const [assignBusId, setAssignBusId]       = useState("");
+  const [assignDriverId, setAssignDriverId] = useState("");
+  const [assignHelperId, setAssignHelperId] = useState("");
+  const [assignBusy, setAssignBusy]         = useState(false);
+  const [assignMsg, setAssignMsg]           = useState("");
   const [uName, setUName]                   = useState("");
   const [uPhone, setUPhone]                 = useState("");
   const [uEmail, setUEmail]                 = useState("");
@@ -130,6 +135,24 @@ export default function AdminHome() {
     setBusMgmtBusy(true); setErr(""); setBusMgmtMsg("");
     try { const r = await api.post("/api/transport/admin/buses/", { plate_number: busPlate.trim(), capacity: cap, is_active: busActive }); setBusMgmtMsg(r.data.message || "Bus created."); setBusPlate(""); setBusCap("35"); setBusActive(true); await loadBuses(); }
     catch (e) { setErr(e?.response?.data?.detail || "Failed to create bus."); } finally { setBusMgmtBusy(false); }
+  };
+
+  const assignStaffToBus = async () => {
+    if (!assignBusId) { setErr("Select a bus to assign staff."); return; }
+    setAssignBusy(true); setErr(""); setAssignMsg("");
+    try {
+      const r = await api.patch(`/api/transport/admin/buses/${assignBusId}/`, {
+        driver: assignDriverId || "",
+        helper: assignHelperId || ""
+      });
+      setAssignMsg(r.data.message || "Bus staff updated.");
+      setAssignBusId(""); setAssignDriverId(""); setAssignHelperId("");
+      await loadBuses();
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to update bus staff.");
+    } finally {
+      setAssignBusy(false);
+    }
   };
 
   const createUser = async () => {
@@ -373,6 +396,20 @@ export default function AdminHome() {
               </GlassCard>
 
               <GlassCard t={t}>
+                <SLabel t={t}>Assign Staff to Bus</SLabel>
+                <p className={`text-xs mb-4 ${t.textSub}`}>Select an existing bus to map a driver and/or helper.</p>
+                {assignMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {assignMsg}</div>}
+                <div className="space-y-3">
+                  <SelectField label="Select Bus" value={assignBusId} onChange={setAssignBusId} t={t} options={[{value: "", label: "-- Select Bus --"}, ...busList.map(b => ({ value: b.id, label: `${b.plate_number} (${b.capacity} seats)` }))]} />
+                  <SelectField label="Select Driver" value={assignDriverId} onChange={setAssignDriverId} t={t} options={[{value: "", label: "None / Clear"}, ...userList.filter(u => u.role === "DRIVER").map(u => ({ value: u.id, label: u.full_name }))]} />
+                  <SelectField label="Select Helper" value={assignHelperId} onChange={setAssignHelperId} t={t} options={[{value: "", label: "None / Clear"}, ...userList.filter(u => u.role === "HELPER").map(u => ({ value: u.id, label: u.full_name }))]} />
+                  <Btn tone="primary" onClick={assignStaffToBus} disabled={assignBusy} className="w-full !py-4">
+                    {assignBusy ? "Updating…" : "🛠 Update Assignment"}
+                  </Btn>
+                </div>
+              </GlassCard>
+
+              <GlassCard t={t}>
                 <SLabel t={t}>Existing Buses ({busList.length})</SLabel>
                 <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
                   {busList.length === 0 && <p className={`text-sm ${t.textSub}`}>No buses registered yet.</p>}
@@ -380,7 +417,7 @@ export default function AdminHome() {
                     <div key={bus.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 ${rowBg}`}>
                       <div>
                         <p className={`text-sm font-bold ${t.text}`}>{bus.plate_number}</p>
-                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{bus.capacity} seats · {bus.seats_count} configured</p>
+                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{bus.capacity} seats · driver: {bus.driver_name || "—"} · helper: {bus.helper_name || "—"}</p>
                       </div>
                       <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
                     </div>

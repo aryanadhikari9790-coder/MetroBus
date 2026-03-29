@@ -140,6 +140,7 @@ export default function DriverHome() {
   const [msg, setMsg]                     = useState("");
   const [err, setErr]                     = useState("");
   const [deviationMode, setDeviationMode] = useState(false);
+  const [assignedBus, setAssignedBus]     = useState(null);
   const [routeId, setRouteId]             = useState("");
   const [busId, setBusId]                 = useState("");
   const [helperId, setHelperId]           = useState("");
@@ -202,7 +203,12 @@ export default function DriverHome() {
     finally { if (!silent) setLoading(false); }
   };
 
-  useEffect(() => { loadDashboard(); }, []);
+  const loadAssignedBus = async () => {
+    try { const res = await api.get("/api/transport/my-bus/"); setAssignedBus(res.data.bus || null); }
+    catch { /* silent */ }
+  };
+
+  useEffect(() => { loadDashboard(); loadAssignedBus(); }, []);
   useEffect(() => { if (activeTrip) setActiveTab("active"); }, [activeTrip?.id]);
   useEffect(() => {
     if (!routeId && manualOptions.routes.length) setRouteId(String(manualOptions.routes[0].id));
@@ -368,6 +374,20 @@ export default function DriverHome() {
         {/* ── HOME ── */}
         {activeTab === "home" && (
           <div className="space-y-5">
+            {assignedBus && (
+              <GlassCard t={t} className={`bg-gradient-to-br border-indigo-500/30 ${isDark ? "from-indigo-900/30 to-[#0a0e1a]" : "from-indigo-50 to-[#f0f4f8]"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <SectionLabel t={t}>My Assigned Bus</SectionLabel>
+                  <Pill color="indigo" isDark={isDark}>ACTIVE ASSIGNMENT</Pill>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <p className={`text-3xl font-black ${t.text}`}>{assignedBus.plate_number}</p>
+                  <p className={`text-sm font-semibold ${t.textSub}`}>{assignedBus.capacity} seats</p>
+                </div>
+                <p className={`text-xs mt-2 ${t.textSub}`}>Helper: {assignedBus.helper_name || "Unassigned"}</p>
+              </GlassCard>
+            )}
+
             <GlassCard t={t}>
               <SectionLabel t={t}>Manual Trip Setup</SectionLabel>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

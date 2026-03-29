@@ -19,6 +19,22 @@ function distKm(a, b) { if (!a || !b) return 0; const R = 6371, toRad = d => (d 
 function cumDist(pts) { const c = [0]; for (let i = 1; i < pts.length; i++) c[i] = c[i - 1] + distKm(pts[i - 1], pts[i]); return c; }
 function nearestIdx(pts, t) { if (!pts.length || !t) return -1; let best = 0, bestD = Infinity; pts.forEach((p, i) => { const d = distKm(p, t); if (d < bestD) { bestD = d; best = i; } }); return best; }
 function speedKmh(s) { const n = Number(s); return !isFinite(n) || n <= 0 ? 22 : n <= 30 ? n * 3.6 : n; }
+function snapPolylineWithAngle(p, line) {
+  if (!p || !line || !line.length) return { pt: p, angle: 0 };
+  if (line.length === 1) return { pt: line[0], angle: 0 };
+  let closest = line[0], minDist = Infinity, bestAngle = 0;
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i], b = line[i + 1], dx = b[0] - a[0], dy = b[1] - a[1];
+    let t = 0;
+    if (dx !== 0 || dy !== 0) t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy)));
+    const proj = [a[0] + t * dx, a[1] + t * dy], distSq = (p[0] - proj[0]) ** 2 + (p[1] - proj[1]) ** 2;
+    if (distSq < minDist) { 
+      minDist = distSq; closest = proj; 
+      bestAngle = Math.atan2(b[1] - a[1], b[0] - a[0]) * (180 / Math.PI);
+    }
+  }
+  return { pt: closest, angle: bestAngle };
+}
 function estimateEta(busPoint, target, path, speed) {
   if (!busPoint || !target) return null;
   const pts = path.length > 1 ? path : [busPoint, target];
@@ -36,9 +52,38 @@ function buildFormPost(redirect) {
   document.body.appendChild(form); form.submit();
 }
 function createBusIcon({ active = false, heading = 0, label = "BUS" }) {
-  const size = active ? 62 : 50, accent = active ? "#ef4444" : "#2563eb", glow = active ? "rgba(239,68,68,0.35)" : "rgba(37,99,235,0.3)";
-  return divIcon({ className: "", iconSize: [size, size + 18], iconAnchor: [size / 2, size / 2], popupAnchor: [0, -size / 2],
-    html: `<div style="position:relative;width:${size}px;height:${size + 18}px;"><div style="position:absolute;left:50%;bottom:2px;transform:translateX(-50%);padding:2px 8px;border-radius:999px;background:#0f172a;color:white;font-size:10px;font-weight:800;letter-spacing:0.08em;white-space:nowrap;">${label}</div><div style="position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;"><div style="width:${size}px;height:${size}px;filter:drop-shadow(0 16px 20px ${glow});transform:rotate(${heading}deg);"><svg viewBox="0 0 64 64" width="${size}" height="${size}"><ellipse cx="32" cy="56" rx="18" ry="5" fill="rgba(15,23,42,0.14)"/><path d="M18 18c0-5.2 4.2-9 9.4-9h9.2c5.2 0 9.4 3.8 9.4 9v18.2c0 3.2-2.6 5.8-5.8 5.8H23.8c-3.2 0-5.8-2.6-5.8-5.8V18z" fill="${accent}"/><path d="M21 20.5c0-3.4 2.7-6.1 6.1-6.1h9.8c3.4 0 6.1 2.7 6.1 6.1v7.6H21v-7.6z" fill="#dbeafe"/><rect x="20.5" y="31" width="23" height="7.4" rx="3.2" fill="#f8fafc" opacity="0.95"/><circle cx="24" cy="43.5" r="4.5" fill="#0f172a"/><circle cx="40" cy="43.5" r="4.5" fill="#0f172a"/><circle cx="24" cy="43.5" r="1.8" fill="#cbd5e1"/><circle cx="40" cy="43.5" r="1.8" fill="#cbd5e1"/><path d="M32 6l4.8 8h-9.6L32 6z" fill="#0f172a" opacity="0.7"/></svg></div></div></div>`
+  const size = active ? 48 : 38;
+  const fill = active ? "#4f46e5" : "#64748b";
+  const shadow = active ? "drop-shadow(0 6px 12px rgba(79, 70, 229, 0.4))" : "drop-shadow(0 4px 6px rgba(0,0,0,0.3))";
+  
+  let rot = (heading + 90) % 360;
+  if(rot < 0) rot += 360;
+  const flip = (rot > 90 && rot < 270) ? "scaleY(-1)" : "scaleY(1)";
+
+  return divIcon({ 
+    className: "", iconSize: [size, size + 20], iconAnchor: [size / 2, size / 2], popupAnchor: [0, -size / 2],
+    html: `
+      <div style="position:relative;width:${size}px;height:${size + 20}px;">
+        <div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);padding:2px 8px;border-radius:999px;background:#0f172a;color:white;font-size:10px;font-weight:800;letter-spacing:0.08em;white-space:nowrap;z-index:10;border:1px solid rgba(255,255,255,0.15);box-shadow:0 4px 6px rgba(0,0,0,0.3);">
+          ${label}
+        </div>
+        <div style="position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;">
+          <div style="width:${size}px;height:${size}px;filter:${shadow};transform:rotate(${rot}deg) ${flip};transform-origin:center center;transition:transform 0.4s cubic-bezier(0.18, 0.89, 0.32, 1.28);">
+            <svg viewBox="0 0 64 64" width="${size}" height="${size}">
+              <path d="M 12 14 L 60 14 C 62.2 14 64 15.8 64 18 L 64 46 C 64 48.2 62.2 50 60 50 L 4 50 C 1.8 50 0 48.2 0 46 L 0 32 C 0 19.6 8 14 12 14 Z" fill="${fill}" />
+              <path d="M 14 20 L 22 20 L 22 34 L 5 34 C 5 26.6 8 20 14 20 Z" fill="#ffffff" />
+              <rect x="25" y="20" width="10" height="14" rx="1" fill="#ffffff" />
+              <rect x="38" y="20" width="10" height="14" rx="1" fill="#ffffff" />
+              <rect x="51" y="20" width="9" height="14" rx="1" fill="#ffffff" />
+              <circle cx="16" cy="50" r="7" fill="${fill}" />
+              <circle cx="48" cy="50" r="7" fill="${fill}" />
+              <circle cx="16" cy="50" r="3" fill="#ffffff" />
+              <circle cx="48" cy="50" r="3" fill="#ffffff" />
+            </svg>
+          </div>
+        </div>
+      </div>
+    `
   });
 }
 
@@ -54,7 +99,17 @@ function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick=
 
 function MapViewport({ points }) {
   const map = useMap();
-  useEffect(() => { if (!points.length) return; if (points.length === 1) { map.setView(points[0], 14); return; } map.fitBounds(points, { padding: [26, 26] }); }, [map, points]);
+  const [bHash, setBHash] = useState("");
+  useEffect(() => { 
+    if (!points.length) return; 
+    let minL = Infinity, maxL = -Infinity, minN = Infinity, maxN = -Infinity;
+    for(const p of points) { if(p[0]<minL) minL=p[0]; if(p[0]>maxL) maxL=p[0]; if(p[1]<minN) minN=p[1]; if(p[1]>maxN) maxN=p[1]; }
+    const hash = `${minL},${maxL},${minN},${maxN}`;
+    if (hash === bHash) return;
+    setBHash(hash);
+    if (points.length === 1) { map.setView(points[0], 14); return; } 
+    map.fitBounds(points, { padding: [26, 26] }); 
+  }, [map, points, bHash]);
   return null;
 }
 
@@ -157,7 +212,7 @@ export default function PassengerHome() {
   const selLabels   = seats.filter(s => selectedSeatIds.includes(s.seat_id)).map(s => s.seat_no);
   const estFare     = lastBookingSummary?.fare_total || (selTrip && selectedSeatIds.length > 0 ? (selTrip.fare_estimate || 50) * selectedSeatIds.length : 0);
 
-  const mapPoints = useMemo(() => { const pts = [...dispPoly]; stops.forEach(s => { const p = toPoint(s.lat, s.lng); if (p) pts.push(p); }); matchedTrips.forEach(x => { const p = toLocPoint(x.latest_location); if (p) pts.push(p); }); return pts; }, [dispPoly, stops, matchedTrips]);
+  const mapPoints = useMemo(() => { const pts = [...dispPoly]; if (pts.length < 2) { stops.forEach(s => { const p = toPoint(s.lat, s.lng); if (p) pts.push(p); }); } return pts; }, [dispPoly, stops]);
 
   const loadBase = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -278,8 +333,11 @@ export default function PassengerHome() {
                     return <CircleMarker key={stop.id} center={pt} radius={isP || isD ? 9 : 5} eventHandlers={{ click: () => handleMapPick(stop.id) }} pathOptions={{ color: isP ? "#10b981" : isD ? "#818cf8" : "#475569", fillColor: isP ? "#10b981" : isD ? "#818cf8" : "#64748b", fillOpacity: 0.95 }}><Popup><div className="font-bold">{stop.name}</div><div className="text-xs text-slate-500">Tap to use as {selectionMode === "drop" ? "drop" : !pickupStopId ? "pickup" : "next"}</div></Popup></CircleMarker>;
                   })}
                   {matchedTrips.map(trip => {
-                    const pt = toLocPoint(trip.latest_location); if (!pt) return null; const active = String(trip.id) === String(selectedTripId);
-                    return <Marker key={trip.id} position={pt} icon={createBusIcon({ active, heading: Number(trip.latest_location?.heading || 0), label: trip.bus_plate || `Bus ${trip.id}` })} eventHandlers={{ click: () => setSelectedTripId(String(trip.id)) }}>{active && <Tooltip direction="top" offset={[0, -24]} opacity={1} permanent>{trip.bus_plate}</Tooltip>}<Popup><div className="font-bold">Bus {trip.bus_plate}</div><div>ETA {fmtEta(trip.eta)}</div><div>Open {trip.open_seats} seats</div></Popup></Marker>;
+                    let pt = toLocPoint(trip.latest_location); if (!pt) return null;
+                    let angle = Number(trip.latest_location?.heading || 0);
+                    if (dispPoly.length > 1) { const snap = snapPolylineWithAngle(pt, dispPoly); pt = snap.pt; angle = snap.angle; }
+                    const active = String(trip.id) === String(selectedTripId);
+                    return <Marker key={trip.id} position={pt} icon={createBusIcon({ active, heading: angle, label: trip.bus_plate || `Bus ${trip.id}` })} eventHandlers={{ click: () => setSelectedTripId(String(trip.id)) }}>{active && <Tooltip direction="top" offset={[0, -24]} opacity={1} permanent>{trip.bus_plate}</Tooltip>}<Popup><div className="font-bold">Bus {trip.bus_plate}</div><div>ETA {fmtEta(trip.eta)}</div><div>Open {trip.open_seats} seats</div></Popup></Marker>;
                   })}
                 </MapContainer>
               </div>

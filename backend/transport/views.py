@@ -116,13 +116,28 @@ class AdminBusManageView(APIView):
         plate = request.data.get("plate_number", "").strip().upper()
         capacity = int(request.data.get("capacity", 35))
         is_active = request.data.get("is_active", True)
+        driver_id = request.data.get("driver")
+        helper_id = request.data.get("helper")
+
         if not plate:
             return Response({"detail": "plate_number is required."}, status=400)
         if Bus.objects.filter(plate_number=plate).exists():
             return Response({"detail": f"Bus '{plate}' already exists."}, status=400)
         if capacity < 1 or capacity > 200:
             return Response({"detail": "capacity must be between 1 and 200."}, status=400)
-        bus = Bus.objects.create(plate_number=plate, capacity=capacity, is_active=is_active)
+            
+        driver, helper = None, None
+        if driver_id:
+            driver = User.objects.filter(id=driver_id, role=User.Role.DRIVER).first()
+            if not driver: return Response({"detail": "Invalid driver."}, status=400)
+        if helper_id:
+            helper = User.objects.filter(id=helper_id, role=User.Role.HELPER).first()
+            if not helper: return Response({"detail": "Invalid helper."}, status=400)
+
+        bus = Bus.objects.create(
+            plate_number=plate, capacity=capacity, is_active=is_active,
+            driver=driver, helper=helper
+        )
         # Auto-generate seats: rows A-Z, columns 1-N
         seats_to_create = []
         cols = 4
@@ -140,3 +155,66 @@ class AdminBusManageView(APIView):
             "message": f"Bus '{plate}' created with {capacity} seats.",
             "bus": BusSerializer(bus).data,
         }, status=201)
+
+
+class AdminBusDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
+            return Response({"detail": "Admin only."}, status=403)
+        return None
+
+    def patch(self, request, bus_id):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+            
+        try:
+            bus = Bus.objects.get(id=bus_id)
+        except Bus.DoesNotExist:
+            return Response({"detail": "Bus not found."}, status=404)
+            
+        driver_id = request.data.get("driver")
+        helper_id = request.data.get("helper")
+        
+        if driver_id is not None:
+            if driver_id == "":
+                bus.driver = None
+            else:
+                driver = User.objects.filter(id=driver_id, role=User.Role.DRIVER).first()
+                if not driver: return Response({"detail": "Invalid driver."}, status=400)
+                bus.driver = driver
+                
+        if helper_id is not None:
+            if helper_id == "":
+                bus.helper = None
+            else:
+                helper = User.objects.filter(id=helper_id, role=User.Role.HELPER).first()
+                if not helper: return Response({"detail": "Invalid helper."}, status=400)
+                bus.helper = helper
+                
+        bus.save(update_fields=["driver", "helper"])
+        
+        return Response({
+            "message": "Bus assigned staff updated.",
+            "bus": BusSerializer(bus).data
+        })
+
+
+class MyAssignedBusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        if user.role == User.Role.DRIVER:
+            bus = Bus.objects.filter(driver=user, is_active=True).first()
+        elif user.role == User.Role.HELPER:
+            bus = Bus.objects.filter(helper=user, is_active=True).first()
+        else:
+            return Response({"detail": "Not a driver or helper."}, status=403)
+            
+        if not bus:
+            return Response({"bus": None})
+            
+        return Response({"bus": BusSerializer(bus).data})

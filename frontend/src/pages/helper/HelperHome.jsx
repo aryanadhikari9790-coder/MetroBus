@@ -39,6 +39,7 @@ export default function HelperHome() {
   const [tripId, setTripId]                   = useState("");
   const [routeStops, setRouteStops]           = useState([]);
   const [latestLocation, setLatestLocation]   = useState(null);
+  const [assignedBus, setAssignedBus]         = useState(null);
   const [fromOrder, setFromOrder]             = useState("");
   const [toOrder, setToOrder]                 = useState("");
   const [seats, setSeats]                     = useState([]);
@@ -85,7 +86,12 @@ export default function HelperHome() {
     finally { setLoadingAvail(false); }
   };
 
-  useEffect(() => { loadTrips(); const id = setInterval(() => loadTrips({ silent: true }), 20000); return () => clearInterval(id); }, []);
+  const loadAssignedBus = async () => {
+    try { const res = await api.get("/api/transport/my-bus/"); setAssignedBus(res.data.bus || null); }
+    catch { /* silent */ }
+  };
+
+  useEffect(() => { loadTrips(); loadAssignedBus(); const id = setInterval(() => loadTrips({ silent: true }), 20000); return () => clearInterval(id); }, []);
   useEffect(() => { loadTripCtx(tripId); if (!tripId) return; const id = setInterval(() => loadTripCtx(tripId), 15000); return () => clearInterval(id); }, [tripId]);
   useEffect(() => {
     if (routeStops.length < 2) { setFromOrder(""); setToOrder(""); return; }
@@ -148,6 +154,20 @@ export default function HelperHome() {
       <div className="mx-auto max-w-6xl px-4 py-5 space-y-5">
         {err && <div className={`rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
         {msg && <div className={`rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {msg}</div>}
+
+        {assignedBus && (
+          <GlassCard t={t} className={`bg-gradient-to-br border-indigo-500/30 ${isDark ? "from-indigo-900/30 to-[#0a0e1a]" : "from-indigo-50 to-[#f0f4f8]"}`}>
+            <div className="flex items-center justify-between mb-2">
+              <SLabel t={t}>My Assigned Bus</SLabel>
+              <Pill color="indigo" isDark={isDark}>ACTIVE ASSIGNMENT</Pill>
+            </div>
+            <div className="flex items-baseline gap-3">
+              <p className={`text-3xl font-black ${t.text}`}>{assignedBus.plate_number}</p>
+              <p className={`text-sm font-semibold ${t.textSub}`}>{assignedBus.capacity} seats</p>
+            </div>
+            <p className={`text-xs mt-2 ${t.textSub}`}>Driver: {assignedBus.driver_name || "Unassigned"}</p>
+          </GlassCard>
+        )}
 
         {/* Hero */}
         <div className={`relative overflow-hidden rounded-2xl border p-6 bg-gradient-to-br ${isDark ? "from-indigo-900/60 via-[#0d1230] to-[#0a0e1a] border-indigo-700/30" : "from-indigo-50 via-white to-[#f0f4f8] border-indigo-200"}`}>

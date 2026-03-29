@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 
 
 class Stop(models.Model):
@@ -46,6 +47,22 @@ class Bus(models.Model):
     plate_number = models.CharField(max_length=30, unique=True)
     capacity = models.PositiveIntegerField(default=35)
     is_active = models.BooleanField(default=True)
+    driver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="driven_buses",
+        limit_choices_to={"role": "DRIVER"},
+    )
+    helper = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="helped_buses",
+        limit_choices_to={"role": "HELPER"},
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
