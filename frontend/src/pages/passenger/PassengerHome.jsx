@@ -201,6 +201,13 @@ export default function PassengerHome() {
   const [settings, setSettings]             = useState({ liveTracking: true, arrivalAlerts: true, compactMap: false });
   const [msg, setMsg]                       = useState("");
   const [err, setErr]                       = useState("");
+  const [liveLocationOverwrites, setLiveLocationOverwrites] = useState({});
+  const [now, setNow]                       = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   const pickupStop  = stops.find(s => String(s.id) === String(pickupStopId)) || null;
   const dropStop    = stops.find(s => String(s.id) === String(dropStopId)) || null;
@@ -241,6 +248,37 @@ export default function PassengerHome() {
   useEffect(() => { if (!(pickupStopId && dropStopId && matchedTrips.length)) return; findRoutes({ silent: true }).catch(() => {}); }, [trips]);
   useEffect(() => { if (!selTrip) { setSeats([]); return; } loadSeats(selTrip.id, selTrip.from_order, selTrip.to_order); }, [selectedTripId, matchedTrips]);
   useEffect(() => { if (routePoly.length < 2) { setRoadPolyline([]); return; } const c = new AbortController(); snapRouteToRoad(routePoly, c.signal).then(p => setRoadPolyline(p.length > 1 ? p : [])).catch(e => { if (e.name !== "AbortError") setRoadPolyline([]); }); return () => c.abort(); }, [routePoly]);
+
+  // Triangular Communication: Passenger WebSocket downstream
+  useEffect(() => {
+    if (!selectedTripId || !settings.liveTracking) return;
+    let ws = null;
+    let isSubscribed = true;
+
+    const connectWS = () => {
+      const wsUrl = `ws://${window.location.hostname}:8000/ws/transport/trips/${selectedTripId}/`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onmessage = (event) => {
+        if (!isSubscribed) return;
+        const data = JSON.parse(event.data);
+        setLiveLocationOverwrites(prev => ({
+          ...prev,
+          [selectedTripId]: { lat: data.lat, lng: data.lng, heading: data.bearing, lastSeen: Date.now() }
+        }));
+      };
+
+      ws.onclose = () => {
+        if (isSubscribed) setTimeout(connectWS, 3000); // Auto-reconnect dropouts
+      };
+    };
+
+    connectWS();
+    return () => {
+      isSubscribed = false;
+      if (ws) ws.close();
+    };
+  }, [selectedTripId, settings.liveTracking]);
 
   const findRoutes = async ({ silent = false } = {}) => {
     if (!pickupStopId || !dropStopId) { setErr("Choose both pickup and drop points first."); return; }
@@ -334,11 +372,19 @@ export default function PassengerHome() {
                     return <CircleMarker key={stop.id} center={pt} radius={isP || isD ? 9 : 5} eventHandlers={{ click: () => handleMapPick(stop.id) }} pathOptions={{ color: isP ? "#10b981" : isD ? "#818cf8" : "#475569", fillColor: isP ? "#10b981" : isD ? "#818cf8" : "#64748b", fillOpacity: 0.95 }}><Popup><div className="font-bold">{stop.name}</div><div className="text-xs text-slate-500">Tap to use as {selectionMode === "drop" ? "drop" : !pickupStopId ? "pickup" : "next"}</div></Popup></CircleMarker>;
                   })}
                   {matchedTrips.map(trip => {
-                    let pt = toLocPoint(trip.latest_location); if (!pt) return null;
-                    let angle = Number(trip.latest_location?.heading || 0);
-                    if (dispPoly.length > 1) { const snap = snapPolylineWithAngle(pt, dispPoly); pt = snap.pt; angle = snap.angle; }
                     const active = String(trip.id) === String(selectedTripId);
-                    return <Marker key={trip.id} position={pt} icon={createBusIcon({ active, heading: angle, label: trip.bus_plate || `Bus ${trip.id}` })} eventHandlers={{ click: () => setSelectedTripId(String(trip.id)) }}>{active && <Tooltip direction="top" offset={[0, -24]} opacity={1} permanent>{trip.bus_plate}</Tooltip>}<Popup><div className="font-bold">Bus {trip.bus_plate}</div><div>ETA {fmtEta(trip.eta)}</div><div>Open {trip.open_seats} seats</div></Popup></Marker>;
+                    const liveOvr = liveLocationOverwrites[trip.id];
+                    const isStale = liveOvr && (now - liveOvr.lastSeen > 30000);
+                    
+                    let pt = liveOvr ? toPoint(liveOvr.lat, liveOvr.lng) : toLocPoint(trip.latest_location); 
+                    if (!pt) return null;
+                    let angle = liveOvr ? Number(liveOvr.heading || 0) : Number(trip.latest_location?.heading || 0);
+
+                    if (dispPoly.length > 1) { const snap = snapPolylineWithAngle(pt, dispPoly); pt = snap.pt; angle = snap.angle; }
+                    
+                    const markerOpacity = isStale ? 0.6 : 1;
+                    
+                    return <Marker key={trip.id} position={pt} opacity={markerOpacity} icon={createBusIcon({ active, heading: angle, label: trip.bus_plate || `Bus ${trip.id}` })} eventHandlers={{ click: () => setSelectedTripId(String(trip.id)) }}>{active && <Tooltip direction="top" offset={[0, -24]} opacity={1} permanent>{trip.bus_plate}</Tooltip>}<Popup><div className="font-bold">Bus {trip.bus_plate}</div><div>ETA {fmtEta(trip.eta)}</div><div>Open {trip.open_seats} seats</div>{isStale && <div className="text-amber-600 text-[10px] mt-1">⚠ Last seen &gt;30s ago</div>}</Popup></Marker>;
                   })}
                 </MapContainer>
               </div>

@@ -150,6 +150,8 @@ export default function DriverHome() {
   const [roadPolyline, setRoadPolyline]   = useState([]);
   const [activeTab, setActiveTab]         = useState("home");
   const locationWatch = useMemo(() => ({ id: null }), []);
+  const wsRef         = useMemo(() => ({ current: null }), []);
+  const queueRef      = useMemo(() => ({ current: [] }), []);
 
   const activeTrip    = dashboard?.active_trip ?? null;
   const schedules     = dashboard?.schedules ?? [];
@@ -249,10 +251,53 @@ export default function DriverHome() {
   const postLocation = async (payload, label = "Location sent.") => {
     if (!activeTrip) { setErr("Start a trip first."); return; }
     setLocationBusy(true); setErr("");
-    try { const res = await api.post(`/api/trips/${activeTrip.id}/location/`, payload); setLatestLocation(res.data); setLocationStatus(label); }
-    catch (e) { setErr(e?.response?.data?.detail || "Failed to send location."); }
-    finally { setLocationBusy(false); }
+
+    // WebSocket / Offline Queue Logic for FYP Triangular Communication
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(payload));
+      setLocationStatus("Live GPS tracking active.");
+      
+      // Fallback API call just to update database state (not strictly needed if consumer does DB sync)
+      try { 
+        const res = await api.post(`/api/trips/${activeTrip.id}/location/`, payload); 
+        setLatestLocation(res.data); 
+      } catch (e) { /* ignore HTTP error if WS is working */ }
+    } else {
+      // Offline capability: queue in state/IndexedDB placeholder
+      queueRef.current.push(payload);
+      setLocationStatus(`Offline: ${queueRef.current.length} points queued.`);
+    }
+    
+    setLocationBusy(false);
   };
+
+  useEffect(() => {
+    if (!activeTrip?.id) return;
+    
+    const connectWS = () => {
+      const wsUrl = `ws://${window.location.hostname}:8000/ws/transport/trips/${activeTrip.id}/`;
+      const ws = new WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+         console.log("WebSocket connected for Live Tracking.");
+         if (queueRef.current.length > 0) {
+             console.log(`Syncing ${queueRef.current.length} offline points...`);
+             queueRef.current.forEach(p => ws.send(JSON.stringify(p)));
+             queueRef.current = [];
+         }
+      };
+      
+      ws.onclose = () => {
+         console.log("WebSocket disconnected. Auto-reconnecting in 3s...");
+         setTimeout(connectWS, 3000);
+      };
+      
+      wsRef.current = ws;
+    };
+    
+    connectWS();
+    return () => { if (wsRef.current) wsRef.current.close(); };
+  }, [activeTrip?.id]);
 
   const clearWatch = () => {
     if (locationWatch.id !== null && navigator.geolocation) { navigator.geolocation.clearWatch(locationWatch.id); locationWatch.id = null; }
