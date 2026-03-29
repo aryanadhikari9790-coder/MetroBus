@@ -297,33 +297,34 @@ export default function PassengerHome() {
 
   const handleLogout = () => { clearToken(); setUser(null); navigate("/auth/login", { replace: true }); };
 
-  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading your dashboard…</p></div></div>;
+  if (loading) return <div className={`min-h-[100dvh] flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading your dashboard…</p></div></div>;
 
   const rowBg = isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50";
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-200 pb-24 ${t.page}`}>
-      <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 py-3 ${t.nav}`}>
+    <div className={`h-[100dvh] flex flex-col overflow-hidden font-sans transition-colors duration-200 ${t.page}`}>
+      {/* Floating Header on mobile, Standard on desktop */}
+      <header className={`flex-none z-30 border-b backdrop-blur-md px-4 py-3 xl:static absolute top-0 w-full left-0 ${t.nav} ${isDark ? "bg-[#0a0e1a]/80" : "bg-[#f0f4f8]/80"}`}>
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-black text-white">MB</div>
-            <div><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus</p><p className={`text-sm font-bold leading-none ${t.text}`}>Hello, {user?.full_name?.split(" ")[0] || "Passenger"} 👋</p></div>
+            <div className="flex xl:h-9 xl:w-9 h-8 w-8 items-center justify-center rounded-xl bg-indigo-600 xl:text-sm text-xs font-black text-white shadow-lg">MB</div>
+            <div className="hidden sm:block"><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus</p><p className={`text-sm font-bold leading-none drop-shadow-md ${t.text}`}>Hello, {user?.full_name?.split(" ")[0] || "Passenger"} 👋</p></div>
           </div>
-          <div className="flex items-center gap-2"><ThemeToggle isDark={isDark} toggle={toggle} /><Btn tone="ghost" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn></div>
+          <div className="flex items-center gap-2 bg-black/5 dark:bg-white/5 backdrop-blur-md rounded-xl p-1 shadow-sm"><ThemeToggle isDark={isDark} toggle={toggle} /><Btn tone="primary" onClick={handleLogout} className="!py-1.5 !px-3 text-xs shadow-md">Logout</Btn></div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-5 space-y-5">
-        {err && <div className={`rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
-        {msg && <div className={`rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {msg}</div>}
+      <div className="flex-1 min-h-0 flex flex-col relative w-full overflow-hidden mx-auto xl:max-w-6xl">
+        {err && <div className={`absolute top-20 left-4 right-4 z-[50] rounded-xl border px-4 py-3 text-sm shadow-xl backdrop-blur-md ${t.errBanner}`}>{err}</div>}
+        {msg && <div className={`absolute top-20 left-4 right-4 z-[50] rounded-xl border px-4 py-3 text-sm shadow-xl backdrop-blur-md ${t.okBanner}`}>✓ {msg}</div>}
 
         {/* HOME */}
         {activeView === "home" && (
-          <div className="grid gap-5 xl:grid-cols-[1.4fr_0.95fr]">
-            {/* Map */}
-            <GlassCard t={t} className="!p-0 overflow-hidden">
-              <div className={`${settings.compactMap ? "h-56" : "h-[44vh] min-h-[18rem]"} w-full`}>
-                <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+          <div className="flex-1 flex flex-col xl:grid xl:grid-cols-[1.4fr_0.95fr] xl:gap-5 xl:py-5 min-h-0 w-full relative">
+            {/* Map Area (Full top or responsive desktop) */}
+            <div className={`flex-none w-full relative z-0 transition-all duration-300 xl:rounded-2xl xl:border xl:overflow-hidden ${settings.compactMap ? "h-[35dvh] xl:h-[60vh]" : "h-[48dvh] xl:h-auto xl:min-h-[550px]"} ${isDark ? "xl:border-white/10 bg-[#0a0e1a]" : "xl:border-slate-200 bg-[#f0f4f8]"}`}>
+              <div className="h-full w-full">
+                <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full z-0">
                   <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={t.mapTile} />
                   <MapViewport points={mapPoints} />
                   {dispPoly.length > 0 && <Polyline positions={dispPoly} pathOptions={{ color: "#818cf8", weight: 4, opacity: 0.9 }} />}
@@ -341,10 +342,13 @@ export default function PassengerHome() {
                   })}
                 </MapContainer>
               </div>
-            </GlassCard>
+            </div>
 
-            {/* Booking panel */}
-            <div className="space-y-4">
+            {/* Booking panel (Bottom Sheet on Mobile) */}
+            <div className={`flex-1 overflow-y-auto w-full z-20 rounded-t-3xl xl:rounded-none -mt-6 xl:mt-0 shadow-[0_-12px_40px_rgba(0,0,0,0.15)] xl:shadow-none px-4 pt-4 pb-28 xl:p-0 xl:pb-0 ${isDark ? "bg-[#0a0e1a] border-t border-white/10 xl:border-none" : "bg-[#f0f4f8] xl:bg-transparent"}`}>
+              {/* Mobile pull handle aesthetic */}
+              <div className="mx-auto w-12 h-1.5 rounded-full bg-slate-300 dark:bg-white/20 mb-5 xl:hidden" />
+              <div className="space-y-4 max-w-xl mx-auto xl:max-w-none">
               {/* Step breadcrumbs */}
               <div className="flex gap-2 flex-wrap">
                 {[{ id: "plan", label: "1. Plan" }, { id: "buses", label: "2. Choose Bus" }, { id: "seats", label: "3. Seat & Pay" }].map(s => (
@@ -414,45 +418,50 @@ export default function PassengerHome() {
                   )}
                 </div>
               )}
+              </div>
             </div>
           </div>
         )}
 
         {/* SETTINGS */}
         {activeView === "settings" && (
-          <GlassCard t={t} className="max-w-2xl">
-            <SLabel t={t}>Passenger Preferences</SLabel>
-            <p className={`text-xs mb-5 ${t.textSub}`}>Stored on this device.</p>
-            <div className="space-y-4">
-              {[{ key: "liveTracking", title: "Live Bus Tracking", desc: "Show live bus movement on the map." }, { key: "arrivalAlerts", title: "Arrival Alerts", desc: "Show ETA when bus approaches pickup." }, { key: "compactMap", title: "Compact Map", desc: "Reduce map height for more booking space." }].map(item => (
-                <div key={item.key} className={`flex items-center justify-between gap-4 border-b pb-4 last:border-0 last:pb-0 ${t.divider}`}>
-                  <div><p className={`text-sm font-semibold ${t.text}`}>{item.title}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{item.desc}</p></div>
-                  <button type="button" onClick={() => setSettings(c => ({ ...c, [item.key]: !c[item.key] }))}
-                    className={`relative h-6 w-11 rounded-full flex-shrink-0 transition-colors ${settings[item.key] ? "bg-indigo-500" : t.toggleOff}`}>
-                    <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${settings[item.key] ? "translate-x-5" : ""}`} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </GlassCard>
+          <div className="flex-1 overflow-y-auto w-full px-4 pt-20 pb-32 xl:pt-5 xl:px-0">
+            <GlassCard t={t} className="max-w-2xl mx-auto">
+              <SLabel t={t}>Passenger Preferences</SLabel>
+              <p className={`text-xs mb-5 ${t.textSub}`}>Stored on this device.</p>
+              <div className="space-y-4">
+                {[{ key: "liveTracking", title: "Live Bus Tracking", desc: "Show live bus movement on the map." }, { key: "arrivalAlerts", title: "Arrival Alerts", desc: "Show ETA when bus approach." }, { key: "compactMap", title: "Compact Map", desc: "Reduce map height." }].map(item => (
+                  <div key={item.key} className={`flex items-center justify-between gap-4 border-b pb-4 last:border-0 last:pb-0 ${t.divider}`}>
+                    <div><p className={`text-sm font-semibold ${t.text}`}>{item.title}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{item.desc}</p></div>
+                    <button type="button" onClick={() => setSettings(c => ({ ...c, [item.key]: !c[item.key] }))}
+                      className={`relative h-6 w-11 rounded-full flex-shrink-0 transition-colors ${settings[item.key] ? "bg-indigo-500" : t.toggleOff}`}>
+                      <span className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${settings[item.key] ? "translate-x-5" : ""}`} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
         )}
 
         {/* PROFILE */}
         {activeView === "profile" && (
-          <GlassCard t={t} className="max-w-2xl">
-            <SLabel t={t}>Your Profile</SLabel>
+          <div className="flex-1 overflow-y-auto w-full px-4 pt-20 pb-32 xl:pt-5 xl:px-0">
+            <GlassCard t={t} className="max-w-2xl mx-auto">
+              <SLabel t={t}>Your Profile</SLabel>
             <div className="grid gap-4 sm:grid-cols-2">
               <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Full Name</label><input type="text" value={profileForm.full_name} onChange={e => setProfileForm(c => ({ ...c, full_name: e.target.value }))} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} /></div>
               <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Phone (read-only)</label><input type="text" value={user?.phone || ""} readOnly className={`w-full rounded-xl border px-4 py-3 text-sm outline-none opacity-50 ${t.input}`} /></div>
               <div className="sm:col-span-2"><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Email</label><input type="email" value={profileForm.email} onChange={e => setProfileForm(c => ({ ...c, email: e.target.value }))} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} /></div>
             </div>
-            <Btn tone="primary" onClick={saveProfile} disabled={profileBusy} className="mt-5 !py-3">{profileBusy ? "Saving…" : "Save Profile"}</Btn>
-          </GlassCard>
+            <Btn tone="primary" onClick={saveProfile} disabled={profileBusy} className="mt-5 !py-3 w-full">{profileBusy ? "Saving…" : "Save Profile"}</Btn>
+            </GlassCard>
+          </div>
         )}
       </div>
 
       {/* Bottom nav */}
-      <div className={`fixed bottom-4 left-1/2 z-[1200] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl border p-1.5 shadow-2xl backdrop-blur-md ${isDark ? "bg-[#0a0e1a]/95 border-white/10" : "bg-white/95 border-slate-200"}`}>
+      <div className={`fixed bottom-4 left-1/2 z-[1200] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-2xl border p-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.15)] backdrop-blur-md ${isDark ? "bg-[#0a0e1a]/90 border-white/10" : "bg-[#f0f4f8]/90 border-slate-200"}`}>
         <div className="flex gap-1.5">
           {PAX_TABS.map(tab => (
             <button key={tab.id} type="button" onClick={() => setActiveView(tab.id)}
