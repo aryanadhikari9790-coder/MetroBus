@@ -912,19 +912,23 @@ export function BottomNav({ activeView, onChange }) {
     { id: "profile", label: "Profile", icon: "profile" },
   ];
   return (
-    <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 rounded-[36px] border border-white/70 bg-[var(--mb-nav)] p-3 shadow-[0_24px_60px_rgba(134,29,171,0.16)] backdrop-blur-xl">
-      <div className="grid grid-cols-4 gap-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => onChange(tab.id)}
-            className={`rounded-[28px] px-2 py-3 text-center transition ${activeView === tab.id ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-muted)]"}`}
-          >
-            <div className="mx-auto flex w-fit items-center justify-center"><Icon name={tab.icon} className="h-6 w-6" /></div>
-            <p className="mt-2 text-[0.72rem] font-black uppercase tracking-[0.14em]">{tab.label}</p>
-          </button>
-        ))}
+    <div className="fixed inset-x-0 bottom-0 z-[1200] border-t border-white/70 bg-[color:var(--mb-nav)]/98 shadow-[0_-20px_50px_rgba(134,29,171,0.14)] backdrop-blur-xl">
+      <div className="mx-auto max-w-5xl px-3 py-3 md:px-6">
+        <div className="grid grid-cols-4 gap-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => onChange(tab.id)}
+              className={`rounded-[24px] px-2 py-3 text-center transition ${activeView === tab.id ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-muted)]"}`}
+            >
+              <div className="mx-auto flex w-fit items-center justify-center">
+                <Icon name={tab.icon} className="h-6 w-6" />
+              </div>
+              <p className="mt-2 text-[0.72rem] font-black uppercase tracking-[0.14em]">{tab.label}</p>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

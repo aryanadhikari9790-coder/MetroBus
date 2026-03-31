@@ -382,7 +382,7 @@ export default function PassengerHome() {
   return (
     <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),#fff1f8)] text-[var(--mb-text)]">
       <HeaderBar user={user} activeView={activeView} onLogout={handleLogout} />
-      <main className="mx-auto max-w-5xl px-5 pb-36 pt-6 md:px-6">
+      <main className="mx-auto max-w-5xl px-5 pb-44 pt-6 md:px-6">
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
@@ -425,6 +425,26 @@ export default function PassengerHome() {
                 />
               ) : null}
             </section>
+
+            {acceptedTrip ? (
+              <div ref={bookingSectionRef} className="mt-6">
+                <ReservationBuilder
+                  trip={acceptedTrip}
+                  seats={seats}
+                  selectedSeatIds={selectedSeatIds}
+                  onSeatToggle={toggleSeat}
+                  onBook={bookSeats}
+                  onPay={pay}
+                  bookingBusy={bookingBusy}
+                  paymentBusy={paymentBusy}
+                  loadingSeats={loadingSeats}
+                  lastBookingId={lastBookingId}
+                  lastBookingSummary={lastBookingSummary}
+                  pickupStop={pickupStop}
+                  dropStop={dropStop}
+                />
+              </div>
+            ) : null}
 
             <section className="mt-8">
               <div className="mb-4 flex items-center justify-between gap-3">
@@ -486,26 +506,6 @@ export default function PassengerHome() {
                 )}
               </div>
             </section>
-
-            {acceptedTrip ? (
-              <div ref={bookingSectionRef}>
-                <ReservationBuilder
-                  trip={acceptedTrip}
-                  seats={seats}
-                  selectedSeatIds={selectedSeatIds}
-                  onSeatToggle={toggleSeat}
-                  onBook={bookSeats}
-                  onPay={pay}
-                  bookingBusy={bookingBusy}
-                  paymentBusy={paymentBusy}
-                  loadingSeats={loadingSeats}
-                  lastBookingId={lastBookingId}
-                  lastBookingSummary={lastBookingSummary}
-                  pickupStop={pickupStop}
-                  dropStop={dropStop}
-                />
-              </div>
-            ) : null}
 
             <button
               type="button"
