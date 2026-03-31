@@ -1,7 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework import status
 
 from transport.models import Seat
 from trips.models import Trip
@@ -11,9 +10,31 @@ from .serializers import (
     CreateBookingSerializer,
     OfflineCreateSerializer,
     OfflineBoardingSerializer,
+    PassengerBookingListSerializer,
 )
 from .permissions import IsPassenger, IsHelper
 from .services import validate_seats_available, get_fare_for_segment, get_taken_seat_ids_for_trip
+
+
+class PassengerBookingsView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def get(self, request):
+        bookings = (
+            Booking.objects.filter(passenger=request.user)
+            .select_related("trip__route", "trip__bus", "payment")
+            .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
+            .order_by("-created_at")
+        )
+
+        route_cache = {}
+        for booking in bookings:
+            route = booking.trip.route
+            if route.id not in route_cache:
+                route_cache[route.id] = list(route.route_stops.all())
+            route.route_stops_cache = route_cache[route.id]
+
+        return Response({"bookings": PassengerBookingListSerializer(bookings, many=True).data})
 
 
 class TripSeatAvailabilityView(APIView):
