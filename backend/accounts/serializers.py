@@ -1,8 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import update_last_login
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.settings import api_settings
 
 from .models import PhoneOTP
 from .utils import build_full_name, normalize_nepal_phone
@@ -14,12 +17,55 @@ class PhoneTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = User.USERNAME_FIELD  # resolves to "phone"
 
     def validate(self, attrs):
-        attrs = attrs.copy()
+        identifier = str(attrs.get(self.username_field) or "").strip()
+        password = attrs.get("password")
+
+        if not identifier:
+            raise serializers.ValidationError({self.username_field: "Phone number is required."})
+        if not password:
+            raise serializers.ValidationError({"password": "Password is required."})
+
+        candidates = []
+        compact = identifier.replace(" ", "").replace("-", "")
+
+        for value in (identifier, compact, compact.lstrip("+")):
+            if value and value not in candidates:
+                candidates.append(value)
+
         try:
-            attrs[self.username_field] = normalize_nepal_phone(attrs.get(self.username_field))
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError({self.username_field: exc.messages})
-        return super().validate(attrs)
+            normalized = normalize_nepal_phone(identifier)
+        except DjangoValidationError:
+            normalized = None
+        else:
+            for value in (
+                normalized,
+                normalized[1:],
+                normalized[4:],
+                f"0{normalized[4:]}",
+            ):
+                if value and value not in candidates:
+                    candidates.append(value)
+
+        query = Q(phone__in=candidates)
+        if "@" in identifier:
+            query |= Q(email__iexact=identifier)
+
+        user = User.objects.filter(query).order_by("id").first()
+        if not user or not user.check_password(password):
+            raise serializers.ValidationError({"detail": "No active account found with the given credentials."})
+        if not user.is_active:
+            raise serializers.ValidationError({"detail": "This account is inactive."})
+
+        refresh = self.get_token(user)
+        data = {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
+
+        if api_settings.UPDATE_LAST_LOGIN:
+            update_last_login(None, user)
+
+        return data
 
 
 class RegisterOTPRequestSerializer(serializers.Serializer):
