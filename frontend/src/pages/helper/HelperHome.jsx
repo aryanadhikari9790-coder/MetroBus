@@ -1,268 +1,689 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { useTheme } from "../../ThemeContext";
-import { themeTokens, pillColor } from "../../lib/theme";
 
-function GlassCard({ children, className = "", t }) {
-  return <div className={`rounded-2xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>{children}</div>;
+const LIGHT_THEME = {
+  "--hlp-bg": "#fff7fb",
+  "--hlp-surface": "rgba(255,255,255,0.9)",
+  "--hlp-soft": "#f9e3fb",
+  "--hlp-border": "rgba(169,103,210,0.16)",
+  "--hlp-text": "#321b39",
+  "--hlp-muted": "#89718d",
+  "--hlp-purple": "#8c12eb",
+  "--hlp-purple-2": "#c243ff",
+  "--hlp-plum": "#4a2656",
+  "--hlp-shadow": "0 26px 58px rgba(161,69,197,0.12)",
+  "--hlp-shadow-strong": "0 28px 62px rgba(140,18,235,0.22)",
+};
+
+const DARK_THEME = {
+  "--hlp-bg": "#140d1a",
+  "--hlp-surface": "rgba(34,22,43,0.92)",
+  "--hlp-soft": "rgba(96,51,119,0.48)",
+  "--hlp-border": "rgba(202,161,233,0.14)",
+  "--hlp-text": "#f7eefb",
+  "--hlp-muted": "#bba8c4",
+  "--hlp-purple": "#cb7cff",
+  "--hlp-purple-2": "#8c12eb",
+  "--hlp-plum": "#26152c",
+  "--hlp-shadow": "0 26px 58px rgba(0,0,0,0.24)",
+  "--hlp-shadow-strong": "0 28px 62px rgba(140,18,235,0.28)",
+};
+
+const TABS = [
+  { id: "trip", label: "Trip", icon: "bus" },
+  { id: "boarding", label: "Boarding", icon: "ticket" },
+  { id: "verify", label: "Verify", icon: "shield" },
+  { id: "route", label: "Route", icon: "map" },
+];
+
+function Icon({ name, className = "h-5 w-5" }) {
+  const common = { className, fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", viewBox: "0 0 24 24" };
+  switch (name) {
+    case "refresh": return <svg {...common}><path d="M20 11a8 8 0 1 1-2.35-5.66" /><path d="M20 4v5h-5" /></svg>;
+    case "sun": return <svg {...common}><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.9 4.9 1.4 1.4" /><path d="m17.7 17.7 1.4 1.4" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m4.9 19.1 1.4-1.4" /><path d="m17.7 6.3 1.4-1.4" /></svg>;
+    case "moon": return <svg {...common}><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3 6.8 6.8 0 0 0 21 12.8Z" /></svg>;
+    case "logout": return <svg {...common}><path d="M15 17 20 12 15 7" /><path d="M20 12H9" /><path d="M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" /></svg>;
+    case "profile": return <svg {...common}><circle cx="12" cy="8" r="3.2" /><path d="M5 19a7 7 0 0 1 14 0" /></svg>;
+    case "bus": return <svg {...common}><rect x="5" y="5" width="14" height="11" rx="3" /><path d="M7.5 16v3" /><path d="M16.5 16v3" /><path d="M7 10h10" /></svg>;
+    case "money": return <svg {...common}><path d="M4 7h16v10H4z" /><path d="M8 12h8" /><path d="M9 9v6" /><path d="M15 9v6" /></svg>;
+    case "shield": return <svg {...common}><path d="M12 3 5 6v5c0 4.4 3 8.3 7 10 4-1.7 7-5.6 7-10V6l-7-3Z" /><path d="m9.5 12 1.7 1.7 3.3-3.7" /></svg>;
+    case "ticket": return <svg {...common}><path d="M5 9a2 2 0 0 0 0 6v3h14v-3a2 2 0 0 0 0-6V6H5v3Z" /><path d="M12 6v12" /></svg>;
+    case "map": return <svg {...common}><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2V6Z" /><path d="M9 4v14" /><path d="M15 6v14" /></svg>;
+    case "swap": return <svg {...common}><path d="M7 7h11" /><path d="m14 4 4 3-4 3" /><path d="M17 17H6" /><path d="m10 14-4 3 4 3" /></svg>;
+    case "pin": return <svg {...common}><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z" /><circle cx="12" cy="10" r="2.3" /></svg>;
+    case "clock": return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg>;
+    case "alert": return <svg {...common}><path d="M12 4 3.5 18h17L12 4Z" /><path d="M12 9v4" /><path d="M12 16h.01" /></svg>;
+    case "qr": return <svg {...common}><path d="M4 4h5v5H4z" /><path d="M15 4h5v5h-5z" /><path d="M4 15h5v5H4z" /><path d="M15 15h2" /><path d="M18 15v5" /><path d="M15 18h3" /></svg>;
+    case "thermo": return <svg {...common}><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0Z" /><path d="M12 11v5" /></svg>;
+    default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>;
+  }
 }
-function Pill({ children, color = "slate", isDark }) {
-  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>{children}</span>;
+
+function SurfaceCard({ children, className = "" }) {
+  return <div className={`rounded-[2rem] border border-[var(--hlp-border)] bg-[var(--hlp-surface)] p-5 shadow-[var(--hlp-shadow)] backdrop-blur-xl ${className}`}>{children}</div>;
 }
-function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
-  const m = { primary: "bg-indigo-600 hover:bg-indigo-500 text-white", success: "bg-emerald-600 hover:bg-emerald-500 text-white", danger: "bg-red-600 hover:bg-red-500 text-white", ghost: "bg-white/10 hover:bg-white/20 text-white border border-white/10" };
-  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-xl px-5 py-3 text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
+
+function HeaderButton({ children, className = "", ...props }) {
+  return <button type="button" className={`grid h-11 w-11 place-items-center rounded-full border border-[var(--hlp-border)] bg-white/75 text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)] ${className}`} {...props}>{children}</button>;
 }
-function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
-function LiveDot({ active }) {
-  return <span className="relative flex h-2.5 w-2.5"><span className={`absolute inline-flex h-full w-full rounded-full ${active ? "bg-emerald-400 animate-ping opacity-75" : ""}`} /><span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${active ? "bg-emerald-400" : "bg-slate-500"}`} /></span>;
+
+function Chip({ children, tone = "soft", className = "" }) {
+  const tones = {
+    soft: "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]",
+    live: "bg-[rgba(16,185,129,0.12)] text-emerald-600",
+    warn: "bg-[rgba(245,158,11,0.14)] text-amber-600",
+    dark: "bg-[var(--hlp-plum)] text-white",
+  };
+  return <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] ${tones[tone] || tones.soft} ${className}`}>{children}</span>;
 }
-function ThemeToggle({ isDark, toggle }) {
-  return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "☀ Light" : "🌙 Dark"}</button>;
+
+function PrimaryButton({ children, tone = "primary", className = "", ...props }) {
+  const tones = {
+    primary: "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]",
+    danger: "bg-[var(--hlp-plum)] text-white shadow-[0_18px_40px_rgba(71,39,81,0.24)]",
+    ghost: "border border-[var(--hlp-border)] bg-white/82 text-[var(--hlp-text)]",
+  };
+  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
 }
-function SeatBtn({ seat, selected, onClick, t }) {
-  const cls = !seat.available ? t.seatTaken : selected ? t.seatSel : t.seatOpen;
-  return <button type="button" disabled={!seat.available} onClick={onClick} className={`rounded-xl border px-2 py-2.5 text-xs font-bold text-center transition-all ${cls}`}><div>{seat.seat_no}</div><div className="mt-1 text-[9px] uppercase opacity-70">{seat.available ? (selected ? "Marked" : "Open") : "Taken"}</div></button>;
+
+function SectionLabel({ children }) {
+  return <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-purple)]">{children}</p>;
 }
-function fmt(v) { if (!v) return "—"; try { return new Date(v).toLocaleString(); } catch { return v; } }
+
+function StatCard({ label, value, note, icon }) {
+  return (
+    <SurfaceCard className="min-h-[9.5rem]">
+      <div className="text-[var(--hlp-purple)]"><Icon name={icon} /></div>
+      <p className="mt-8 text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{label}</p>
+      <p className="mt-2 text-[2rem] font-black leading-none text-[var(--hlp-text)]">{value}</p>
+      <p className="mt-2 text-xs text-[var(--hlp-muted)]">{note}</p>
+    </SurfaceCard>
+  );
+}
+
+function SelectField({ label, value, onChange, options, disabled = false }) {
+  return (
+    <div>
+      <label className="mb-2 block text-[0.66rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">{label}</label>
+      <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="w-full rounded-[1.4rem] border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-semibold text-[var(--hlp-text)] outline-none transition focus:border-[var(--hlp-purple)] disabled:opacity-60">
+        {options.map((option) => <option key={`${option.value}-${option.label}`} value={option.value}>{option.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function SeatNode({ seat, selected, onClick }) {
+  let className = "border-[var(--hlp-border)] bg-white text-[var(--hlp-text)]";
+  let stateLabel = "Open";
+  if (!seat.available) {
+    className = "border-transparent bg-[rgba(233,198,244,0.8)] text-[var(--hlp-muted)]";
+    stateLabel = "Taken";
+  } else if (selected) {
+    className = "border-transparent bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]";
+    stateLabel = "Marked";
+  }
+  return (
+    <button type="button" disabled={!seat.available} onClick={onClick} className={`flex aspect-square min-h-[4.2rem] flex-col items-center justify-center rounded-[1.55rem] border text-center transition ${className} disabled:cursor-not-allowed`}>
+      <span className="text-base font-black">{seat.seat_no}</span>
+      <span className="mt-1 text-[0.54rem] font-black uppercase tracking-[0.18em] opacity-75">{stateLabel}</span>
+    </button>
+  );
+}
+
+function MapViewport({ points }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!points.length) return;
+    if (points.length === 1) {
+      map.setView(points[0], 14);
+      return;
+    }
+    map.fitBounds(points, { padding: [24, 24] });
+  }, [map, points]);
+  return null;
+}
+
+function formatDateTime(value) {
+  if (!value) return "--";
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
+  }
+}
+
+function formatTime(value) {
+  if (!value) return "--";
+  try {
+    return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return value;
+  }
+}
+
+function distanceBetween(a, b) {
+  if (!a || !b) return Infinity;
+  return Math.sqrt((Number(a[0]) - Number(b[0])) ** 2 + (Number(a[1]) - Number(b[1])) ** 2);
+}
 
 export default function HelperHome() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isDark, toggle } = useTheme();
-  const t = themeTokens(isDark);
+  const theme = useMemo(() => (isDark ? DARK_THEME : LIGHT_THEME), [isDark]);
 
-  const [trips, setTrips]                     = useState([]);
-  const [tripId, setTripId]                   = useState("");
-  const [routeStops, setRouteStops]           = useState([]);
-  const [latestLocation, setLatestLocation]   = useState(null);
-  const [assignedBus, setAssignedBus]         = useState(null);
-  const [fromOrder, setFromOrder]             = useState("");
-  const [toOrder, setToOrder]                 = useState("");
-  const [seats, setSeats]                     = useState([]);
+  const [trips, setTrips] = useState([]);
+  const [tripId, setTripId] = useState("");
+  const [routeStops, setRouteStops] = useState([]);
+  const [latestLocation, setLatestLocation] = useState(null);
+  const [assignedBus, setAssignedBus] = useState(null);
+  const [fromOrder, setFromOrder] = useState("");
+  const [toOrder, setToOrder] = useState("");
+  const [seats, setSeats] = useState([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
-  const [loadingTrips, setLoadingTrips]       = useState(true);
-  const [loadingAvail, setLoadingAvail]       = useState(false);
-  const [offlineBusy, setOfflineBusy]         = useState(false);
-  const [verifyBusy, setVerifyBusy]           = useState(false);
+  const [loadingTrips, setLoadingTrips] = useState(true);
+  const [loadingAvail, setLoadingAvail] = useState(false);
+  const [offlineBusy, setOfflineBusy] = useState(false);
+  const [verifyBusy, setVerifyBusy] = useState(false);
   const [verifyBookingId, setVerifyBookingId] = useState("");
   const [verifiedPayment, setVerifiedPayment] = useState(null);
-  const [msg, setMsg]                         = useState("");
-  const [err, setErr]                         = useState("");
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [activeTab, setActiveTab] = useState("trip");
 
-  const selectedTrip   = useMemo(() => trips.find(x => String(x.id) === String(tripId)) || null, [trips, tripId]);
-  const availableSeats = seats.filter(s => s.available);
-  const occupiedCount  = seats.length - availableSeats.length;
-  const fromStop       = routeStops.find(s => String(s.stop_order) === String(fromOrder)) || null;
-  const toStop         = routeStops.find(s => String(s.stop_order) === String(toOrder)) || null;
-  const markedLabels   = seats.filter(s => selectedSeatIds.includes(s.seat_id)).map(s => s.seat_no);
+  const selectedTrip = useMemo(() => trips.find((trip) => String(trip.id) === String(tripId)) || null, [trips, tripId]);
+  const availableSeats = seats.filter((seat) => seat.available);
+  const occupiedCount = seats.length - availableSeats.length;
+  const selectedCount = selectedSeatIds.length;
+  const selectedSeatLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
+  const stopOptions = routeStops.map((stop) => ({ value: String(stop.stop_order), label: `${stop.stop_order}. ${stop.stop?.name || "--"}` }));
+  const mapPolyline = useMemo(() => routeStops.map((stop) => [Number(stop.stop?.lat), Number(stop.stop?.lng)]).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)), [routeStops]);
+  const livePoint = useMemo(() => {
+    if (!latestLocation) return null;
+    const lat = Number(latestLocation.lat);
+    const lng = Number(latestLocation.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+  }, [latestLocation]);
+  const mapPoints = useMemo(() => {
+    const points = [...mapPolyline];
+    if (livePoint) points.push(livePoint);
+    return points;
+  }, [mapPolyline, livePoint]);
+  const currentStopIndex = useMemo(() => {
+    if (!livePoint || !mapPolyline.length) return 0;
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    mapPolyline.forEach((point, index) => {
+      const distance = distanceBetween(point, livePoint);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    return bestIndex;
+  }, [livePoint, mapPolyline]);
+  const upcomingStop = routeStops[Math.min(currentStopIndex + 1, routeStops.length - 1)] || null;
+  const routeCondition = livePoint ? "Live movement on route" : "Waiting for GPS ping";
+  const helperInitials = (user?.full_name || "Helper").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
 
-  const loadTrips = async ({ silent = false } = {}) => {
+  const loadTrips = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingTrips(true);
     try {
-      const res = await api.get("/api/trips/live/"); setTrips(res.data); setErr("");
-      if (!tripId && res.data.length > 0) setTripId(String(res.data[0].id));
-      else if (tripId && !res.data.some(x => String(x.id) === String(tripId))) setTripId(res.data[0] ? String(res.data[0].id) : "");
-    } catch (e) { setErr(e?.response?.data?.detail || "Unable to load live trips."); }
-    finally { if (!silent) setLoadingTrips(false); }
-  };
+      const response = await api.get("/api/trips/live/");
+      setTrips(response.data);
+      setErr("");
+      setTripId((current) => {
+        if (!current && response.data.length > 0) return String(response.data[0].id);
+        if (current && !response.data.some((trip) => String(trip.id) === String(current))) {
+          return response.data[0] ? String(response.data[0].id) : "";
+        }
+        return current;
+      });
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to load live trips.");
+    } finally {
+      if (!silent) setLoadingTrips(false);
+    }
+  }, []);
 
-  const loadTripCtx = async (id) => {
-    if (!id) { setRouteStops([]); setLatestLocation(null); return; }
+  const loadAssignedBus = useCallback(async () => {
     try {
-      const [d, l] = await Promise.all([api.get(`/api/trips/${id}/`), api.get(`/api/trips/${id}/location/latest/`).catch(() => null)]);
-      setRouteStops(d.data.route_stops || []); setLatestLocation(l?.data || null);
-    } catch (e) { setErr(e?.response?.data?.detail || "Unable to load trip context."); setRouteStops([]); setLatestLocation(null); }
-  };
+      const response = await api.get("/api/transport/my-bus/");
+      setAssignedBus(response.data.bus || null);
+    } catch {
+      // Optional helper assignment.
+    }
+  }, []);
 
-  const loadAvail = async (tid, from, to) => {
-    if (!tid || !from || !to) { setSeats([]); setSelectedSeatIds([]); return; }
+  const loadTripContext = useCallback(async (id) => {
+    if (!id) {
+      setRouteStops([]);
+      setLatestLocation(null);
+      return;
+    }
+    try {
+      const [detailResponse, locationResponse] = await Promise.all([
+        api.get(`/api/trips/${id}/`),
+        api.get(`/api/trips/${id}/location/latest/`).catch(() => null),
+      ]);
+      setRouteStops(detailResponse.data.route_stops || []);
+      setLatestLocation(locationResponse?.data || null);
+      setErr("");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to load trip context.");
+      setRouteStops([]);
+      setLatestLocation(null);
+    }
+  }, []);
+
+  const loadAvailability = useCallback(async (tid, from, to) => {
+    if (!tid || !from || !to) {
+      setSeats([]);
+      setSelectedSeatIds([]);
+      return;
+    }
     setLoadingAvail(true);
-    try { const res = await api.get(`/api/bookings/trips/${tid}/availability/?from=${from}&to=${to}`); setSeats(res.data.seats || []); setSelectedSeatIds([]); setErr(""); }
-    catch (e) { setErr(e?.response?.data?.detail || "Unable to load availability."); setSeats([]); setSelectedSeatIds([]); }
-    finally { setLoadingAvail(false); }
-  };
+    try {
+      const response = await api.get(`/api/bookings/trips/${tid}/availability/?from=${from}&to=${to}`);
+      setSeats(response.data.seats || []);
+      setSelectedSeatIds([]);
+      setErr("");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to load availability.");
+      setSeats([]);
+      setSelectedSeatIds([]);
+    } finally {
+      setLoadingAvail(false);
+    }
+  }, []);
 
-  const loadAssignedBus = async () => {
-    try { const res = await api.get("/api/transport/my-bus/"); setAssignedBus(res.data.bus || null); }
-    catch { /* silent */ }
-  };
-
-  useEffect(() => { loadTrips(); loadAssignedBus(); const id = setInterval(() => loadTrips({ silent: true }), 20000); return () => clearInterval(id); }, []);
-  useEffect(() => { loadTripCtx(tripId); if (!tripId) return; const id = setInterval(() => loadTripCtx(tripId), 15000); return () => clearInterval(id); }, [tripId]);
   useEffect(() => {
-    if (routeStops.length < 2) { setFromOrder(""); setToOrder(""); return; }
-    setFromOrder(c => c || String(routeStops[0].stop_order));
-    setToOrder(c => c || String(routeStops[1].stop_order));
+    loadTrips();
+    loadAssignedBus();
+    const intervalId = setInterval(() => loadTrips({ silent: true }), 20000);
+    return () => clearInterval(intervalId);
+  }, [loadTrips, loadAssignedBus]);
+
+  useEffect(() => {
+    loadTripContext(tripId);
+    if (!tripId) return undefined;
+    const intervalId = setInterval(() => loadTripContext(tripId), 15000);
+    return () => clearInterval(intervalId);
+  }, [tripId, loadTripContext]);
+
+  useEffect(() => {
+    if (routeStops.length < 2) {
+      setFromOrder("");
+      setToOrder("");
+      return;
+    }
+    setFromOrder((current) => current || String(routeStops[0].stop_order));
+    setToOrder((current) => current || String(routeStops[1].stop_order));
   }, [routeStops]);
+
   useEffect(() => {
     if (!fromOrder || !toOrder) return;
-    if (Number(toOrder) <= Number(fromOrder)) { const n = routeStops.find(s => Number(s.stop_order) > Number(fromOrder)); setToOrder(n ? String(n.stop_order) : ""); return; }
-    loadAvail(tripId, fromOrder, toOrder);
-  }, [tripId, fromOrder, toOrder]);
+    if (Number(toOrder) <= Number(fromOrder)) {
+      const nextStopCandidate = routeStops.find((stop) => Number(stop.stop_order) > Number(fromOrder));
+      setToOrder(nextStopCandidate ? String(nextStopCandidate.stop_order) : "");
+      return;
+    }
+    loadAvailability(tripId, fromOrder, toOrder);
+  }, [tripId, fromOrder, toOrder, routeStops, loadAvailability]);
 
-  const toggleSeat = id => setSelectedSeatIds(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
+  const toggleSeat = (seatId) => {
+    setSelectedSeatIds((current) => (
+      current.includes(seatId) ? current.filter((item) => item !== seatId) : [...current, seatId]
+    ));
+  };
 
   const submitOffline = async () => {
-    if (!tripId || !fromOrder || !toOrder || !selectedSeatIds.length) { setErr("Choose trip, segment, and at least one seat."); return; }
-    setOfflineBusy(true); setErr(""); setMsg("");
-    try { const res = await api.post(`/api/bookings/trips/${tripId}/offline/`, { from_stop_order: +fromOrder, to_stop_order: +toOrder, seat_ids: selectedSeatIds }); setMsg(`Offline boarding #${res.data.offline_boarding.id} saved.`); await loadAvail(tripId, fromOrder, toOrder); }
-    catch (e) { setErr(e?.response?.data?.detail || "Offline update failed."); }
-    finally { setOfflineBusy(false); }
+    if (!tripId || !fromOrder || !toOrder || !selectedSeatIds.length) {
+      setErr("Choose trip, segment, and at least one seat.");
+      return;
+    }
+    setOfflineBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/bookings/trips/${tripId}/offline/`, {
+        from_stop_order: Number(fromOrder),
+        to_stop_order: Number(toOrder),
+        seat_ids: selectedSeatIds,
+      });
+      setMsg(`Offline boarding #${response.data.offline_boarding.id} saved.`);
+      await loadAvailability(tripId, fromOrder, toOrder);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Offline update failed.");
+    } finally {
+      setOfflineBusy(false);
+    }
   };
 
   const verifyCash = async () => {
-    if (!verifyBookingId.trim()) { setErr("Enter a booking ID."); return; }
-    setVerifyBusy(true); setErr(""); setMsg(""); setVerifiedPayment(null);
-    try { const res = await api.post(`/api/payments/cash/verify/${verifyBookingId.trim()}/`); setVerifiedPayment(res.data); setMsg(`Payment verified for booking #${verifyBookingId.trim()}.`); }
-    catch (e) { setErr(e?.response?.data?.detail || "Verification failed."); }
-    finally { setVerifyBusy(false); }
+    if (!verifyBookingId.trim()) {
+      setErr("Enter a booking ID.");
+      return;
+    }
+    setVerifyBusy(true);
+    setErr("");
+    setMsg("");
+    setVerifiedPayment(null);
+    try {
+      const response = await api.post(`/api/payments/cash/verify/${verifyBookingId.trim()}/`);
+      setVerifiedPayment(response.data);
+      setMsg(`Payment verified for booking #${verifyBookingId.trim()}.`);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Verification failed.");
+    } finally {
+      setVerifyBusy(false);
+    }
   };
 
-  const handleLogout = () => { clearToken(); navigate("/auth/login"); };
+  const handleLogout = () => {
+    clearToken();
+    navigate("/auth/login");
+  };
 
   if (loadingTrips) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${t.page}`}>
-        <div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading helper dashboard…</p></div>
+      <div style={theme} className="flex min-h-screen items-center justify-center bg-[var(--hlp-bg)] text-[var(--hlp-text)]">
+        <div className="text-center">
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--hlp-purple)] border-t-transparent" />
+          <p className="mt-4 text-sm font-medium text-[var(--hlp-muted)]">Loading helper workspace...</p>
+        </div>
       </div>
     );
   }
 
-  const stopBg = isDark ? "bg-white/5 border-white/10" : "bg-white border-slate-200";
-
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
-      <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 py-3 ${t.nav}`}>
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+    <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--hlp-bg),rgba(255,243,249,0.98))] text-[var(--hlp-text)]">
+      <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[rgba(255,247,251,0.92)] px-4 py-4 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-sm font-black text-white">MB</div>
-            <div><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus Helper</p><p className={`text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Helper"}</p></div>
+            <div className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-sm font-black text-white shadow-[var(--hlp-shadow-strong)]">{helperInitials}</div>
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--hlp-shadow)]">
+              <span className="text-[0.62rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
+            </div>
+            <div>
+              <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-purple)]">MetroBus Helper</p>
+              <p className="text-base font-black">{user?.full_name || "Helper"}</p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Pill color={trips.length ? "emerald" : "slate"} isDark={isDark}><LiveDot active={trips.length > 0} /><span className="ml-1.5">{trips.length} live trip{trips.length !== 1 ? "s" : ""}</span></Pill>
-            <ThemeToggle isDark={isDark} toggle={toggle} />
-            <Btn tone="ghost" onClick={() => loadTrips()} className="!py-2 !px-3 text-xs">↻</Btn>
-            <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
+          <div className="flex items-center gap-2">
+            <Chip tone={trips.length ? "live" : "soft"}>{trips.length ? `${trips.length} Live` : "Standby"}</Chip>
+            <HeaderButton onClick={() => loadTrips()}>
+              <Icon name="refresh" />
+            </HeaderButton>
+            <HeaderButton onClick={toggle}>
+              <Icon name={isDark ? "sun" : "moon"} />
+            </HeaderButton>
+            <HeaderButton onClick={handleLogout} className="text-[var(--hlp-plum)]">
+              <Icon name="logout" />
+            </HeaderButton>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-4 py-5 space-y-5">
-        {err && <div className={`rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
-        {msg && <div className={`rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {msg}</div>}
+      <main className="mx-auto max-w-5xl px-4 py-5 pb-32">
+        {err ? <div className="mb-4 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
+        {msg ? <div className="mb-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
-        {assignedBus && (
-          <GlassCard t={t} className={`bg-gradient-to-br border-indigo-500/30 ${isDark ? "from-indigo-900/30 to-[#0a0e1a]" : "from-indigo-50 to-[#f0f4f8]"}`}>
-            <div className="flex items-center justify-between mb-2">
-              <SLabel t={t}>My Assigned Bus</SLabel>
-              <Pill color="indigo" isDark={isDark}>ACTIVE ASSIGNMENT</Pill>
+        <section className="relative overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
+          <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
+          <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
+          <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{selectedTrip ? "LIVE\nSUPPORT" : "READY ON\nSHIFT"}</h1>
+          <p className="mt-4 text-base font-medium text-white/84">
+            {selectedTrip ? `${selectedTrip.route_name} is ready for boarding, payment checks, and route support.` : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
+          </p>
+          <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
+            <div className="flex items-center gap-4">
+              <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
+              <div>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/74">Assigned Bus</p>
+                <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || selectedTrip?.bus_plate || "--"}</p>
+                <p className="mt-1 text-sm text-white/78">{assignedBus?.capacity || "--"} seats - Driver: {selectedTrip?.driver_name || assignedBus?.driver_name || "--"}</p>
+              </div>
             </div>
-            <div className="flex items-baseline gap-3">
-              <p className={`text-3xl font-black ${t.text}`}>{assignedBus.plate_number}</p>
-              <p className={`text-sm font-semibold ${t.textSub}`}>{assignedBus.capacity} seats</p>
-            </div>
-            <p className={`text-xs mt-2 ${t.textSub}`}>Driver: {assignedBus.driver_name || "Unassigned"}</p>
-          </GlassCard>
-        )}
+          </div>
+        </section>
 
-        {/* Hero */}
-        <div className={`relative overflow-hidden rounded-2xl border p-6 bg-gradient-to-br ${isDark ? "from-indigo-900/60 via-[#0d1230] to-[#0a0e1a] border-indigo-700/30" : "from-indigo-50 via-white to-[#f0f4f8] border-indigo-200"}`}>
-          <div className="relative">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500 mb-1">Active Trip</p>
-            <h1 className={`text-2xl font-black ${t.text}`}>{selectedTrip?.route_name || "No active trip"}</h1>
-            <div className={`mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm ${t.textSub}`}><span>🚌 {selectedTrip?.bus_plate || "—"}</span><span>👤 {selectedTrip?.driver_name || "—"}</span><span>📍 #{selectedTrip?.id || "—"}</span></div>
-            <div className="mt-4">
-              <select value={tripId} onChange={e => { setTripId(e.target.value); setMsg(""); setErr(""); setVerifiedPayment(null); }}
-                className={`rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-indigo-500 w-full sm:w-auto ${t.input}`} style={{ backgroundColor: "var(--select-bg)", color: "var(--input-text)" }}>
-                {trips.length === 0 && <option value="">No live trips</option>}
-                {trips.map(x => <option key={x.id} value={x.id}>{x.route_name} | {x.bus_plate}</option>)}
-              </select>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              {[{ label: "Started", v: fmt(selectedTrip?.started_at) }, { label: "Last GPS", v: latestLocation ? fmt(latestLocation.recorded_at) : "Waiting…" }, { label: "Status", v: selectedTrip?.status || "—" }].map(r => (
-                <div key={r.label} className={`rounded-xl border px-4 py-3 ${stopBg}`}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{r.label}</p><p className={`text-sm font-semibold mt-1 truncate ${t.text}`}>{r.v}</p></div>
+        <div className="mt-5 grid grid-cols-3 gap-3">
+          <StatCard label="Open Seats" value={availableSeats.length} note="Current segment" icon="ticket" />
+          <StatCard label="Occupied" value={occupiedCount} note="Already reserved" icon="shield" />
+          <StatCard label="Marked" value={selectedCount} note="Offline seats" icon="money" />
+        </div>
+
+        {activeTab === "trip" ? (
+          <div className="mt-5 space-y-5">
+            <SurfaceCard>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <SectionLabel>Live Trip</SectionLabel>
+                  <h2 className="mt-1 text-4xl font-black leading-[1.02]">Shift Dashboard</h2>
+                </div>
+                <Chip tone={selectedTrip ? "live" : "warn"}>{selectedTrip ? "Trip Active" : "No Trip"}</Chip>
+              </div>
+              <div className="mt-5">
+                <SelectField label="Select Live Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setVerifiedPayment(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: "No live trips available" }]} />
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  { label: "Trip ID", value: selectedTrip?.id || "--", note: "Active record", icon: "ticket" },
+                  { label: "Started", value: formatTime(selectedTrip?.started_at), note: formatDateTime(selectedTrip?.started_at), icon: "clock" },
+                  { label: "Driver", value: selectedTrip?.driver_name || "--", note: selectedTrip?.bus_plate || "--", icon: "profile" },
+                  { label: "Last GPS", value: latestLocation ? formatTime(latestLocation.recorded_at) : "--", note: livePoint ? "Signal live" : "Waiting for update", icon: "pin" },
+                ].map((card) => (
+                  <SurfaceCard key={card.label} className="!rounded-[1.7rem] !p-4">
+                    <div className="text-[var(--hlp-purple)]"><Icon name={card.icon} /></div>
+                    <p className="mt-5 text-[0.64rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-muted)]">{card.label}</p>
+                    <p className="mt-2 text-lg font-black">{card.value}</p>
+                    <p className="mt-1 text-xs text-[var(--hlp-muted)]">{card.note}</p>
+                  </SurfaceCard>
+                ))}
+              </div>
+            </SurfaceCard>
+
+            <SurfaceCard className="bg-[rgba(250,227,252,0.86)]">
+              <div className="flex items-start gap-3">
+                <div className="grid h-10 w-10 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--hlp-purple)]"><Icon name="alert" /></div>
+                <div>
+                  <SectionLabel>Staff Reminder</SectionLabel>
+                  <p className="text-lg font-black">Board offline passengers only after checking the correct trip segment.</p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--hlp-muted)]">The boarding workspace below keeps segment-based seat availability and cash verification tied to the same live trip.</p>
+                </div>
+              </div>
+            </SurfaceCard>
+          </div>
+        ) : null}
+
+        {activeTab === "boarding" ? (
+          <div className="mt-5 space-y-5">
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {routeStops.slice(0, 4).map((stop, index) => (
+                <button key={stop.stop_order} type="button" onClick={() => setFromOrder(String(stop.stop_order))} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
+                  {stop.stop?.name || `Stop ${stop.stop_order}`}
+                </button>
               ))}
             </div>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          {[{ label: "Open Seats", value: availableSeats.length, accent: "text-emerald-500" }, { label: "Occupied", value: occupiedCount, accent: "text-amber-500" }, { label: "Marked", value: selectedSeatIds.length, accent: "text-indigo-500" }].map(c => (
-            <GlassCard key={c.label} t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{c.label}</p><p className={`text-3xl font-black mt-2 ${c.accent}`}>{c.value}</p></GlassCard>
-          ))}
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
-          <div className="space-y-5">
-            {/* Segment */}
-            <GlassCard t={t}>
-              <div className="flex items-center justify-between mb-4"><SLabel t={t}>Segment</SLabel>{loadingAvail ? <Pill color="amber" isDark={isDark}>Refreshing…</Pill> : <Pill color="emerald" isDark={isDark}>Ready</Pill>}</div>
-              <div className="grid grid-cols-2 gap-3">
-                {[{ label: "From Stop", val: fromOrder, set: setFromOrder }, { label: "To Stop", val: toOrder, set: setToOrder }].map(f => (
-                  <div key={f.label}>
-                    <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{f.label}</label>
-                    <select value={f.val} onChange={e => f.set(e.target.value)} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} style={{ backgroundColor: "var(--select-bg)", color: "var(--input-text)" }}>
-                      {routeStops.map(s => <option key={s.stop_order} value={s.stop_order}>{s.stop_order}. {s.stop?.name}</option>)}
-                    </select>
-                  </div>
-                ))}
+            <SurfaceCard>
+              <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
+                <SelectField label="From" value={fromOrder} onChange={setFromOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
+                <button type="button" onClick={() => { const currentFrom = fromOrder; setFromOrder(toOrder); setToOrder(currentFrom); }} className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]">
+                  <Icon name="swap" className="h-6 w-6" />
+                </button>
+                <SelectField label="To" value={toOrder} onChange={setToOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
               </div>
-              {fromStop && toStop && <div className={`mt-3 rounded-xl border px-4 py-2.5 text-sm ${isDark ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>Segment: <span className="font-bold">{fromStop.stop?.name}</span> → <span className="font-bold">{toStop.stop?.name}</span></div>}
-              {routeStops.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{routeStops.map(item => <span key={item.stop_order} className={`rounded-full border px-2.5 py-1 text-[10px] ${t.tagBg}`}>{item.stop_order}. {item.stop?.name}</span>)}</div>}
-            </GlassCard>
-
-            {/* Seats */}
-            <GlassCard t={t}>
-              <div className="flex items-center justify-between mb-4"><SLabel t={t}>Seat Map — Mark Offline Passengers</SLabel>{markedLabels.length > 0 && <Pill color="indigo" isDark={isDark}>{markedLabels.join(", ")}</Pill>}</div>
-              {seats.length === 0 ? <p className={`text-sm py-2 ${t.textSub}`}>Select a trip and segment to load seats.</p> : <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">{seats.map(s => <SeatBtn key={s.seat_id} seat={s} selected={selectedSeatIds.includes(s.seat_id)} onClick={() => toggleSeat(s.seat_id)} t={t} />)}</div>}
-              <Btn tone="success" onClick={submitOffline} disabled={offlineBusy || !selectedSeatIds.length} className="mt-4 w-full !py-3.5">
-                {offlineBusy ? "Saving…" : `Save Offline Boarding (${selectedSeatIds.length} seat${selectedSeatIds.length !== 1 ? "s" : ""})`}
-              </Btn>
-            </GlassCard>
-          </div>
-
-          <div className="space-y-5">
-            {/* Cash verify */}
-            <GlassCard t={t} className={`bg-gradient-to-br ${isDark ? "from-indigo-900/40 to-transparent" : "from-indigo-50 to-transparent"}`}>
-              <SLabel t={t}>Cash Payment Verification</SLabel>
-              <p className={`text-xs mb-4 ${t.textSub}`}>Mark a booking as confirmed when a passenger pays cash on board.</p>
-              <div className="flex gap-2">
-                <input type="text" value={verifyBookingId} onChange={e => setVerifyBookingId(e.target.value)} placeholder="Enter Booking ID" className={`flex-1 rounded-xl border px-4 py-3 text-sm outline-none focus:border-indigo-500 ${t.input}`} />
-                <Btn tone="success" onClick={verifyCash} disabled={verifyBusy} className="!px-4">{verifyBusy ? "…" : "Verify"}</Btn>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <SectionLabel>Segment Status</SectionLabel>
+                <Chip tone={loadingAvail ? "warn" : "live"}>{loadingAvail ? "Refreshing Seats" : "Seats Ready"}</Chip>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                {[{ label: "Method", v: verifiedPayment?.method || "CASH" }, { label: "Status", v: verifiedPayment?.status || "—" }, { label: "Amount", v: verifiedPayment?.amount ? `NPR ${verifiedPayment.amount}` : "—" }].map(r => (
-                  <div key={r.label} className={`rounded-xl border px-3 py-3 ${isDark ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200"}`}>
-                    <p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{r.label}</p>
-                    <p className={`text-sm font-bold mt-1 ${verifiedPayment ? "text-emerald-500" : t.textSub}`}>{r.v}</p>
-                  </div>
-                ))}
+              <div className="mt-4 flex flex-wrap items-center gap-5 text-[0.72rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">
+                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full border border-[var(--hlp-border)] bg-white" />Open</span>
+                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[rgba(233,198,244,0.86)]" />Occupied</span>
+                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)]" />Selected</span>
               </div>
-            </GlassCard>
+            </SurfaceCard>
 
-            {/* Route stops */}
-            {routeStops.length > 0 && (
-              <GlassCard t={t}>
-                <SLabel t={t}>Route Stops ({routeStops.length})</SLabel>
-                <div className="space-y-0 max-h-64 overflow-y-auto pr-1">
-                  {routeStops.map((item, i) => (
-                    <div key={item.stop_order} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <span className={`mt-0.5 h-3 w-3 rounded-full flex-shrink-0 border-2 ${i === 0 ? "bg-emerald-500 border-emerald-400" : i === routeStops.length - 1 ? "bg-red-500 border-red-400" : `bg-transparent ${isDark ? "border-slate-600" : "border-slate-300"}`}`} />
-                        {i < routeStops.length - 1 && <span className={`w-px flex-1 min-h-[1.5rem] ${t.timelineLine}`} />}
-                      </div>
-                      <p className={`text-xs pb-3 ${t.textSub}`}>{item.stop?.name}</p>
-                    </div>
-                  ))}
+            <SurfaceCard className="overflow-hidden !p-0">
+              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
+                <SectionLabel>Seat Map</SectionLabel>
+                <p className="mt-1 text-lg font-black">Offline boarding workspace</p>
+              </div>
+              <div className="bg-[var(--hlp-soft)] px-4 py-5 sm:px-6">
+                {seats.length === 0 ? <div className="rounded-[1.8rem] bg-white/70 px-5 py-8 text-center text-sm font-medium text-[var(--hlp-muted)]">Select a live trip and a valid segment to load available seats.</div> : <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">{seats.map((seat) => <SeatNode key={seat.seat_id} seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => toggleSeat(seat.seat_id)} />)}</div>}
+                <div className="mx-auto mt-6 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
+                  <span className="uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Selected seats:</span>
+                  {selectedSeatLabels.length ? selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] px-3 py-1 text-xs text-white">{label}</span>) : <span className="text-[var(--hlp-muted)]">None</span>}
                 </div>
-              </GlassCard>
-            )}
+              </div>
+            </SurfaceCard>
+
+            <PrimaryButton tone="primary" onClick={submitOffline} disabled={offlineBusy || !selectedSeatIds.length} className="w-full !py-5 !text-base">
+              <Icon name="ticket" />
+              {offlineBusy ? "Saving Offline Boarding" : "Save Offline Boarding"}
+            </PrimaryButton>
+            <p className="text-center text-sm text-[var(--hlp-muted)]">Boarding records remain available for staff workflows even when passenger devices are offline.</p>
           </div>
+        ) : null}
+
+        {activeTab === "verify" ? (
+          <div className="mt-5 space-y-5">
+            <div className="px-1">
+              <SectionLabel>Transit Verification</SectionLabel>
+              <h2 className="mt-2 text-6xl font-black leading-[0.9]">Verify Payment</h2>
+              <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Enter the booking ID provided by the commuter to validate an onboard cash transaction before confirming it in the system.</p>
+            </div>
+            <SurfaceCard className="rounded-[2.4rem]">
+              <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">Booking ID</label>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                <div className="relative">
+                  <input type="text" value={verifyBookingId} onChange={(event) => setVerifyBookingId(event.target.value)} placeholder="MB-8829-441" className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold text-[var(--hlp-text)] outline-none" />
+                  <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--hlp-purple)]"><Icon name="qr" className="h-6 w-6" /></span>
+                </div>
+                <PrimaryButton tone="primary" onClick={verifyCash} disabled={verifyBusy} className="!px-8 !py-4">
+                  {verifyBusy ? "Verifying" : "Verify"}
+                </PrimaryButton>
+              </div>
+            </SurfaceCard>
+            <SurfaceCard className="rounded-[2.4rem] border-[rgba(215,149,239,0.45)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Chip tone="soft">Verification Result</Chip>
+                  <h3 className="mt-5 text-4xl font-black leading-tight">Commuter Ticket</h3>
+                </div>
+                <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="shield" className="h-8 w-8" /></div>
+              </div>
+              <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                {[{ label: "Payment", value: verifiedPayment?.method || "Cash" }, { label: "Status", value: verifiedPayment?.status || "Pending" }, { label: "Amount", value: verifiedPayment?.amount ? `Rs. ${verifiedPayment.amount}` : "--" }].map((item) => (
+                  <div key={item.label}>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{item.label}</p>
+                    <p className={`mt-3 text-2xl font-black ${item.label === "Status" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </SurfaceCard>
+            <PrimaryButton tone="danger" className="w-full !py-5 !text-base">
+              Confirm Payment
+              <Icon name="shield" />
+            </PrimaryButton>
+            <p className="text-center text-sm text-[var(--hlp-muted)]">By confirming, you acknowledge the receipt of physical cash from the commuter.</p>
+          </div>
+        ) : null}
+
+        {activeTab === "route" ? (
+          <div className="mt-5 space-y-5">
+            <div className="px-1">
+              <SectionLabel>Live Journey</SectionLabel>
+              <h2 className="mt-2 text-4xl font-black">{selectedTrip?.route_name || "No Route Selected"}</h2>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <Chip tone="soft">Express</Chip>
+                <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeStops[routeStops.length - 1]?.stop?.name || "Destination pending"}</p>
+              </div>
+            </div>
+            <SurfaceCard>
+              <div className="space-y-0">
+                {routeStops.length === 0 ? <p className="py-2 text-sm text-[var(--hlp-muted)]">No route stops loaded for this trip yet.</p> : routeStops.map((stop, index) => {
+                  const isCurrent = index === currentStopIndex;
+                  const isFinal = index === routeStops.length - 1;
+                  return (
+                    <div key={`${stop.stop_order}-${stop.stop?.name}`} className="flex gap-4">
+                      <div className="flex flex-col items-center">
+                        <span className={`mt-1 grid h-10 w-10 place-items-center rounded-full border-2 ${isCurrent ? "border-transparent bg-[var(--hlp-purple)] text-white" : isFinal ? "border-dashed border-[var(--hlp-purple)] text-[var(--hlp-purple)]" : "border-[var(--hlp-border)] bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
+                          <Icon name={isFinal ? "pin" : "bus"} className="h-4 w-4" />
+                        </span>
+                        {index < routeStops.length - 1 ? <span className="min-h-[2.9rem] w-px bg-[linear-gradient(180deg,rgba(170,98,222,0.94),rgba(237,210,247,0.85))]" /> : null}
+                      </div>
+                      <div className="flex-1 pb-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className={`text-2xl font-black ${isCurrent ? "text-[var(--hlp-purple)]" : ""}`}>{stop.stop?.name || "--"}</p>
+                            <p className="mt-1 text-[0.74rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">{isCurrent ? "Current stop" : isFinal ? "Final destination" : "Upcoming stop"}</p>
+                          </div>
+                          <p className="text-lg font-black text-[var(--hlp-text)]">{index === currentStopIndex ? formatTime(latestLocation?.recorded_at || selectedTrip?.started_at) : `${9 + index}:${index === 0 ? "10" : `${index}5`}`}</p>
+                        </div>
+                        {isCurrent ? <div className="mt-3 rounded-[1.4rem] border border-[rgba(140,18,235,0.25)] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium text-[var(--hlp-plum)]">Boarding support is active here. Next movement is toward {upcomingStop?.stop?.name || "the next stop"}.</div> : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </SurfaceCard>
+            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]">
+              <div className="flex items-start justify-between gap-4">
+                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/14"><Icon name="qr" className="h-7 w-7" /></div>
+                <Chip tone="dark" className="bg-white/18">Active Pass</Chip>
+              </div>
+              <p className="mt-6 text-sm font-medium text-white/76">Registered user</p>
+              <p className="mt-1 text-3xl font-black">Morning Commute</p>
+              <div className="mt-5 border-t border-white/18 pt-4 text-sm font-semibold text-white/86">Valid until {formatTime(selectedTrip?.started_at)}</div>
+            </SurfaceCard>
+            <SurfaceCard className="overflow-hidden !p-0">
+              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
+                <SectionLabel>Map Preview</SectionLabel>
+                <p className="mt-1 text-lg font-black">{routeCondition}</p>
+              </div>
+              <div className="h-72 w-full">
+                <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+                  <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
+                  <MapViewport points={mapPoints} />
+                  {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: "#8c12eb", weight: 5, opacity: 0.9 }} /> : null}
+                  {routeStops.map((stop, index) => {
+                    const lat = Number(stop.stop?.lat);
+                    const lng = Number(stop.stop?.lng);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                    const current = index === currentStopIndex;
+                    return <CircleMarker key={`${stop.stop_order}-${stop.stop?.name}`} center={[lat, lng]} radius={current ? 8 : 5} pathOptions={{ color: current ? "#8c12eb" : "#c48cdd", fillColor: current ? "#8c12eb" : "#f1daf7", fillOpacity: 0.95 }}><Popup>{stop.stop_order}. {stop.stop?.name}</Popup></CircleMarker>;
+                  })}
+                  {livePoint ? <CircleMarker center={livePoint} radius={10} pathOptions={{ color: "#10b981", fillColor: "#34d399", fillOpacity: 1 }}><Popup>Latest helper-linked trip location</Popup></CircleMarker> : null}
+                </MapContainer>
+              </div>
+              <div className="px-5 py-4">
+                <PrimaryButton tone="ghost" className="w-full">Open Full Map</PrimaryButton>
+              </div>
+            </SurfaceCard>
+            <SurfaceCard className="border-dashed">
+              <SectionLabel>Route Weather</SectionLabel>
+              <div className="mt-4 flex items-center gap-4">
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="thermo" className="h-7 w-7" /></div>
+                <div>
+                  <p className="text-4xl font-black">24C</p>
+                  <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">Clear skies for travel in Pokhara</p>
+                </div>
+              </div>
+            </SurfaceCard>
+          </div>
+        ) : null}
+      </main>
+      <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[rgba(255,252,255,0.92)] p-2 shadow-[var(--hlp-shadow)] backdrop-blur-xl">
+        <div className="grid grid-cols-4 gap-2">
+          {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}
         </div>
       </div>
     </div>
