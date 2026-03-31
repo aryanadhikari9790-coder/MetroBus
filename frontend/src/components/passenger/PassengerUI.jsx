@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
   createBusIcon,
@@ -364,14 +364,22 @@ export function PlannerCard({
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => onSelectTrip?.(trip.id)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSelectTrip?.(trip.id);
+                      }}
                       className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
                     >
                       Accept
                     </button>
                     <button
                       type="button"
-                      onClick={() => onDeclineTrip?.(trip.id)}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onDeclineTrip?.(trip.id);
+                      }}
                       className="rounded-full border border-[var(--mb-border)] bg-white px-4 py-2.5 text-sm font-black text-[var(--mb-text)]"
                     >
                       Decline
@@ -531,7 +539,7 @@ export function NearbyMapCard({ stops, displayLine, selectedTrip, matchedTrips =
         ) : null}
         <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-black/32 px-4 py-2 text-sm font-semibold text-white backdrop-blur">
           <Icon name="pin" className="h-4 w-4" />
-          {selectedTrip?.pickup_stop_name || stops[0]?.name || "Downtown Hub"} � {selectedTrip ? fmtEta(selectedTrip.eta) : "Nearby now"}
+          {selectedTrip?.pickup_stop_name || stops[0]?.name || "Downtown Hub"} • {selectedTrip ? fmtEta(selectedTrip.eta) : "Nearby now"}
         </div>
         {selectedTripId && matchedTrips.length ? (
           <div className="absolute bottom-16 right-4 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[var(--mb-shadow-strong)]">
@@ -597,12 +605,16 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
     <section className="mt-5 rounded-[34px] bg-[var(--mb-card)] p-5 shadow-[var(--mb-shadow)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Reserve seats</p>
-          <h3 className="mt-2 text-2xl font-black text-[var(--mb-text)]">{trip.bus_plate || "MetroBus"} • {pickupStop?.name || "Pickup"} → {dropStop?.name || "Drop"}</h3>
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Step 1 • Reserve seats</p>
+          <h3 className="mt-2 text-2xl font-black text-[var(--mb-text)]">{trip.bus_plate || "MetroBus"} • {pickupStop?.name || "Pickup"} to {dropStop?.name || "Drop"}</h3>
         </div>
         <div className="rounded-full bg-[var(--mb-bg-alt)] px-4 py-2 text-sm font-black text-[var(--mb-purple)]">
           {trip.open_seats ?? 0} seats
         </div>
+      </div>
+
+      <div className="mt-4 rounded-[24px] bg-[linear-gradient(135deg,#fff7fd,#f5dcff)] px-4 py-3 text-sm font-medium text-[var(--mb-muted)]">
+        Accept a bus first, choose your seats, then confirm the booking to unlock Cash, eSewa, and Khalti payment.
       </div>
 
       <div className="mt-5">
@@ -636,17 +648,31 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
       </div>
 
       {lastBookingId ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {[
-            { label: "Cash", method: "CASH" },
-            { label: "Mock Online", method: "MOCK_ONLINE" },
-            { label: "eSewa", method: "ESEWA" },
-            { label: "Khalti", method: "KHALTI" },
-          ].map((option) => (
-            <button key={option.method} type="button" onClick={() => onPay(option.method)} disabled={paymentBusy} className="rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-4 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)] disabled:opacity-60">
-              {paymentBusy ? "Processing..." : option.label}
-            </button>
-          ))}
+        <div className="mt-4 space-y-3">
+          <div className="rounded-[24px] bg-[linear-gradient(135deg,#fff,#f8e5fb)] p-4">
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Step 2 • Choose payment</p>
+            <p className="mt-2 text-sm text-[var(--mb-muted)]">
+              Booking #{lastBookingId} is ready. Pay cash onboard or continue with your Nepali payment gateway.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { label: "Cash", method: "CASH", note: "Pay onboard" },
+              { label: "eSewa", method: "ESEWA", note: "Online payment" },
+              { label: "Khalti", method: "KHALTI", note: "Online payment" },
+            ].map((option) => (
+              <button
+                key={option.method}
+                type="button"
+                onClick={() => onPay(option.method)}
+                disabled={paymentBusy}
+                className="rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-4 text-left text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)] disabled:opacity-60"
+              >
+                <span className="block text-base">{paymentBusy ? "Processing..." : option.label}</span>
+                <span className="mt-1 block text-xs font-semibold text-[var(--mb-muted)]">{option.note}</span>
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </section>
@@ -781,7 +807,7 @@ export function HistoryCard({ booking, onDownload }) {
       </div>
       <div className="mt-5 border-t border-[var(--mb-border)] pt-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xl font-semibold italic text-[var(--mb-text)]">{booking.pickup_stop_name} → {booking.destination_stop_name}</p>
+          <p className="text-xl font-semibold italic text-[var(--mb-text)]">{booking.pickup_stop_name} to {booking.destination_stop_name}</p>
           <button type="button" onClick={onDownload} className="inline-flex items-center gap-2 text-lg font-black text-[var(--mb-purple)]">
             <Icon name="download" className="h-5 w-5" />
             Download Invoice
@@ -805,7 +831,7 @@ export function ProfileCard({ user, profileForm, setProfileForm, onSave, profile
       <p className="mt-2 text-2xl text-[var(--mb-muted)]">{user?.email || "Add your email"}</p>
       <div className="mt-6 flex items-center justify-center gap-10">
         <span className="text-sm font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">{user?.is_corporate_employee ? "PRO MEMBER" : "CITY RIDER"}</span>
-        <span className="text-xl font-black text-[var(--mb-purple)]">4.9 ★</span>
+        <span className="text-xl font-black text-[var(--mb-purple)]">4.9 star</span>
       </div>
       <div className="mt-6 grid gap-3 text-left md:grid-cols-2">
         <input className="rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-text)] outline-none" value={profileForm.full_name} onChange={(event) => setProfileForm((current) => ({ ...current, full_name: event.target.value }))} placeholder="Full name" />
@@ -903,3 +929,4 @@ export function BottomNav({ activeView, onChange }) {
     </div>
   );
 }
+

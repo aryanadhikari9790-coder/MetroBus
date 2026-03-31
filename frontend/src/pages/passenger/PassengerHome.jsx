@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearToken } from "../../auth";
 import { useAuth } from "../../AuthContext";
@@ -43,6 +43,7 @@ export default function PassengerHome() {
   const [matchedTrips, setMatchedTrips] = useState([]);
   const [dismissedMatchIds, setDismissedMatchIds] = useState([]);
   const [selectedTripId, setSelectedTripId] = useState("");
+  const [acceptedTripId, setAcceptedTripId] = useState("");
   const [seats, setSeats] = useState([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
   const [lastBookingId, setLastBookingId] = useState(null);
@@ -64,6 +65,7 @@ export default function PassengerHome() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [now, setNow] = useState(Date.now());
+  const bookingSectionRef = useRef(null);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10000);
@@ -95,6 +97,7 @@ export default function PassengerHome() {
   );
   const displayTrips = matchedTrips.length ? visibleMatchedTrips : routeFeed;
   const selectedTrip = displayTrips.find((trip) => String(trip.id) === String(selectedTripId)) || displayTrips[0] || null;
+  const acceptedTrip = visibleMatchedTrips.find((trip) => String(trip.id) === String(acceptedTripId)) || null;
   const routeStops = useMemo(() => (
     selectedTrip ? tripContexts[selectedTrip.id]?.route_stops || [] : []
   ), [selectedTrip, tripContexts]);
@@ -204,9 +207,13 @@ export default function PassengerHome() {
   }, [loadBase, loadBookings]);
 
   useEffect(() => {
-    if (!selectedTrip?.id || !selectedTrip.from_order || !selectedTrip.to_order) return;
-    loadSeats(selectedTrip.id, selectedTrip.from_order, selectedTrip.to_order);
-  }, [selectedTrip?.from_order, selectedTrip?.id, selectedTrip?.to_order]);
+    if (!acceptedTrip?.id || !acceptedTrip.from_order || !acceptedTrip.to_order) {
+      setSeats([]);
+      setSelectedSeatIds([]);
+      return;
+    }
+    loadSeats(acceptedTrip.id, acceptedTrip.from_order, acceptedTrip.to_order);
+  }, [acceptedTrip?.from_order, acceptedTrip?.id, acceptedTrip?.to_order]);
 
   useEffect(() => {
     if (routePolyline.length < 2) { setRoadPolyline([]); return; }
@@ -244,6 +251,7 @@ export default function PassengerHome() {
     if (String(pickupStopId) === String(dropStopId)) { setErr("Pickup and destination must be different."); return; }
     setFindingRoutes(true); setErr(""); setMsg("");
     setDismissedMatchIds([]);
+    setAcceptedTripId("");
     try {
       const ctxMap = await ensureCtx(trips);
       const matches = [];
@@ -299,11 +307,21 @@ export default function PassengerHome() {
   };
   const acceptMatchedTrip = (tripId) => {
     setSelectedTripId(String(tripId));
-    setPlannerOpen(true);
+    setAcceptedTripId(String(tripId));
+    setPlannerOpen(false);
+    setLastBookingId(null);
+    setLastBookingSummary(null);
+    setSelectedSeatIds([]);
     setErr("");
-    setMsg("Bus selected. You can continue with seat booking below.");
+    setMsg("Bus selected. Choose your seat below.");
+    setTimeout(() => bookingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
   };
   const declineMatchedTrip = (tripId) => {
+    if (String(acceptedTripId) === String(tripId)) {
+      setAcceptedTripId("");
+      setLastBookingId(null);
+      setLastBookingSummary(null);
+    }
     setDismissedMatchIds((current) => (
       current.includes(String(tripId)) ? current : [...current, String(tripId)]
     ));
@@ -312,12 +330,15 @@ export default function PassengerHome() {
   const toggleSeat = (seatId) => setSelectedSeatIds((current) => current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId]);
 
   const bookSeats = async () => {
-    if (!selectedTrip || !selectedSeatIds.length) { setErr("Select a live bus and at least one seat."); return; }
+    if (!acceptedTrip || !selectedSeatIds.length) { setErr("Accept a live bus and choose at least one seat."); return; }
     setBookingBusy(true); setErr(""); setMsg("");
     try {
-      const response = await api.post(`/api/bookings/trips/${selectedTrip.id}/book/`, { from_stop_order: selectedTrip.from_order, to_stop_order: selectedTrip.to_order, seat_ids: selectedSeatIds });
+      const response = await api.post(`/api/bookings/trips/${acceptedTrip.id}/book/`, { from_stop_order: acceptedTrip.from_order, to_stop_order: acceptedTrip.to_order, seat_ids: selectedSeatIds });
       setLastBookingId(response.data.id); setLastBookingSummary(response.data); setTicketBookingId(response.data.id);
-      setMsg(`Booking #${response.data.id} confirmed.`); await loadSeats(selectedTrip.id, selectedTrip.from_order, selectedTrip.to_order); await loadBookings({ silent: true }); setActiveView("rides");
+      setMsg(`Booking #${response.data.id} confirmed. Choose Cash, eSewa, or Khalti below.`);
+      await loadSeats(acceptedTrip.id, acceptedTrip.from_order, acceptedTrip.to_order);
+      await loadBookings({ silent: true });
+      setTimeout(() => bookingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
     } catch (error) { setErr(error?.response?.data?.detail || "Booking failed."); }
     finally { setBookingBusy(false); }
   };
@@ -466,22 +487,24 @@ export default function PassengerHome() {
               </div>
             </section>
 
-            {visibleMatchedTrips.length ? (
-              <ReservationBuilder
-                trip={selectedTrip}
-                seats={seats}
-                selectedSeatIds={selectedSeatIds}
-                onSeatToggle={toggleSeat}
-                onBook={bookSeats}
-                onPay={pay}
-                bookingBusy={bookingBusy}
-                paymentBusy={paymentBusy}
-                loadingSeats={loadingSeats}
-                lastBookingId={lastBookingId}
-                lastBookingSummary={lastBookingSummary}
-                pickupStop={pickupStop}
-                dropStop={dropStop}
-              />
+            {acceptedTrip ? (
+              <div ref={bookingSectionRef}>
+                <ReservationBuilder
+                  trip={acceptedTrip}
+                  seats={seats}
+                  selectedSeatIds={selectedSeatIds}
+                  onSeatToggle={toggleSeat}
+                  onBook={bookSeats}
+                  onPay={pay}
+                  bookingBusy={bookingBusy}
+                  paymentBusy={paymentBusy}
+                  loadingSeats={loadingSeats}
+                  lastBookingId={lastBookingId}
+                  lastBookingSummary={lastBookingSummary}
+                  pickupStop={pickupStop}
+                  dropStop={dropStop}
+                />
+              </div>
             ) : null}
 
             <button
