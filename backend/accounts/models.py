@@ -1,12 +1,16 @@
-from django.db import models
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.db import models
+from django.utils import timezone
+
+from .utils import normalize_nepal_phone
 
 
 class UserManager(BaseUserManager):
     def create_user(self, phone, password=None, **extra_fields):
         if not phone:
             raise ValueError("Phone is required")
-        phone = str(phone).strip()
+        phone = normalize_nepal_phone(phone)
 
         user = self.model(phone=phone, **extra_fields)
         user.set_password(password)
@@ -37,6 +41,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone = models.CharField(max_length=20, unique=True)
     email = models.EmailField(blank=True, null=True, unique=True)
     full_name = models.CharField(max_length=150)
+    phone_verified = models.BooleanField(default=False)
+    home_location_label = models.CharField(max_length=255, blank=True, default="")
+    home_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    home_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    is_corporate_employee = models.BooleanField(default=False)
+    office_location_label = models.CharField(max_length=255, blank=True, default="")
+    office_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    office_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.PASSENGER)
 
@@ -52,3 +64,36 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.full_name} ({self.phone})"
+
+
+class PhoneOTP(models.Model):
+    class Purpose(models.TextChoices):
+        REGISTER = "REGISTER", "Passenger registration"
+
+    phone = models.CharField(max_length=20, db_index=True)
+    purpose = models.CharField(max_length=20, choices=Purpose.choices, default=Purpose.REGISTER)
+    code_hash = models.CharField(max_length=255)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def set_code(self, code: str):
+        self.code_hash = make_password(code)
+
+    def matches(self, code: str) -> bool:
+        return check_password(str(code or ""), self.code_hash)
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_consumed(self) -> bool:
+        return self.consumed_at is not None
+
+    def consume(self):
+        self.consumed_at = timezone.now()
+        self.save(update_fields=["consumed_at"])

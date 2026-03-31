@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .serializers import PhoneTokenObtainPairSerializer
-from .views import RegisterView, MeView, AdminDashboardView, AdminUserListCreateView
+from .views import RegisterView, RegisterOTPRequestView, MeView, AdminDashboardView, AdminUserListCreateView
 
 
 class PhoneTokenObtainPairView(TokenObtainPairView):
@@ -9,6 +9,7 @@ class PhoneTokenObtainPairView(TokenObtainPairView):
 
 
 urlpatterns = [
+    path("otp/request/", RegisterOTPRequestView.as_view(), name="register-otp-request"),
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", PhoneTokenObtainPairView.as_view(), name="login"),
     path("refresh/", TokenRefreshView.as_view(), name="refresh"),

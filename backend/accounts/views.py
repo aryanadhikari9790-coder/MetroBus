@@ -1,6 +1,11 @@
+import os
+import random
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Sum, Q
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,8 +14,9 @@ from bookings.models import Booking
 from payments.models import Payment
 from transport.models import Route, Stop, Bus, Seat
 from trips.models import Trip
+from .models import PhoneOTP
 from .serializers import (
-    RegisterSerializer, MeSerializer, MeUpdateSerializer,
+    RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
     AdminCreateUserSerializer, AdminUserListSerializer,
 )
 
@@ -20,6 +26,48 @@ User = get_user_model()
 class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = RegisterSerializer
+
+
+class RegisterOTPRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = RegisterOTPRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        phone = serializer.validated_data["phone"]
+        recent_otp = (
+            PhoneOTP.objects.filter(phone=phone, purpose=PhoneOTP.Purpose.REGISTER)
+            .order_by("-created_at")
+            .first()
+        )
+        if recent_otp and recent_otp.created_at >= timezone.now() - timedelta(seconds=45):
+            return Response({"detail": "Please wait a few seconds before requesting another OTP."}, status=429)
+
+        code = f"{random.randint(0, 999999):06d}"
+        otp = PhoneOTP(
+            phone=phone,
+            purpose=PhoneOTP.Purpose.REGISTER,
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        otp.set_code(code)
+        otp.save()
+
+        delivery = os.getenv("OTP_PROVIDER", "console").strip().lower() or "console"
+        # For now we support console/dev delivery. Hook your SMS provider here later.
+        print(f"[MetroBus OTP][{delivery}] Registration OTP for {phone}: {code}")
+
+        payload = {
+            "message": f"OTP sent to {phone}. It will expire in 5 minutes.",
+            "phone": phone,
+            "delivery": delivery,
+            "expires_in_seconds": 300,
+        }
+        if delivery == "console":
+            payload["dev_code"] = code
+            payload["detail"] = "SMS provider not configured yet. Using console OTP for now."
+
+        return Response(payload, status=201)
 
 
 class MeView(APIView):

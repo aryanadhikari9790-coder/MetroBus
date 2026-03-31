@@ -1,6 +1,11 @@
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
+from .models import PhoneOTP
+from .utils import build_full_name, normalize_nepal_phone
 
 User = get_user_model()
 
@@ -8,30 +13,169 @@ User = get_user_model()
 class PhoneTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = User.USERNAME_FIELD  # resolves to "phone"
 
+    def validate(self, attrs):
+        attrs = attrs.copy()
+        try:
+            attrs[self.username_field] = normalize_nepal_phone(attrs.get(self.username_field))
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({self.username_field: exc.messages})
+        return super().validate(attrs)
+
+
+class RegisterOTPRequestSerializer(serializers.Serializer):
+    phone = serializers.CharField()
+
+    def validate_phone(self, value):
+        try:
+            phone = normalize_nepal_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+
+        if User.objects.filter(phone=phone).exists():
+            raise serializers.ValidationError("An account with this phone number already exists.")
+        return phone
+
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
+    first_name = serializers.CharField(write_only=True, max_length=80)
+    middle_name = serializers.CharField(write_only=True, max_length=80, required=False, allow_blank=True)
+    last_name = serializers.CharField(write_only=True, max_length=80)
+    otp_code = serializers.CharField(write_only=True, min_length=4, max_length=6)
+    home_location_label = serializers.CharField(max_length=255)
+    home_lat = serializers.DecimalField(max_digits=9, decimal_places=6)
+    home_lng = serializers.DecimalField(max_digits=9, decimal_places=6)
+    is_corporate_employee = serializers.BooleanField(required=False, default=False)
+    office_location_label = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    office_lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
+    office_lng = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
 
     class Meta:
         model = User
-        fields = ("full_name", "phone", "email", "password")
+        fields = (
+            "first_name",
+            "middle_name",
+            "last_name",
+            "phone",
+            "email",
+            "password",
+            "otp_code",
+            "home_location_label",
+            "home_lat",
+            "home_lng",
+            "is_corporate_employee",
+            "office_location_label",
+            "office_lat",
+            "office_lng",
+        )
+
+    def validate_phone(self, value):
+        try:
+            phone = normalize_nepal_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+
+        if User.objects.filter(phone=phone).exists():
+            raise serializers.ValidationError("An account with this phone number already exists.")
+        return phone
+
+    def validate_email(self, value):
+        if value in ("", None):
+            return None
+
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        is_corporate = attrs.get("is_corporate_employee", False)
+
+        if is_corporate:
+            missing = [
+                field
+                for field in ("office_location_label", "office_lat", "office_lng")
+                if attrs.get(field) in ("", None)
+            ]
+            if missing:
+                raise serializers.ValidationError(
+                    {"office_location_label": "Office location is required for corporate employees."}
+                )
+        else:
+            attrs["office_location_label"] = ""
+            attrs["office_lat"] = None
+            attrs["office_lng"] = None
+
+        otp = (
+            PhoneOTP.objects.filter(
+                phone=attrs["phone"],
+                purpose=PhoneOTP.Purpose.REGISTER,
+                consumed_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if not otp or not otp.matches(attrs["otp_code"]):
+            raise serializers.ValidationError({"otp_code": "Invalid or expired OTP."})
+
+        attrs["_otp"] = otp
+        attrs["full_name"] = build_full_name(
+            attrs["first_name"],
+            attrs.get("middle_name", ""),
+            attrs["last_name"],
+        )
+        return attrs
 
     def create(self, validated_data):
+        otp = validated_data.pop("_otp")
+        validated_data.pop("otp_code", None)
+        validated_data.pop("first_name", None)
+        validated_data.pop("middle_name", None)
+        validated_data.pop("last_name", None)
+
         # Passengers self-register only
-        return User.objects.create_user(
+        user = User.objects.create_user(
             phone=validated_data["phone"],
             password=validated_data["password"],
             full_name=validated_data["full_name"],
             email=validated_data.get("email"),
             role=User.Role.PASSENGER,
+            phone_verified=True,
             is_active=True,
+            home_location_label=validated_data["home_location_label"],
+            home_lat=validated_data["home_lat"],
+            home_lng=validated_data["home_lng"],
+            is_corporate_employee=validated_data.get("is_corporate_employee", False),
+            office_location_label=validated_data.get("office_location_label", ""),
+            office_lat=validated_data.get("office_lat"),
+            office_lng=validated_data.get("office_lng"),
         )
+        otp.consume()
+        return user
 
 
 class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "full_name", "phone", "email", "role", "is_staff", "is_superuser", "created_at")
+        fields = (
+            "id",
+            "full_name",
+            "phone",
+            "phone_verified",
+            "email",
+            "role",
+            "is_staff",
+            "is_superuser",
+            "home_location_label",
+            "home_lat",
+            "home_lng",
+            "is_corporate_employee",
+            "office_location_label",
+            "office_lat",
+            "office_lng",
+            "created_at",
+        )
 
 
 class MeUpdateSerializer(serializers.ModelSerializer):
@@ -54,7 +198,7 @@ class MeUpdateSerializer(serializers.ModelSerializer):
 class AdminUserListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "full_name", "phone", "email", "role", "is_active", "is_staff", "created_at")
+        fields = ("id", "full_name", "phone", "phone_verified", "email", "role", "is_active", "is_staff", "created_at")
 
 
 class AdminCreateUserSerializer(serializers.ModelSerializer):
@@ -65,6 +209,24 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
         model = User
         fields = ("full_name", "phone", "email", "password", "role")
 
+    def validate_phone(self, value):
+        try:
+            phone = normalize_nepal_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+
+        if User.objects.filter(phone=phone).exists():
+            raise serializers.ValidationError("An account with this phone number already exists.")
+        return phone
+
+    def validate_email(self, value):
+        if value in ("", None):
+            return None
+
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        return value
+
     def create(self, validated_data):
         return User.objects.create_user(
             phone=validated_data["phone"],
@@ -72,5 +234,6 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
             full_name=validated_data["full_name"],
             email=validated_data.get("email"),
             role=validated_data["role"],
+            phone_verified=True,
             is_active=True,
         )
