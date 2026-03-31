@@ -200,8 +200,13 @@ export default function HelperHome() {
   const availableSeats = seats.filter((seat) => seat.available);
   const occupiedCount = seats.length - availableSeats.length;
   const selectedCount = selectedSeatIds.length;
+  const fromStop = routeStops.find((stop) => String(stop.stop_order) === String(fromOrder)) || null;
+  const toStop = routeStops.find((stop) => String(stop.stop_order) === String(toOrder)) || null;
   const selectedSeatLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
   const stopOptions = routeStops.map((stop) => ({ value: String(stop.stop_order), label: `${stop.stop_order}. ${stop.stop?.name || "--"}` }));
+  const terminalChips = routeStops.length
+    ? routeStops.slice(0, 3).map((stop) => ({ label: stop.stop?.name || `Stop ${stop.stop_order}`, value: String(stop.stop_order) }))
+    : [{ label: "Main Terminal", value: "" }, { label: "Midtown Hub", value: "" }, { label: "Lakeside", value: "" }];
   const mapPolyline = useMemo(() => routeStops.map((stop) => [Number(stop.stop?.lat), Number(stop.stop?.lng)]).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)), [routeStops]);
   const livePoint = useMemo(() => {
     if (!latestLocation) return null;
@@ -526,20 +531,23 @@ export default function HelperHome() {
         {activeTab === "boarding" ? (
           <div className="mt-5 space-y-5">
             <div className="flex gap-2 overflow-x-auto pb-1">
-              {routeStops.slice(0, 4).map((stop, index) => (
-                <button key={stop.stop_order} type="button" onClick={() => setFromOrder(String(stop.stop_order))} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
-                  {stop.stop?.name || `Stop ${stop.stop_order}`}
+              {terminalChips.map((chip, index) => (
+                <button key={`${chip.label}-${index}`} type="button" onClick={() => chip.value && setFromOrder(chip.value)} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
+                  {chip.label}
                 </button>
               ))}
             </div>
 
-            <SurfaceCard>
+            <SurfaceCard className="overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(246,219,252,0.95),rgba(255,255,255,0.94)_45%)]">
               <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
                 <SelectField label="From" value={fromOrder} onChange={setFromOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
                 <button type="button" onClick={() => { const currentFrom = fromOrder; setFromOrder(toOrder); setToOrder(currentFrom); }} className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]">
                   <Icon name="swap" className="h-6 w-6" />
                 </button>
                 <SelectField label="To" value={toOrder} onChange={setToOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
+              </div>
+              <div className="mt-4 rounded-[1.4rem] bg-white/80 px-4 py-3 text-sm font-semibold text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
+                {fromStop && toStop ? `Segment: ${fromStop.stop?.name} to ${toStop.stop?.name}` : "Choose a route segment to continue."}
               </div>
               <div className="mt-4 flex items-center justify-between gap-3">
                 <SectionLabel>Segment Status</SectionLabel>
@@ -559,7 +567,7 @@ export default function HelperHome() {
               </div>
               <div className="bg-[var(--hlp-soft)] px-4 py-5 sm:px-6">
                 {seats.length === 0 ? <div className="rounded-[1.8rem] bg-white/70 px-5 py-8 text-center text-sm font-medium text-[var(--hlp-muted)]">Select a live trip and a valid segment to load available seats.</div> : <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">{seats.map((seat) => <SeatNode key={seat.seat_id} seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => toggleSeat(seat.seat_id)} />)}</div>}
-                <div className="mx-auto mt-6 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
+                <div className="mx-auto mt-6 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
                   <span className="uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Selected seats:</span>
                   {selectedSeatLabels.length ? selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] px-3 py-1 text-xs text-white">{label}</span>) : <span className="text-[var(--hlp-muted)]">None</span>}
                 </div>
@@ -570,7 +578,7 @@ export default function HelperHome() {
               <Icon name="ticket" />
               {offlineBusy ? "Saving Offline Boarding" : "Save Offline Boarding"}
             </PrimaryButton>
-            <p className="text-center text-sm text-[var(--hlp-muted)]">Boarding records remain available for staff workflows even when passenger devices are offline.</p>
+            <p className="text-center text-sm font-medium uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Your boarding pass will remain accessible without an active internet connection.</p>
           </div>
         ) : null}
 
