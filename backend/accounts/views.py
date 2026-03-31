@@ -1,4 +1,3 @@
-import os
 import random
 from datetime import timedelta
 
@@ -15,6 +14,7 @@ from payments.models import Payment
 from transport.models import Route, Stop, Bus, Seat
 from trips.models import Trip
 from .models import PhoneOTP
+from .otp_delivery import OTPDeliveryError, send_registration_otp
 from .serializers import (
     RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
     AdminCreateUserSerializer, AdminUserListSerializer,
@@ -44,7 +44,7 @@ class RegisterOTPRequestView(APIView):
         if recent_otp and recent_otp.created_at >= timezone.now() - timedelta(seconds=45):
             return Response({"detail": "Please wait a few seconds before requesting another OTP."}, status=429)
 
-        code = f"{random.randint(0, 999999):06d}"
+        code = f"{random.randint(0, 9999):04d}"
         otp = PhoneOTP(
             phone=phone,
             purpose=PhoneOTP.Purpose.REGISTER,
@@ -53,19 +53,22 @@ class RegisterOTPRequestView(APIView):
         otp.set_code(code)
         otp.save()
 
-        delivery = os.getenv("OTP_PROVIDER", "console").strip().lower() or "console"
-        # For now we support console/dev delivery. Hook your SMS provider here later.
-        print(f"[MetroBus OTP][{delivery}] Registration OTP for {phone}: {code}")
+        try:
+            delivery_result = send_registration_otp(phone, code)
+        except OTPDeliveryError as exc:
+            otp.delete()
+            return Response({"detail": str(exc)}, status=503)
 
         payload = {
             "message": f"OTP sent to {phone}. It will expire in 5 minutes.",
             "phone": phone,
-            "delivery": delivery,
+            "delivery": delivery_result["delivery"],
             "expires_in_seconds": 300,
         }
-        if delivery == "console":
-            payload["dev_code"] = code
-            payload["detail"] = "SMS provider not configured yet. Using console OTP for now."
+        if delivery_result.get("detail"):
+            payload["detail"] = delivery_result["detail"]
+        if delivery_result.get("dev_code"):
+            payload["dev_code"] = delivery_result["dev_code"]
 
         return Response(payload, status=201)
 

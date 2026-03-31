@@ -175,9 +175,11 @@ export default function Register() {
                     <div className="grid gap-3 md:grid-cols-[1fr_auto]">
                       <input
                         className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                        placeholder="OTP code"
+                        placeholder="4-digit OTP"
                         value={otpCode}
-                        onChange={(event) => setOtpCode(event.target.value)}
+                        onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                        inputMode="numeric"
+                        maxLength={4}
                       />
                       <button
                         type="button"

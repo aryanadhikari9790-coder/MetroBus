@@ -87,7 +87,7 @@ class RegisterSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(write_only=True, max_length=80)
     middle_name = serializers.CharField(write_only=True, max_length=80, required=False, allow_blank=True)
     last_name = serializers.CharField(write_only=True, max_length=80)
-    otp_code = serializers.CharField(write_only=True, min_length=4, max_length=6)
+    otp_code = serializers.CharField(write_only=True, min_length=4, max_length=4)
     home_location_label = serializers.CharField(max_length=255)
     home_lat = serializers.DecimalField(max_digits=9, decimal_places=6)
     home_lng = serializers.DecimalField(max_digits=9, decimal_places=6)
