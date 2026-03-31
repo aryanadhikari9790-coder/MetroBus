@@ -81,6 +81,8 @@ export function Icon({ name, className = "h-5 w-5" }) {
       return <svg {...common}><rect x="5" y="6" width="14" height="10" rx="3" /><path d="M7.5 16v2" /><path d="M16.5 16v2" /><path d="M7 11h10" /></svg>;
     case "profile":
       return <svg {...common}><circle cx="12" cy="8" r="3.5" /><path d="M5 19c1.8-3 4.1-4.5 7-4.5S17.2 16 19 19" /></svg>;
+    case "logout":
+      return <svg {...common}><path d="M15 17 20 12 15 7" /><path d="M20 12H9" /><path d="M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" /></svg>;
     case "briefcase":
       return <svg {...common}><rect x="4" y="7" width="16" height="11" rx="2.5" /><path d="M9 7V5.7A1.7 1.7 0 0 1 10.7 4h2.6A1.7 1.7 0 0 1 15 5.7V7" /></svg>;
     case "dumbbell":
@@ -126,7 +128,7 @@ export function PassengerAvatar({ user, size = "h-11 w-11" }) {
   );
 }
 
-export function HeaderBar({ user, activeView }) {
+export function HeaderBar({ user, activeView, onLogout }) {
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--mb-border)] bg-[var(--mb-nav)] px-5 py-4 backdrop-blur-xl">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
@@ -142,6 +144,9 @@ export function HeaderBar({ user, activeView }) {
         <div className="flex items-center gap-3">
           <button type="button" className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
             <Icon name="bell" />
+          </button>
+          <button type="button" onClick={onLogout} className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-plum)] shadow-[var(--mb-shadow)]">
+            <Icon name="logout" />
           </button>
           <PassengerAvatar user={user} />
         </div>

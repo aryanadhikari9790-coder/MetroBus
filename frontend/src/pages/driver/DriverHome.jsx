@@ -451,7 +451,7 @@ export default function DriverHome() {
             <Pill tone={activeTrip ? "live" : "idle"}>{activeTrip ? "Trip Live" : "Standby"}</Pill>
             <button type="button" onClick={() => loadDashboard()} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name="refresh" /></button>
             {activeTab !== "home" ? <button type="button" onClick={toggle} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name={isDark ? "sun" : "moon"} /></button> : null}
-            {activeTab !== "home" ? <button type="button" onClick={handleLogout} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-plum)] shadow-[var(--drv-shadow)]"><Icon name="logout" /></button> : null}
+            <button type="button" onClick={handleLogout} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-plum)] shadow-[var(--drv-shadow)]"><Icon name="logout" /></button>
           </div>
         </div>
       </header>

@@ -436,7 +436,7 @@ export default function HelperHome() {
               {helperHeaderStatus}
             </Chip>
             <HeaderButton onClick={handleLogout}>
-              <Icon name="profile" />
+              <Icon name="logout" />
             </HeaderButton>
           </div>
         </div>
