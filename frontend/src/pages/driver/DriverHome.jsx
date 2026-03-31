@@ -158,6 +158,7 @@ export default function DriverHome() {
   const [routeStops, setRouteStops] = useState([]);
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [activeTab, setActiveTab] = useState("home");
+  const [expandStops, setExpandStops] = useState(false);
   const locationWatch = useMemo(() => ({ id: null }), []);
   const wsRef = useMemo(() => ({ current: null }), []);
   const queueRef = useMemo(() => ({ current: [] }), []);
@@ -222,6 +223,17 @@ export default function DriverHome() {
   const fuelLevel = activeTrip ? 84 : 85;
   const predictedPax = activeTrip ? "3-5" : "2-4";
   const shiftStartTime = nextSchedule?.scheduled_start_time ? formatTime(nextSchedule.scheduled_start_time) : "08:30 AM";
+  const activeTripStartedLabel = activeTrip?.started_at ? formatTime(activeTrip.started_at) : shiftStartTime;
+  const currentStopName = routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || routeStops[0]?.stop?.name || "--";
+  const routeStatusLabel = activeTrip?.deviation_mode ? "Deviation Mode" : "On Route";
+  const gpsStateLabel = autoShare ? "GPS Live" : latestLocation ? "Manual Mode" : "Waiting";
+  const stopsRemaining = routeStops.length ? Math.max(routeStops.length - Math.max(stopProgressIndex + 1, 1), 0) : 0;
+  const routeProgressPct = routeStops.length > 1 && stopProgressIndex >= 0
+    ? Math.min(100, Math.max(12, Math.round((stopProgressIndex / (routeStops.length - 1)) * 100)))
+    : liveBusPoint ? 18 : 0;
+  const visibleStopCount = expandStops ? routeStops.length : Math.min(routeStops.length, Math.max(stopProgressIndex + 4, 4));
+  const visibleStops = routeStops.slice(0, visibleStopCount);
+  const hiddenStopCount = Math.max(routeStops.length - visibleStopCount, 0);
 
   const loadDashboard = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -248,6 +260,7 @@ export default function DriverHome() {
 
   useEffect(() => { loadDashboard(); loadAssignedBus(); }, []);
   useEffect(() => { if (activeTrip) setActiveTab("active"); }, [activeTrip]);
+  useEffect(() => { setExpandStops(false); }, [activeTrip?.id]);
   useEffect(() => {
     if (!routeId && manualOptions.routes.length) setRouteId(String(manualOptions.routes[0].id));
     if (!busId && manualOptions.buses.length) setBusId(String(manualOptions.buses[0].id));
@@ -454,11 +467,227 @@ export default function DriverHome() {
           </>
         ) : null}
 
-        {activeTab === "active" ? (!activeTrip ? <Panel className="mt-5"><p className="text-center text-sm text-[var(--drv-muted)]">No active trip. Start one from the Home tab.</p></Panel> : <div className="mt-5 space-y-5"><div className="grid grid-cols-2 gap-3 sm:grid-cols-4">{[{ label: "Occupancy", value: `${occupancyPct}%`, note: `${occupied}/${capacity} seats` }, { label: "Next Stop", value: nextStop, note: `Prev: ${previousStop}` }, { label: "AI Prediction", value: `${predictedPax} pax`, note: "At next stop" }, { label: "GPS", value: autoShare ? "Live" : "Off", note: locationStatus || "Waiting" }].map((card) => <Panel key={card.label}><p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p><p className="mt-3 text-2xl font-black">{card.value}</p><p className="mt-2 text-xs text-[var(--drv-muted)]">{card.note}</p></Panel>)}</div><Panel className="overflow-hidden !p-0"><div className="flex items-center justify-between border-b border-[var(--drv-border)] px-5 py-4"><div><SectionLabel>Live Route Map</SectionLabel><p className="mt-1 text-lg font-black">{currentRoute}</p></div><Pill tone={liveBusPoint ? "live" : "idle"}>{liveBusPoint ? "Bus Live" : "No GPS"}</Pill></div><div className="h-80 w-full"><MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full"><TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} /><MapViewport points={mapPoints} />{displayedPolyline.length > 0 ? <Polyline positions={displayedPolyline} pathOptions={{ color: "#8c12eb", weight: 5, opacity: 0.9 }} /> : null}{routeStops.map((item, index) => { const lat = Number(item.stop?.lat); const lng = Number(item.stop?.lng); if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null; const current = index === Math.max(stopProgressIndex, 0) && liveBusPoint; return <CircleMarker key={`${item.stop_order}-${item.stop?.name}`} center={[lat, lng]} radius={current ? 8 : 5} pathOptions={{ color: current ? "#8c12eb" : "#b68ac8", fillColor: current ? "#8c12eb" : "#edd6f7", fillOpacity: 0.95 }}><Popup>Stop {item.stop_order}: {item.stop?.name}</Popup></CircleMarker>; })}{liveBusPoint ? <CircleMarker center={liveBusPoint} radius={11} pathOptions={{ color: "#10b981", fillColor: "#34d399", fillOpacity: 1 }}><Popup>Live bus position</Popup></CircleMarker> : null}</MapContainer></div></Panel><div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]"><Panel><div className="flex items-center justify-between"><SectionLabel>GPS Control</SectionLabel><button type="button" onClick={() => setAutoShare((value) => !value)} className={`relative h-7 w-12 rounded-full transition ${autoShare ? "bg-[var(--drv-purple)]" : "bg-[#ead4f6]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${autoShare ? "left-6" : "left-1"}`} /></button></div><p className="mt-2 text-sm text-[var(--drv-muted)]">{locationStatus || (autoShare ? "Broadcasting live GPS..." : "Auto sharing is paused.")}</p><div className="mt-4 grid grid-cols-2 gap-3"><input className="rounded-[1.4rem] border border-[var(--drv-border)] bg-[var(--drv-soft)] px-4 py-4 text-sm font-medium text-[var(--drv-text)] outline-none" placeholder="Latitude" value={manualLat} onChange={(event) => setManualLat(event.target.value)} /><input className="rounded-[1.4rem] border border-[var(--drv-border)] bg-[var(--drv-soft)] px-4 py-4 text-sm font-medium text-[var(--drv-text)] outline-none" placeholder="Longitude" value={manualLng} onChange={(event) => setManualLng(event.target.value)} /></div><div className="mt-4 grid grid-cols-2 gap-3"><ActionButton tone="ghost" onClick={sendManualLocation} disabled={locationBusy}>Send Coordinates</ActionButton><ActionButton tone="primary" onClick={sendBrowserLocation} disabled={locationBusy}>{locationBusy ? "Sending..." : "Send My Location"}</ActionButton></div></Panel><div className="space-y-5"><Panel><SectionLabel>Stop Timeline</SectionLabel><StopTimeline stops={routeStops} progressIndex={stopProgressIndex} liveBusPoint={liveBusPoint} /></Panel><Panel><SectionLabel>Current GPS</SectionLabel>{latestLocation ? <><p className="mt-2 text-base font-black text-[var(--drv-purple)]">{Number(latestLocation.lat).toFixed(6)}, {Number(latestLocation.lng).toFixed(6)}</p><p className="mt-2 text-xs text-[var(--drv-muted)]">Updated {formatDateTime(latestLocation.recorded_at)}</p></> : <p className="mt-2 text-sm text-[var(--drv-muted)]">No live location yet.</p>}</Panel><ActionButton tone="danger" onClick={endTrip} disabled={busy} className="w-full !py-4">{busy ? "Ending Trip" : "End Trip"}</ActionButton><ActionButton tone="danger" className="w-full !bg-[linear-gradient(135deg,#7a1029,#aa1f42)] !py-5 text-base"><Icon name="alert" />SOS</ActionButton></div></div></div>) : null}
+        {activeTab === "active" ? (
+          !activeTrip ? (
+            <Panel className="mt-5">
+              <p className="text-center text-sm text-[var(--drv-muted)]">No active trip. Start one from the Home tab.</p>
+            </Panel>
+          ) : (
+            <div className="mt-5 space-y-5 pb-40">
+              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-5 text-white shadow-[var(--drv-shadow-strong)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Current Route</p>
+                    <h2 className="mt-3 text-4xl font-black leading-[1.02]">{currentRoute}</h2>
+                    <p className="mt-3 text-sm font-semibold text-white/80">{currentBus} - Helper {helperName}</p>
+                  </div>
+                  <span className="inline-flex items-center rounded-full bg-white/14 px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[0_10px_22px_rgba(71,39,81,0.18)]">
+                    Trip Live
+                  </span>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <div className="rounded-[1.7rem] bg-white/12 p-4 backdrop-blur-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-12 w-12 place-items-center rounded-full bg-white/14 text-white">
+                        <Icon name="bus" />
+                      </div>
+                      <div>
+                        <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-white/72">Current Stop</p>
+                        <p className="mt-1 text-xl font-black">{currentStopName}</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-white/12 px-3 py-2 text-[0.68rem] font-black uppercase tracking-[0.14em] text-white/82">
+                        Started {activeTripStartedLabel}
+                      </span>
+                      <span className="rounded-full bg-white/12 px-3 py-2 text-[0.68rem] font-black uppercase tracking-[0.14em] text-white/82">
+                        {stopsRemaining} Stops Left
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 sm:w-[11.5rem]">
+                    <div className="rounded-[1.4rem] bg-white/12 px-4 py-3">
+                      <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/70">Route Status</p>
+                      <p className="mt-2 text-lg font-black">{routeStatusLabel}</p>
+                    </div>
+                    <div className="rounded-[1.4rem] bg-white/12 px-4 py-3">
+                      <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/70">Prediction</p>
+                      <p className="mt-2 text-lg font-black">{predictedPax} pax</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className="flex items-center justify-between text-xs font-black uppercase tracking-[0.18em] text-white/74">
+                    <span>Progress</span>
+                    <span>{routeProgressPct}% Complete</span>
+                  </div>
+                  <div className="mt-3 h-2.5 rounded-full bg-white/16">
+                    <div className="h-full rounded-full bg-white" style={{ width: `${routeProgressPct}%` }} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { label: "Occupancy", value: `${occupancyPct}%`, note: `${occupied}/${capacity} seats` },
+                  { label: "Next Stop", value: nextStop, note: `Prev: ${previousStop}` },
+                  { label: "GPS Status", value: gpsStateLabel, note: locationStatus || "Waiting for sync" },
+                  { label: "Route Status", value: routeStatusLabel, note: liveBusPoint ? "Live route synced" : "Waiting for GPS" },
+                ].map((card) => (
+                  <Panel key={card.label}>
+                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p>
+                    <p className="mt-3 text-2xl font-black leading-tight">{card.value}</p>
+                    <p className="mt-2 text-xs text-[var(--drv-muted)]">{card.note}</p>
+                  </Panel>
+                ))}
+              </div>
+
+              <Panel className="overflow-hidden !p-0">
+                <div className="flex items-center justify-between border-b border-[var(--drv-border)] px-5 py-4">
+                  <div>
+                    <SectionLabel>Live Route Map</SectionLabel>
+                    <p className="mt-1 text-lg font-black">{currentRoute}</p>
+                  </div>
+                  <Pill tone={liveBusPoint ? "live" : "idle"}>{liveBusPoint ? "Bus Live" : "No GPS"}</Pill>
+                </div>
+
+                <div className="relative h-[21rem] w-full">
+                  <div className="pointer-events-none absolute left-4 top-4 z-[500] max-w-[14rem] rounded-[1.5rem] bg-white/92 px-4 py-3 shadow-[var(--drv-shadow)] backdrop-blur-xl">
+                    <p className="text-[0.62rem] font-black uppercase tracking-[0.24em] text-[var(--drv-purple)]">Direction</p>
+                    <p className="mt-2 text-sm font-black text-[var(--drv-text)]">{nextStop !== "--" ? `Next stop: ${nextStop}` : "Waiting for first stop update"}</p>
+                    <p className="mt-1 text-xs leading-5 text-[var(--drv-muted)]">
+                      {liveBusPoint ? `${stopsRemaining} remaining stop${stopsRemaining === 1 ? "" : "s"} on this trip.` : "Share location to sync the live marker and route progress."}
+                    </p>
+                  </div>
+
+                  <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+                    <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
+                    <MapViewport points={mapPoints} />
+                    {displayedPolyline.length > 0 ? <Polyline positions={displayedPolyline} pathOptions={{ color: "#8c12eb", weight: 5, opacity: 0.9 }} /> : null}
+                    {routeStops.map((item, index) => {
+                      const lat = Number(item.stop?.lat);
+                      const lng = Number(item.stop?.lng);
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                      const current = index === Math.max(stopProgressIndex, 0) && liveBusPoint;
+                      return (
+                        <CircleMarker
+                          key={`${item.stop_order}-${item.stop?.name}`}
+                          center={[lat, lng]}
+                          radius={current ? 8 : 5}
+                          pathOptions={{ color: current ? "#8c12eb" : "#b68ac8", fillColor: current ? "#8c12eb" : "#edd6f7", fillOpacity: 0.95 }}
+                        >
+                          <Popup>Stop {item.stop_order}: {item.stop?.name}</Popup>
+                        </CircleMarker>
+                      );
+                    })}
+                    {liveBusPoint ? (
+                      <CircleMarker center={liveBusPoint} radius={11} pathOptions={{ color: "#10b981", fillColor: "#34d399", fillOpacity: 1 }}>
+                        <Popup>Live bus position</Popup>
+                      </CircleMarker>
+                    ) : null}
+                  </MapContainer>
+                </div>
+              </Panel>
+
+              <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
+                <Panel>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <SectionLabel>GPS Management</SectionLabel>
+                      <p className="mt-1 text-2xl font-black">Share and override location</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAutoShare((value) => !value)}
+                      className={`relative h-7 w-12 rounded-full transition ${autoShare ? "bg-[var(--drv-purple)]" : "bg-[#ead4f6]"}`}
+                    >
+                      <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${autoShare ? "left-6" : "left-1"}`} />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
+                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Auto Sharing</p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--drv-text)]">{locationStatus || (autoShare ? "Broadcasting live GPS from this device." : "Auto sharing is paused right now.")}</p>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <input className="rounded-[1.4rem] border border-[var(--drv-border)] bg-[var(--drv-soft)] px-4 py-4 text-sm font-medium text-[var(--drv-text)] outline-none" placeholder="Latitude override" value={manualLat} onChange={(event) => setManualLat(event.target.value)} />
+                    <input className="rounded-[1.4rem] border border-[var(--drv-border)] bg-[var(--drv-soft)] px-4 py-4 text-sm font-medium text-[var(--drv-text)] outline-none" placeholder="Longitude override" value={manualLng} onChange={(event) => setManualLng(event.target.value)} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <ActionButton tone="ghost" onClick={sendManualLocation} disabled={locationBusy} className="w-full !py-4">Send Coordinates</ActionButton>
+                    <ActionButton tone="primary" onClick={sendBrowserLocation} disabled={locationBusy} className="w-full !py-4">{locationBusy ? "Sending..." : "Send My Location"}</ActionButton>
+                  </div>
+
+                  <div className="mt-4 rounded-[1.5rem] border border-[var(--drv-border)] px-4 py-4">
+                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Latest GPS Point</p>
+                    {latestLocation ? (
+                      <>
+                        <p className="mt-2 text-base font-black text-[var(--drv-purple)]">{Number(latestLocation.lat).toFixed(6)}, {Number(latestLocation.lng).toFixed(6)}</p>
+                        <p className="mt-2 text-xs text-[var(--drv-muted)]">Updated {formatDateTime(latestLocation.recorded_at)}</p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-sm text-[var(--drv-muted)]">No live location has been sent yet.</p>
+                    )}
+                  </div>
+                </Panel>
+
+                <Panel>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <SectionLabel>Stop Progress</SectionLabel>
+                      <p className="mt-1 text-2xl font-black">Current route timeline</p>
+                    </div>
+                    {hiddenStopCount > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setExpandStops(true)}
+                        className="rounded-full bg-[var(--drv-soft)] px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--drv-purple)]"
+                      >
+                        View {Math.min(hiddenStopCount, 3)} More Stops
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 rounded-[1.7rem] bg-white/70 px-4 py-4">
+                    <StopTimeline stops={visibleStops} progressIndex={stopProgressIndex} liveBusPoint={liveBusPoint} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
+                      <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Current Stop</p>
+                      <p className="mt-2 text-lg font-black">{currentStopName}</p>
+                    </div>
+                    <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
+                      <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Remaining</p>
+                      <p className="mt-2 text-lg font-black">{stopsRemaining} stops</p>
+                    </div>
+                  </div>
+                </Panel>
+              </div>
+            </div>
+          )
+        ) : null}
 
         {activeTab === "history" ? <div className="mt-5 space-y-5"><Panel className="bg-[linear-gradient(135deg,var(--drv-soft),rgba(255,255,255,0.85))]"><SectionLabel>Last Shift Summary</SectionLabel><p className="mt-3 text-5xl font-black">NPR 1,250</p><p className="mt-2 text-sm text-[var(--drv-muted)]">Total earnings from the last completed trip</p></Panel><div className="grid grid-cols-2 gap-3">{[{ label: "Passengers", value: "42" }, { label: "Duration", value: "42 min" }].map((card) => <Panel key={card.label}><p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p><p className="mt-3 text-4xl font-black">{card.value}</p></Panel>)}</div><Panel><SectionLabel>Efficiency Report</SectionLabel>{[{ label: "Fuel Efficiency", value: "12.4 km/L" }, { label: "On-Time Performance", value: "98%" }, { label: "Last Route", value: formatTime(nextSchedule?.scheduled_start_time) }].map((row) => <div key={row.label} className="flex items-center justify-between border-b border-[var(--drv-border)] py-4 last:border-0"><span className="text-sm text-[var(--drv-muted)]">{row.label}</span><span className="text-sm font-black">{row.value}</span></div>)}</Panel></div> : null}
 
         {activeTab === "earnings" ? <div className="mt-5 space-y-5"><Panel className="bg-[linear-gradient(135deg,var(--drv-soft),rgba(255,255,255,0.85))]"><SectionLabel>Today's Earnings</SectionLabel><p className="mt-3 text-5xl font-black">NPR {todaysEarnings.toLocaleString()}</p><p className="mt-2 text-sm text-[var(--drv-muted)]">Driver-side earnings snapshot</p></Panel><div className="grid grid-cols-2 gap-3">{[{ label: "Completed Trips", value: completedTrips }, { label: "Passengers", value: totalPassengers }].map((card) => <Panel key={card.label}><p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p><p className="mt-3 text-4xl font-black">{card.value}</p></Panel>)}</div><Panel><SectionLabel>Breakdown</SectionLabel>{[{ label: "App Bookings", value: "NPR 2,800" }, { label: "Cash Collections", value: "NPR 1,700" }, { label: "Manual Entries", value: "8 pax" }].map((row) => <div key={row.label} className="flex items-center justify-between border-b border-[var(--drv-border)] py-4 last:border-0"><span className="text-sm text-[var(--drv-muted)]">{row.label}</span><span className="text-sm font-black">{row.value}</span></div>)}</Panel></div> : null}
+
+        {activeTab === "active" && activeTrip ? (
+          <div className="fixed bottom-[6.6rem] left-1/2 z-30 flex w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 gap-3">
+            <ActionButton tone="danger" onClick={endTrip} disabled={busy} className="flex-1 !py-4">
+              {busy ? "Ending Trip" : "End Trip"}
+            </ActionButton>
+            <ActionButton tone="danger" className="min-w-[8.2rem] !bg-[linear-gradient(135deg,#8a0f2f,#c11449)] !py-4">
+              <Icon name="alert" />
+              SOS
+            </ActionButton>
+          </div>
+        ) : null}
 
         <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[rgba(255,252,255,0.9)] p-2 shadow-[var(--drv-shadow)] backdrop-blur-xl"><div className="grid grid-cols-4 gap-2">{TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]" : "text-[var(--drv-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}</div></div>
       </main>
