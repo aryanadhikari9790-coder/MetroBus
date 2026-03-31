@@ -267,7 +267,7 @@ export default function PassengerHome() {
   useEffect(() => {
     loadBase();
     loadBookings();
-    const tripRefresh = setInterval(() => loadBase({ silent: true }), activeView === "track" ? 2000 : 5000);
+    const tripRefresh = setInterval(() => loadBase({ silent: true }), activeView === "track" ? 1000 : 5000);
     const bookingRefresh = setInterval(() => loadBookings({ silent: true }), 15000);
     return () => { clearInterval(tripRefresh); clearInterval(bookingRefresh); };
   }, [activeView, loadBase, loadBookings]);

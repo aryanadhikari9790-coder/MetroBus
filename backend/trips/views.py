@@ -373,7 +373,7 @@ class TripSimulationStartView(APIView):
             return denial
 
         points = request.data.get("points") or []
-        step_interval_ms = request.data.get("step_interval_ms", 2000)
+        step_interval_ms = request.data.get("step_interval_ms", 3000)
         try:
             latest_location, simulation = start_trip_simulation(trip, points, step_interval_ms)
         except ValueError as exc:

@@ -181,7 +181,7 @@ export default function DriverHome() {
   const [manualLng, setManualLng] = useState("");
   const [simulationActive, setSimulationActive] = useState(false);
   const [simulationIndex, setSimulationIndex] = useState(0);
-  const [simulationSpeedMs, setSimulationSpeedMs] = useState("2000");
+  const [simulationSpeedMs, setSimulationSpeedMs] = useState("3000");
   const [routeStops, setRouteStops] = useState([]);
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [activeTab, setActiveTab] = useState("home");
@@ -884,9 +884,9 @@ export default function DriverHome() {
                       <div>
                         <label className="mb-2 block text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Speed</label>
                         <select value={simulationSpeedMs} onChange={(event) => setSimulationSpeedMs(event.target.value)} className="rounded-[1.2rem] border border-[var(--drv-border)] bg-[var(--drv-soft)] px-4 py-4 text-sm font-semibold text-[var(--drv-text)] outline-none">
-                          <option value="1200">Fast</option>
-                          <option value="2000">Normal</option>
-                          <option value="3200">Slow</option>
+                          <option value="1000">Fast</option>
+                          <option value="3000">Normal</option>
+                          <option value="5000">Slow</option>
                         </select>
                       </div>
                     </div>

@@ -62,7 +62,7 @@ def start_trip_simulation(trip, points, step_interval_ms):
     simulation.points = clean_points
     simulation.current_index = 0
     simulation.last_persisted_index = 0
-    simulation.step_interval_ms = max(400, min(int(step_interval_ms or 2000), 10000))
+    simulation.step_interval_ms = max(1000, min(int(step_interval_ms or 3000), 10000))
     simulation.is_active = True
     simulation.last_advanced_at = timezone.now()
     simulation.save()
