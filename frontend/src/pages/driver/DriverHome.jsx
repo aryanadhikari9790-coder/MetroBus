@@ -630,9 +630,92 @@ export default function DriverHome() {
 
         {activeTab === "active" ? (
           !activeTrip ? (
-            <Panel className="mt-5">
-              <p className="text-center text-sm text-[var(--drv-muted)]">No active trip. Start one from the Home tab.</p>
-            </Panel>
+            <div className="mt-5 space-y-5 pb-32">
+              <Panel>
+                <SectionLabel>Active Trip</SectionLabel>
+                <h2 className="mt-2 text-3xl font-black leading-tight">You are on standby right now</h2>
+                <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
+                  Start a scheduled trip or launch a manual trip from this tab. As soon as the trip goes live, GPS Management and the Route Simulator will appear here.
+                </p>
+              </Panel>
+
+              {nextSchedule ? (
+                <Panel className="bg-[rgba(247,224,249,0.82)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <SectionLabel>Next Scheduled Trip</SectionLabel>
+                      <p className="mt-2 text-2xl font-black">{nextSchedule.route_name}</p>
+                      <p className="mt-2 text-sm text-[var(--drv-muted)]">{nextSchedule.bus_plate} - {nextSchedule.helper_name || "Helper pending"}</p>
+                    </div>
+                    <Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>
+                      {minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Queued"}
+                    </Pill>
+                  </div>
+                  <div className="mt-4 rounded-[1.5rem] bg-white/80 px-4 py-4">
+                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Departure Window</p>
+                    <p className="mt-2 text-lg font-black text-[var(--drv-text)]">{formatTime(nextSchedule.scheduled_start_time)}</p>
+                  </div>
+                  <ActionButton tone="primary" onClick={() => startScheduledTrip(nextSchedule.id)} disabled={busy} className="mt-4 w-full !py-4">
+                    <Icon name="play" className="h-4 w-4" />
+                    {busy ? "Starting Trip" : "Start Scheduled Trip"}
+                  </ActionButton>
+                </Panel>
+              ) : null}
+
+              <Panel>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <SectionLabel>Manual Trip Setup</SectionLabel>
+                    <p className="mt-2 text-2xl font-black">Start from Active Trip tab</p>
+                  </div>
+                  <div className="flex items-center gap-3 rounded-full bg-[var(--drv-soft)] px-4 py-3">
+                    <div>
+                      <p className="text-[0.68rem] font-black uppercase tracking-[0.2em] text-[var(--drv-muted)]">Deviation</p>
+                      <p className="text-[0.68rem] font-black uppercase tracking-[0.2em] text-[var(--drv-muted)]">Mode</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDeviationMode((value) => !value)}
+                      className={`relative h-7 w-12 rounded-full transition ${deviationMode ? "bg-[var(--drv-purple)]" : "bg-[#ead4f6]"}`}
+                    >
+                      <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${deviationMode ? "left-6" : "left-1"}`} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-3">
+                  <SelectField label="Route" value={routeId} onChange={setRouteId} options={routeOptions} />
+                  <SelectField label="Bus" value={busId} onChange={setBusId} options={busOptions} />
+                  <SelectField label="Helper / Conductor" value={helperId} onChange={setHelperId} options={helperOptions} />
+                </div>
+
+                <ActionButton tone="primary" onClick={startManualTrip} disabled={busy || !routeId || !busId || !helperId} className="mt-5 w-full !py-4">
+                  <Icon name="play" className="h-4 w-4" />
+                  {busy ? "Starting Trip" : "Start Manual Trip"}
+                </ActionButton>
+              </Panel>
+
+              <Panel className="bg-white/80">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <SectionLabel>GPS Management</SectionLabel>
+                    <p className="mt-2 text-2xl font-black">Waiting for an active trip</p>
+                  </div>
+                  <Pill tone="idle">Standby</Pill>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
+                  After you start a trip, this tab will unlock live GPS sharing, manual coordinate sending, and the route simulator for passenger tracking.
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button type="button" disabled className="rounded-full border border-[var(--drv-border)] bg-[var(--drv-soft)] px-5 py-4 text-sm font-black uppercase tracking-[0.14em] text-[var(--drv-muted)] opacity-70">
+                    GPS Management Locked
+                  </button>
+                  <button type="button" disabled className="rounded-full border border-[var(--drv-border)] bg-[var(--drv-soft)] px-5 py-4 text-sm font-black uppercase tracking-[0.14em] text-[var(--drv-muted)] opacity-70">
+                    Route Simulator Locked
+                  </button>
+                </div>
+              </Panel>
+            </div>
           ) : (
             <div className="mt-5 space-y-5 pb-40">
               <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-5 text-white shadow-[var(--drv-shadow-strong)]">
