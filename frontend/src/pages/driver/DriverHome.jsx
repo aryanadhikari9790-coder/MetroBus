@@ -181,6 +181,7 @@ export default function DriverHome() {
   const [manualLng, setManualLng] = useState("");
   const [simulationActive, setSimulationActive] = useState(false);
   const [simulationIndex, setSimulationIndex] = useState(0);
+  const [simulationPointsCount, setSimulationPointsCount] = useState(0);
   const [simulationSpeedMs, setSimulationSpeedMs] = useState("3000");
   const [routeStops, setRouteStops] = useState([]);
   const [roadPolyline, setRoadPolyline] = useState([]);
@@ -294,6 +295,7 @@ export default function DriverHome() {
   const visibleStops = routeStops.slice(0, visibleStopCount);
   const hiddenStopCount = Math.max(routeStops.length - visibleStopCount, 0);
   const simulationPoint = simulationPoints[Math.min(simulationIndex, Math.max(simulationPoints.length - 1, 0))] || null;
+  const simulationTotalPoints = simulationPointsCount || simulationPoints.length;
   const simulationActionLabel = simulationActive ? "Restart Live" : simulationIndex > 0 ? "Resume Simulation" : "Start Simulation";
 
   const loadDashboard = async ({ silent = false } = {}) => {
@@ -304,6 +306,7 @@ export default function DriverHome() {
       setLatestLocation(response.data.latest_location || null);
       setSimulationActive(Boolean(response.data.simulation?.is_active));
       setSimulationIndex(Number(response.data.simulation?.current_index || 0));
+      setSimulationPointsCount(Number(response.data.simulation?.points_count || 0));
       setErr("");
     } catch (error) {
       setErr(error?.response?.data?.detail || "Failed to load driver dashboard.");
@@ -322,11 +325,19 @@ export default function DriverHome() {
   };
 
   useEffect(() => { loadDashboard(); loadAssignedBus(); }, []);
+  useEffect(() => {
+    if (!activeTrip?.id) return undefined;
+    const timer = setInterval(() => {
+      loadDashboard({ silent: true });
+    }, activeTab === "active" || simulationActive ? 1000 : 3000);
+    return () => clearInterval(timer);
+  }, [activeTab, activeTrip?.id, simulationActive]);
   useEffect(() => { if (activeTrip) setActiveTab("active"); }, [activeTrip]);
   useEffect(() => { setExpandStops(false); }, [activeTrip?.id]);
   useEffect(() => {
     setSimulationActive(false);
     setSimulationIndex(0);
+    setSimulationPointsCount(0);
   }, [activeTrip?.id]);
   useEffect(() => {
     if (!routeId && manualOptions.routes.length) setRouteId(String(manualOptions.routes[0].id));
@@ -448,12 +459,12 @@ export default function DriverHome() {
     }
     setSimulationActive(Boolean(data?.simulation?.is_active));
     setSimulationIndex(Number(data?.simulation?.current_index || 0));
+    setSimulationPointsCount(Number(data?.simulation?.points_count || 0));
     setLocationStatus(statusText);
   }, []);
 
   const startSimulation = useCallback(async () => {
     if (!activeTrip?.id) { setErr("Start a trip first."); return; }
-    if (simulationPoints.length < 2) { setErr("Load the route first so the simulator has points to send."); return; }
     setLocationBusy(true);
     setAutoShare(false);
     setErr("");
@@ -507,13 +518,13 @@ export default function DriverHome() {
     setErr("");
     try {
       const response = await api.post(`/api/trips/${activeTrip.id}/simulate/step/`);
-      applySimulationResponse(response.data, `Simulation point ${Number(response.data?.simulation?.current_index || 0) + 1}/${simulationPoints.length || 0} sent.`);
+      applySimulationResponse(response.data, `Simulation point ${Number(response.data?.simulation?.current_index || 0) + 1}/${simulationTotalPoints || 0} sent.`);
     } catch (error) {
       setErr(error?.response?.data?.detail || "Unable to send the next simulation point.");
     } finally {
       setLocationBusy(false);
     }
-  }, [activeTrip?.id, applySimulationResponse, simulationPoints.length]);
+  }, [activeTrip?.id, applySimulationResponse, simulationTotalPoints]);
 
   useEffect(() => { setAutoShare(Boolean(activeTrip?.id)); }, [activeTrip?.id]);
   useEffect(() => {
@@ -876,7 +887,7 @@ export default function DriverHome() {
                     <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
                       <div className="rounded-[1.4rem] bg-[var(--drv-soft)] px-4 py-4">
                         <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Simulation Progress</p>
-                        <p className="mt-2 text-lg font-black text-[var(--drv-text)]">{simulationPoints.length ? `${Math.min(simulationIndex + 1, simulationPoints.length)} / ${simulationPoints.length} points` : "Route points pending"}</p>
+                        <p className="mt-2 text-lg font-black text-[var(--drv-text)]">{simulationTotalPoints ? `${Math.min(simulationIndex + 1, simulationTotalPoints)} / ${simulationTotalPoints} points` : "Route points pending"}</p>
                         <p className="mt-2 text-xs text-[var(--drv-muted)]">
                           {simulationPoint ? `${Number(simulationPoint[0]).toFixed(6)}, ${Number(simulationPoint[1]).toFixed(6)}` : "Load an active route to prepare coordinates."}
                         </p>
@@ -892,17 +903,17 @@ export default function DriverHome() {
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-3">
-                      <ActionButton tone="primary" onClick={startSimulation} disabled={locationBusy || simulationPoints.length < 2} className="w-full !py-4">
+                      <ActionButton tone="primary" onClick={startSimulation} disabled={locationBusy} className="w-full !py-4">
                         <Icon name="play" className="h-4 w-4" />
                         {simulationActionLabel}
                       </ActionButton>
-                      <ActionButton tone="ghost" onClick={sendSimulationStep} disabled={locationBusy || !simulationPoints.length} className="w-full !py-4">
+                      <ActionButton tone="ghost" onClick={sendSimulationStep} disabled={locationBusy || !simulationTotalPoints} className="w-full !py-4">
                         Send Next Point
                       </ActionButton>
                       <ActionButton tone="ghost" onClick={pauseSimulation} disabled={!simulationActive} className="w-full !py-4">
                         Pause
                       </ActionButton>
-                      <ActionButton tone="ghost" onClick={resetSimulation} disabled={!simulationPoints.length} className="w-full !py-4">
+                      <ActionButton tone="ghost" onClick={resetSimulation} disabled={!simulationTotalPoints} className="w-full !py-4">
                         Reset
                       </ActionButton>
                     </div>

@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from django.utils import timezone
 
+from transport.models import RouteStop
+
 from .models import TripLocation, TripSimulation
 
 
@@ -19,6 +21,58 @@ def _clean_points(points):
             continue
         clean.append([lat, lng])
     return clean
+
+
+def _route_points_for_trip(trip):
+    rows = (
+        RouteStop.objects.filter(route=trip.route)
+        .select_related("stop")
+        .order_by("stop_order")
+    )
+    return _clean_points(
+        [
+            [row.stop.lat, row.stop.lng]
+            for row in rows
+            if row.stop and row.stop.lat is not None and row.stop.lng is not None
+        ]
+    )
+
+
+def _densify_points(points, target_points=100):
+    clean = _clean_points(points)
+    if len(clean) < 2:
+        return clean
+    if len(clean) >= target_points:
+        return clean
+
+    segment_lengths = []
+    total_length = 0.0
+    for index in range(len(clean) - 1):
+        start = clean[index]
+        end = clean[index + 1]
+        length = math.dist(start, end)
+        segment_lengths.append(length)
+        total_length += length
+
+    if total_length <= 0:
+        return clean
+
+    densified = []
+    for index, start in enumerate(clean[:-1]):
+        end = clean[index + 1]
+        densified.append(start)
+        segment_share = segment_lengths[index] / total_length
+        extra_points = max(1, round(segment_share * (target_points - len(clean))))
+        for step in range(1, extra_points + 1):
+            ratio = step / (extra_points + 1)
+            densified.append(
+                [
+                    round(start[0] + (end[0] - start[0]) * ratio, 6),
+                    round(start[1] + (end[1] - start[1]) * ratio, 6),
+                ]
+            )
+    densified.append(clean[-1])
+    return densified[: target_points - 1] + [clean[-1]]
 
 
 def _heading_for(points, index):
@@ -55,6 +109,8 @@ def _persist_simulation_point(trip, simulation):
 
 def start_trip_simulation(trip, points, step_interval_ms):
     clean_points = _clean_points(points)
+    if len(clean_points) < 2:
+        clean_points = _densify_points(_route_points_for_trip(trip))
     if len(clean_points) < 2:
         raise ValueError("Provide at least two valid route points for simulation.")
 
