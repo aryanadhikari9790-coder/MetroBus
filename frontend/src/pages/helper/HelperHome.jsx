@@ -233,6 +233,8 @@ export default function HelperHome() {
     return bestIndex;
   }, [livePoint, mapPolyline]);
   const upcomingStop = routeStops[Math.min(currentStopIndex + 1, routeStops.length - 1)] || null;
+  const routeTitle = selectedTrip?.route_name || "Route 42A";
+  const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
   const routeCondition = livePoint ? "Live movement on route" : "Waiting for GPS ping";
   const helperInitials = (user?.full_name || "Helper").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
   const compactHeader = activeTab !== "trip";
@@ -631,10 +633,10 @@ export default function HelperHome() {
           <div className="mt-5 space-y-5">
             <div className="px-1">
               <SectionLabel>Live Journey</SectionLabel>
-              <h2 className="mt-2 text-4xl font-black">{selectedTrip?.route_name || "No Route Selected"}</h2>
+              <h2 className="mt-2 text-4xl font-black">{routeTitle}</h2>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <Chip tone="soft">Express</Chip>
-                <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeStops[routeStops.length - 1]?.stop?.name || "Destination pending"}</p>
+                <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeDestination}</p>
               </div>
             </div>
             <SurfaceCard>
@@ -672,7 +674,10 @@ export default function HelperHome() {
               </div>
               <p className="mt-6 text-sm font-medium text-white/76">Registered user</p>
               <p className="mt-1 text-3xl font-black">Morning Commute</p>
-              <div className="mt-5 border-t border-white/18 pt-4 text-sm font-semibold text-white/86">Valid until {formatTime(selectedTrip?.started_at)}</div>
+              <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/18 pt-4 text-sm font-semibold text-white/86">
+                <span>Valid until {formatTime(selectedTrip?.started_at)}</span>
+                <span className="text-lg font-black">{">"}</span>
+              </div>
             </SurfaceCard>
             <SurfaceCard className="overflow-hidden !p-0">
               <div className="border-b border-[var(--hlp-border)] px-5 py-4">
@@ -704,7 +709,7 @@ export default function HelperHome() {
                 <div className="grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="thermo" className="h-7 w-7" /></div>
                 <div>
                   <p className="text-4xl font-black">24C</p>
-                  <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">Clear skies for travel in Pokhara</p>
+                  <p className="mt-1 text-sm font-medium uppercase tracking-[0.12em] text-[var(--hlp-muted)]">Clear skies for travel in Pokhara</p>
                 </div>
               </div>
             </SurfaceCard>
