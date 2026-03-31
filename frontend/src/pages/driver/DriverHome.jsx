@@ -50,6 +50,10 @@ function Icon({ name, className = "h-5 w-5" }) {
     case "fuel": return <svg {...common}><path d="M7 18V7a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v11" /><path d="M7 12h9" /><path d="m16 8 2 2v5a2 2 0 1 0 4 0v-5l-2-2" /></svg>;
     case "play": return <svg {...common}><path d="m8 6 10 6-10 6V6Z" /></svg>;
     case "alert": return <svg {...common}><path d="M12 4 3.5 18h17L12 4Z" /><path d="M12 9v4" /><path d="M12 16h.01" /></svg>;
+    case "ticket": return <svg {...common}><rect x="4" y="7" width="16" height="10" rx="2.8" /><path d="M9 7v10" /><path d="M9 10h.01" /><path d="M9 14h.01" /></svg>;
+    case "users": return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="9.5" cy="7" r="3" /><path d="M20 21v-2a4 4 0 0 0-3-3.87" /><path d="M16.5 4.13a3 3 0 0 1 0 5.74" /></svg>;
+    case "trend": return <svg {...common}><path d="M4 16 10 10l4 4 6-7" /><path d="M20 7h-5" /><path d="M20 7v5" /></svg>;
+    case "arrow-right": return <svg {...common}><path d="M5 12h14" /><path d="m13 6 6 6-6 6" /></svg>;
     default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>;
   }
 }
@@ -237,6 +241,22 @@ export default function DriverHome() {
     { route: "Route 42A: Downtown Express", time: "08:30 AM - 09:45 AM", earnings: "Rs. 840" },
     { route: "Route 12: Westside Terminal", time: "10:15 AM - 11:30 AM", earnings: "Rs. 620" },
     { route: "Route 05: Airport Shuttle", time: "12:00 PM - 01:45 PM", earnings: "Rs. 1,150" },
+  ];
+  const earningsGrowth = "+12%";
+  const weeklyTargetPct = 58;
+  const earningsBreakdown = [
+    { label: "Ticket Sales", value: "Rs. 4,416", note: "92% of total", icon: "ticket", tint: "bg-[rgba(247,212,250,0.82)]", accent: "text-[var(--drv-purple)]" },
+    { label: "Bonus", value: "Rs. 500", note: "", icon: "wallet", tint: "bg-[rgba(247,212,250,0.82)]", accent: "text-[var(--drv-purple)]" },
+    { label: "Deductions", value: "- Rs. 116", note: "", icon: "trend", tint: "bg-[rgba(252,224,230,0.84)]", accent: "text-rose-700" },
+  ];
+  const fuelBars = [
+    { day: "Mon", value: 50 },
+    { day: "Tue", value: 72 },
+    { day: "Wed", value: 34 },
+    { day: "Thu", value: 58 },
+    { day: "Fri", value: 76 },
+    { day: "Sat", value: 64 },
+    { day: "Today", value: 78 },
   ];
   const activeTripStartedLabel = activeTrip?.started_at ? formatTime(activeTrip.started_at) : shiftStartTime;
   const currentStopName = routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || routeStops[0]?.stop?.name || "--";
@@ -783,7 +803,116 @@ export default function DriverHome() {
           </div>
         ) : null}
 
-        {activeTab === "earnings" ? <div className="mt-5 space-y-5"><Panel className="bg-[linear-gradient(135deg,var(--drv-soft),rgba(255,255,255,0.85))]"><SectionLabel>Today's Earnings</SectionLabel><p className="mt-3 text-5xl font-black">NPR {todaysEarnings.toLocaleString()}</p><p className="mt-2 text-sm text-[var(--drv-muted)]">Driver-side earnings snapshot</p></Panel><div className="grid grid-cols-2 gap-3">{[{ label: "Completed Trips", value: completedTrips }, { label: "Passengers", value: totalPassengers }].map((card) => <Panel key={card.label}><p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p><p className="mt-3 text-4xl font-black">{card.value}</p></Panel>)}</div><Panel><SectionLabel>Breakdown</SectionLabel>{[{ label: "App Bookings", value: "NPR 2,800" }, { label: "Cash Collections", value: "NPR 1,700" }, { label: "Manual Entries", value: "8 pax" }].map((row) => <div key={row.label} className="flex items-center justify-between border-b border-[var(--drv-border)] py-4 last:border-0"><span className="text-sm text-[var(--drv-muted)]">{row.label}</span><span className="text-sm font-black">{row.value}</span></div>)}</Panel></div> : null}
+        {activeTab === "earnings" ? (
+          <div className="mt-5 space-y-5 pb-32">
+            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c765ff)] p-6 text-white shadow-[var(--drv-shadow-strong)]">
+              <p className="text-[0.72rem] font-black uppercase tracking-[0.28em] text-white/76">Today Earnings</p>
+              <div className="mt-5 flex items-end justify-between gap-4">
+                <p className="text-6xl font-black leading-none">Rs. {todaysEarnings.toLocaleString()}</p>
+                <p className="pb-1 text-3xl font-black text-white/28">{earningsGrowth}</p>
+              </div>
+              <div className="mt-7 flex items-end justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[0.72rem] font-black uppercase tracking-[0.22em] text-white/72">Weekly Target</p>
+                  <div className="mt-3 h-2.5 max-w-[8.5rem] rounded-full bg-white/18">
+                    <div className="h-full rounded-full bg-white" style={{ width: `${weeklyTargetPct}%` }} />
+                  </div>
+                </div>
+                <button type="button" className="rounded-full bg-white/18 px-6 py-3 text-base font-black shadow-[0_16px_34px_rgba(71,39,81,0.16)] backdrop-blur-sm">
+                  Withdraw
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-[2.1rem] bg-[rgba(247,212,250,0.82)] p-6 shadow-[var(--drv-shadow)]">
+              <div className="flex items-start justify-between gap-4">
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--drv-purple)]">
+                  <Icon name="ticket" className="h-6 w-6" />
+                </div>
+                <p className="text-sm font-black text-[var(--drv-purple)]">{earningsBreakdown[0].note}</p>
+              </div>
+              <p className="mt-6 text-3xl font-black">{earningsBreakdown[0].label}</p>
+              <p className="mt-3 text-5xl font-black leading-none">{earningsBreakdown[0].value}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {earningsBreakdown.slice(1).map((card) => (
+                <div key={card.label} className={`rounded-[2rem] ${card.tint} p-5 shadow-[var(--drv-shadow)]`}>
+                  <div className={`grid h-12 w-12 place-items-center rounded-full bg-white/42 ${card.accent}`}>
+                    <Icon name={card.icon} />
+                  </div>
+                  <p className="mt-6 text-3xl font-black">{card.label}</p>
+                  <p className={`mt-3 text-5xl font-black leading-none ${card.accent}`}>{card.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: "Completed Trips", value: completedTrips, icon: "history" },
+                { label: "Total Passengers", value: totalPassengers, icon: "users" },
+              ].map((card) => (
+                <div key={card.label} className="rounded-[1.8rem] border border-[var(--drv-border)] bg-white/90 px-4 py-4 shadow-[var(--drv-shadow)]">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-11 w-11 place-items-center rounded-full bg-[rgba(140,18,235,0.08)] text-[var(--drv-purple)]">
+                      <Icon name={card.icon} />
+                    </div>
+                    <div>
+                      <p className="text-sm text-[var(--drv-muted)]">{card.label}</p>
+                      <p className="mt-1 text-4xl font-black leading-none">{card.value}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="overflow-hidden rounded-[2.1rem] bg-[#23102c] p-6 text-white shadow-[0_22px_48px_rgba(35,16,44,0.3)]">
+              <p className="inline-flex rounded-full bg-white/8 px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/82">Status</p>
+              <div className="mt-5 flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-5xl font-black leading-none">Elite Tier</p>
+                  <p className="mt-3 text-xl text-white/68">Top 5% of drivers this month</p>
+                </div>
+                <div className="grid h-20 w-20 place-items-center rounded-full border border-white/8 bg-white/4 text-white/65">
+                  <Icon name="wallet" className="h-8 w-8" />
+                </div>
+              </div>
+            </div>
+
+            <Panel className="!p-6">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="text-3xl font-black">Fuel Level</h3>
+                <p className="text-2xl font-black text-[var(--drv-purple)]">{fuelLevel}% Full</p>
+              </div>
+              <div className="mt-8 flex items-end justify-between gap-2">
+                {fuelBars.map((bar, index) => (
+                  <div key={bar.day} className="flex flex-1 flex-col items-center gap-3">
+                    <div
+                      className={`w-full max-w-[2.4rem] rounded-t-[1.1rem] ${index === fuelBars.length - 1 ? "bg-[linear-gradient(180deg,#c243ff,#8c12eb)]" : index >= fuelBars.length - 3 ? "bg-[rgba(174,122,228,0.68)]" : "bg-[rgba(241,200,247,0.9)]"}`}
+                      style={{ height: `${Math.max(bar.value, 24)}px` }}
+                    />
+                    <span className={`text-[0.66rem] font-black uppercase tracking-[0.14em] ${index === fuelBars.length - 1 ? "text-[var(--drv-purple)]" : "text-[var(--drv-muted)]"}`}>
+                      {bar.day}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+
+            <div className="flex items-center gap-4 rounded-[2rem] bg-[rgba(247,212,250,0.82)] px-5 py-5 shadow-[var(--drv-shadow)]">
+              <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--drv-purple)]">
+                <Icon name="alert" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-2xl font-black">Inconsistency?</p>
+                <p className="mt-1 text-sm text-[var(--drv-muted)]">Report an earnings issue</p>
+              </div>
+              <button type="button" className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]">
+                <Icon name="arrow-right" />
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {activeTab === "active" && activeTrip ? (
           <div className="fixed bottom-[6.6rem] left-1/2 z-30 flex w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 gap-3">
