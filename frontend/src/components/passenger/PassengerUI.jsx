@@ -130,7 +130,7 @@ export function PassengerAvatar({ user, size = "h-11 w-11" }) {
 
 export function HeaderBar({ user, activeView, onLogout }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--mb-border)] bg-[var(--mb-nav)] px-5 py-4 backdrop-blur-xl">
+    <header className="fixed inset-x-0 top-0 z-[1200] border-b border-white/70 bg-[color:var(--mb-nav)]/98 px-5 py-4 shadow-[0_16px_42px_rgba(134,29,171,0.08)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white shadow-[var(--mb-shadow)]">
