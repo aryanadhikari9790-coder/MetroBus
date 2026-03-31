@@ -214,11 +214,14 @@ export default function DriverHome() {
   const capacity = Number(manualOptions.buses.find((bus) => bus.id === activeTrip?.bus)?.capacity || assignedBus?.capacity || 40);
   const occupied = activeTrip ? Math.min(32, capacity) : Math.min(18, capacity);
   const occupancyPct = capacity ? Math.round((occupied / capacity) * 100) : 0;
+  const plannedTrips = schedules.length || 6;
+  const homeStatus = activeTrip ? "Trip Live" : "On Track";
   const todaysEarnings = activeTrip ? 4500 : 2450;
   const completedTrips = activeTrip ? 8 : 6;
   const totalPassengers = activeTrip ? 124 : 42;
-  const fuelLevel = activeTrip ? 84 : 76;
+  const fuelLevel = activeTrip ? 84 : 85;
   const predictedPax = activeTrip ? "3-5" : "2-4";
+  const shiftStartTime = nextSchedule?.scheduled_start_time ? formatTime(nextSchedule.scheduled_start_time) : "08:30 AM";
 
   const loadDashboard = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -386,12 +389,12 @@ export default function DriverHome() {
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-sm font-black text-white shadow-[var(--drv-shadow-strong)]">{(user?.full_name || "DR").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--drv-shadow)]"><span className="text-xs font-black uppercase tracking-[0.2em] text-[var(--drv-purple)]">MB</span></div>
-            <Pill tone={activeTrip ? "live" : "idle"}>{activeTrip ? "Trip Live" : "Standby"}</Pill>
           </div>
           <div className="flex items-center gap-2">
+            {activeTab === "home" ? <Pill tone={activeTrip ? "live" : "idle"}>{activeTrip ? "Trip Live" : "Standby"}</Pill> : null}
             <button type="button" onClick={() => loadDashboard()} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name="bell" /></button>
-            <button type="button" onClick={toggle} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name={isDark ? "sun" : "moon"} /></button>
-            <button type="button" onClick={handleLogout} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-plum)] shadow-[var(--drv-shadow)]"><Icon name="logout" /></button>
+            {activeTab !== "home" ? <button type="button" onClick={toggle} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name={isDark ? "sun" : "moon"} /></button> : null}
+            {activeTab !== "home" ? <button type="button" onClick={handleLogout} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-plum)] shadow-[var(--drv-shadow)]"><Icon name="logout" /></button> : null}
           </div>
         </div>
       </header>
@@ -404,7 +407,7 @@ export default function DriverHome() {
           <div className="absolute inset-y-0 right-0 w-32 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
           <p className="text-[0.7rem] font-black uppercase tracking-[0.28em] text-white/70">{activeTrip ? "Route In Progress" : "Shift Dashboard"}</p>
           <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "ROUTE\nLIVE" : "READY TO\nSTART"}</h1>
-          <p className="mt-4 text-base font-medium text-white/84">{activeTrip ? `${currentRoute} is active now. Keep GPS sharing on and watch the next stop.` : `Shift starts at ${formatTime(nextSchedule?.scheduled_start_time)}. Current city: Pokhara.`}</p>
+          <p className="mt-4 text-base font-medium text-white/84">{activeTrip ? `${currentRoute} is active now. Keep GPS sharing on and watch the next stop.` : `Shift starts at ${shiftStartTime} - Current City: Pokhara.`}</p>
           <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
             <div className="flex items-center gap-4">
               <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
@@ -418,11 +421,11 @@ export default function DriverHome() {
         </section>
 
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {[{ label: "Planned Trips", value: schedules.length, note: "Today", icon: "history" }, { label: "On Track", value: activeTrip ? "Live" : "Standby", note: "Status", icon: "route" }, { label: "Today Earnings", value: `Rs. ${todaysEarnings.toLocaleString()}`, note: "Driver total", icon: "wallet" }, { label: "Fuel Level", value: `${fuelLevel}%`, note: "Tank status", icon: "fuel" }].map((card, index) => (
-            <Panel key={card.label} className={`${index === 2 ? "bg-[var(--drv-soft)]" : ""} min-h-[10.4rem]`}>
+          {[{ label: "Planned Trips", value: plannedTrips, note: "Today", icon: "history" }, { label: "On Track", value: homeStatus, note: "Status", icon: "route" }, { label: "Today Earnings", value: `Rs. ${todaysEarnings.toLocaleString()}`, note: "Today earnings", icon: "wallet" }, { label: "Fuel Level", value: `${fuelLevel}%`, note: "Tank status", icon: "fuel" }].map((card, index) => (
+            <Panel key={card.label} className={`${index === 2 ? "bg-[var(--drv-soft)]" : index === 3 ? "bg-white" : "bg-[rgba(247,224,249,0.84)]"} min-h-[10.4rem]`}>
               <div className="text-[var(--drv-purple)]"><Icon name={card.icon} /></div>
               <p className="mt-10 text-[0.7rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p>
-              <p className="mt-2 text-[1.9rem] font-black leading-none text-[var(--drv-text)]">{card.value}</p>
+              <p className={`mt-2 font-black leading-none text-[var(--drv-text)] ${index === 1 ? "text-[1.65rem]" : "text-[1.9rem]"}`}>{card.value}</p>
               {card.icon === "fuel" ? <div className="mt-4 h-2 rounded-full bg-[#edd6f7]"><div className="h-2 rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)]" style={{ width: `${fuelLevel}%` }} /></div> : null}
               <p className="mt-2 text-xs text-[var(--drv-muted)]">{card.note}</p>
             </Panel>
