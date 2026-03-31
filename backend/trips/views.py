@@ -18,6 +18,14 @@ from .serializers import (
 )
 from .permissions import IsDriver
 from .location_serializers import TripLocationCreateSerializer, TripLocationSerializer
+from .services import (
+    pause_trip_simulation,
+    reset_trip_simulation,
+    start_trip_simulation,
+    step_trip_simulation,
+    stop_trip_simulation,
+    sync_trip_simulation,
+)
 
 
 def _is_admin_user(user):
@@ -35,20 +43,46 @@ def _live_trip_conflict(route=None, bus=None, driver=None, helper=None):
     return None
 
 
+def _serialize_simulation(simulation):
+    if not simulation:
+        return None
+    return {
+        "is_active": simulation.is_active,
+        "current_index": simulation.current_index,
+        "points_count": len(simulation.points or []),
+        "step_interval_ms": simulation.step_interval_ms,
+    }
+
+
+def _driver_trip_or_403(request, trip_id):
+    try:
+        trip = Trip.objects.select_related("simulation").get(id=trip_id)
+    except Trip.DoesNotExist:
+        return None, Response({"detail": "Trip not found"}, status=404)
+
+    if trip.driver_id != request.user.id and not request.user.is_superuser:
+        return None, Response({"detail": "Not your trip"}, status=403)
+
+    if trip.status != Trip.Status.LIVE:
+        return None, Response({"detail": "Trip is not LIVE"}, status=400)
+
+    return trip, None
+
+
 class LiveTripsView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
         qs = (
             Trip.objects.filter(status=Trip.Status.LIVE)
-            .select_related("route", "bus", "driver", "helper")
+            .select_related("route", "bus", "driver", "helper", "simulation")
             .prefetch_related("locations")
         )
 
         payload = []
         for trip in qs:
             trip_data = TripSerializer(trip).data
-            latest_location = trip.locations.order_by("-recorded_at").first()
+            latest_location = sync_trip_simulation(trip)
             trip_data["latest_location"] = TripLocationSerializer(latest_location).data if latest_location else None
             payload.append(trip_data)
 
@@ -67,7 +101,7 @@ class DriverDashboardView(APIView):
 
         active_trip = (
             Trip.objects.filter(**trip_filter)
-            .select_related("route", "bus", "driver", "helper")
+            .select_related("route", "bus", "driver", "helper", "simulation")
             .order_by("-started_at", "-created_at")
             .first()
         )
@@ -84,7 +118,7 @@ class DriverDashboardView(APIView):
 
         latest_location = None
         if active_trip:
-            loc = active_trip.locations.order_by("-recorded_at").first()
+            loc = sync_trip_simulation(active_trip)
             if loc:
                 latest_location = TripLocationSerializer(loc).data
 
@@ -92,6 +126,7 @@ class DriverDashboardView(APIView):
             {
                 "active_trip": TripSerializer(active_trip).data if active_trip else None,
                 "latest_location": latest_location,
+                "simulation": _serialize_simulation(getattr(active_trip, "simulation", None)) if active_trip else None,
                 "schedules": TripScheduleSerializer(schedules, many=True).data,
                 "manual_start_options": {
                     "routes": DriverStartOptionRouteSerializer(routes, many=True).data,
@@ -273,6 +308,7 @@ class EndTripView(APIView):
         trip.status = Trip.Status.ENDED
         trip.ended_at = timezone.now()
         trip.save(update_fields=["status", "ended_at"])
+        stop_trip_simulation(trip)
 
         if trip.schedule and trip.schedule.status == TripSchedule.Status.PLANNED:
             trip.schedule.status = TripSchedule.Status.COMPLETED
@@ -285,19 +321,13 @@ class PostTripLocationView(APIView):
     permission_classes = [IsAuthenticated, IsDriver]
 
     def post(self, request, trip_id: int):
-        try:
-            trip = Trip.objects.get(id=trip_id)
-        except Trip.DoesNotExist:
-            return Response({"detail": "Trip not found"}, status=404)
-
-        if trip.driver_id != request.user.id and not request.user.is_superuser:
-            return Response({"detail": "Not your trip"}, status=403)
-
-        if trip.status != Trip.Status.LIVE:
-            return Response({"detail": "Trip is not LIVE"}, status=400)
+        trip, denial = _driver_trip_or_403(request, trip_id)
+        if denial:
+            return denial
 
         ser = TripLocationCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
+        stop_trip_simulation(trip)
 
         loc = TripLocation.objects.create(
             trip=trip,
@@ -310,7 +340,10 @@ class LatestTripLocationView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, trip_id: int):
-        loc = TripLocation.objects.filter(trip_id=trip_id).order_by("-recorded_at").first()
+        trip = Trip.objects.select_related("simulation").filter(id=trip_id).first()
+        if not trip:
+            return Response({"detail": "Trip not found"}, status=404)
+        loc = sync_trip_simulation(trip)
         if not loc:
             return Response({"detail": "No location yet"}, status=404)
         return Response(TripLocationSerializer(loc).data)
@@ -328,4 +361,82 @@ class TripDetailView(APIView):
         return Response({
             "trip": TripSerializer(trip).data,
             "route_stops": RouteStopSerializer(route_stops, many=True).data,
+        })
+
+
+class TripSimulationStartView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request, trip_id: int):
+        trip, denial = _driver_trip_or_403(request, trip_id)
+        if denial:
+            return denial
+
+        points = request.data.get("points") or []
+        step_interval_ms = request.data.get("step_interval_ms", 2000)
+        try:
+            latest_location, simulation = start_trip_simulation(trip, points, step_interval_ms)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        return Response({
+            "latest_location": TripLocationSerializer(latest_location).data if latest_location else None,
+            "simulation": _serialize_simulation(simulation),
+        })
+
+
+class TripSimulationPauseView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request, trip_id: int):
+        trip, denial = _driver_trip_or_403(request, trip_id)
+        if denial:
+            return denial
+
+        try:
+            latest_location, simulation = pause_trip_simulation(trip)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        return Response({
+            "latest_location": TripLocationSerializer(latest_location).data if latest_location else None,
+            "simulation": _serialize_simulation(simulation),
+        })
+
+
+class TripSimulationResetView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request, trip_id: int):
+        trip, denial = _driver_trip_or_403(request, trip_id)
+        if denial:
+            return denial
+
+        try:
+            latest_location, simulation = reset_trip_simulation(trip)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        return Response({
+            "latest_location": TripLocationSerializer(latest_location).data if latest_location else None,
+            "simulation": _serialize_simulation(simulation),
+        })
+
+
+class TripSimulationStepView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request, trip_id: int):
+        trip, denial = _driver_trip_or_403(request, trip_id)
+        if denial:
+            return denial
+
+        try:
+            latest_location, simulation = step_trip_simulation(trip)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        return Response({
+            "latest_location": TripLocationSerializer(latest_location).data if latest_location else None,
+            "simulation": _serialize_simulation(simulation),
         })

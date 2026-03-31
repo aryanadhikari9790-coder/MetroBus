@@ -67,3 +67,21 @@ class TripLocation(models.Model):
 
     def __str__(self):
         return f"Trip {self.trip_id} @ {self.lat},{self.lng}"
+
+
+class TripSimulation(models.Model):
+    trip = models.OneToOneField(Trip, on_delete=models.CASCADE, related_name="simulation")
+    points = models.JSONField(default=list, blank=True)
+    current_index = models.PositiveIntegerField(default=0)
+    last_persisted_index = models.PositiveIntegerField(default=0)
+    step_interval_ms = models.PositiveIntegerField(default=2000)
+    is_active = models.BooleanField(default=False)
+    last_advanced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"Simulation for trip {self.trip_id}"

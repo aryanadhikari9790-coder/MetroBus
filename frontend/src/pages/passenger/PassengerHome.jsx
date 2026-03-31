@@ -91,13 +91,59 @@ export default function PassengerHome() {
 
   const pickupStop = stops.find((stop) => String(stop.id) === String(pickupStopId)) || null;
   const dropStop = stops.find((stop) => String(stop.id) === String(dropStopId)) || null;
+  const liveTripsById = useMemo(() => {
+    const index = new Map();
+    routeFeed.forEach((trip) => {
+      index.set(String(trip.id), trip);
+    });
+    return index;
+  }, [routeFeed]);
+  const hydrateTrip = useCallback((trip) => {
+    if (!trip) return null;
+    const liveTrip = liveTripsById.get(String(trip.id));
+    if (!liveTrip) return trip;
+    return {
+      ...liveTrip,
+      ...trip,
+      latest_location: liveTrip.latest_location ?? trip.latest_location ?? null,
+      live_override: trip.live_override ?? liveTrip.live_override,
+      open_seats: trip.open_seats ?? liveTrip.open_seats,
+      occupancy_label: trip.occupancy_label ?? liveTrip.occupancy_label,
+      eta: trip.eta ?? liveTrip.eta,
+    };
+  }, [liveTripsById]);
+  const hydratedMatchedTrips = useMemo(
+    () => matchedTrips.map((trip) => hydrateTrip(trip)).filter(Boolean),
+    [hydrateTrip, matchedTrips],
+  );
   const visibleMatchedTrips = useMemo(
-    () => matchedTrips.filter((trip) => !dismissedMatchIds.includes(String(trip.id))),
-    [dismissedMatchIds, matchedTrips],
+    () => hydratedMatchedTrips.filter((trip) => !dismissedMatchIds.includes(String(trip.id))),
+    [dismissedMatchIds, hydratedMatchedTrips],
   );
   const displayTrips = matchedTrips.length ? visibleMatchedTrips : routeFeed;
-  const selectedTrip = displayTrips.find((trip) => String(trip.id) === String(selectedTripId)) || displayTrips[0] || null;
-  const acceptedTrip = visibleMatchedTrips.find((trip) => String(trip.id) === String(acceptedTripId)) || null;
+  const activeBooking = bookings.find((booking) => booking.trip_status !== "ENDED") || null;
+  const pastBookings = bookings.filter((booking) => booking.trip_status === "ENDED");
+  const historyBooking = pastBookings[0] || bookings[0] || null;
+  const latestPaidBooking = bookings.find((booking) => booking.payment_status === "SUCCESS") || null;
+  const ticketBooking = bookings.find((booking) => booking.id === ticketBookingId) || lastBookingSummary || null;
+  const selectedTrip = useMemo(() => {
+    const preferredId = activeView === "track" ? acceptedTripId || activeBooking?.trip_id || selectedTripId : selectedTripId;
+    const preferredKey = preferredId ? String(preferredId) : "";
+    return (
+      displayTrips.find((trip) => String(trip.id) === preferredKey)
+      || (preferredKey ? hydrateTrip(liveTripsById.get(preferredKey)) : null)
+      || displayTrips[0]
+      || null
+    );
+  }, [acceptedTripId, activeBooking?.trip_id, activeView, displayTrips, hydrateTrip, liveTripsById, selectedTripId]);
+  const acceptedTrip = useMemo(() => {
+    const acceptedKey = acceptedTripId ? String(acceptedTripId) : activeBooking?.trip_id ? String(activeBooking.trip_id) : "";
+    return (
+      visibleMatchedTrips.find((trip) => String(trip.id) === acceptedKey)
+      || (acceptedKey ? hydrateTrip(liveTripsById.get(acceptedKey)) : null)
+      || null
+    );
+  }, [acceptedTripId, activeBooking?.trip_id, hydrateTrip, liveTripsById, visibleMatchedTrips]);
   const routeStops = useMemo(() => (
     selectedTrip ? tripContexts[selectedTrip.id]?.route_stops || [] : []
   ), [selectedTrip, tripContexts]);
@@ -109,11 +155,6 @@ export default function PassengerHome() {
     return points;
   }, [displayLine, stops]);
   const nearbyStops = useMemo(() => [pickupStop, dropStop, ...stops].filter(Boolean).filter((stop, index, array) => array.findIndex((item) => item.id === stop.id) === index).slice(0, 2), [dropStop, pickupStop, stops]);
-  const activeBooking = bookings.find((booking) => booking.trip_status !== "ENDED") || null;
-  const pastBookings = bookings.filter((booking) => booking.trip_status === "ENDED");
-  const historyBooking = pastBookings[0] || bookings[0] || null;
-  const latestPaidBooking = bookings.find((booking) => booking.payment_status === "SUCCESS") || null;
-  const ticketBooking = bookings.find((booking) => booking.id === ticketBookingId) || lastBookingSummary || null;
 
   const ensureCtx = useCallback(async (tripList) => {
     const missing = tripList.filter((trip) => !tripContexts[trip.id]);
@@ -226,10 +267,10 @@ export default function PassengerHome() {
   useEffect(() => {
     loadBase();
     loadBookings();
-    const tripRefresh = setInterval(() => loadBase({ silent: true }), 5000);
+    const tripRefresh = setInterval(() => loadBase({ silent: true }), activeView === "track" ? 2000 : 5000);
     const bookingRefresh = setInterval(() => loadBookings({ silent: true }), 15000);
     return () => { clearInterval(tripRefresh); clearInterval(bookingRefresh); };
-  }, [loadBase, loadBookings]);
+  }, [activeView, loadBase, loadBookings]);
 
   useEffect(() => {
     if (!activeBooking?.trip_id) return;

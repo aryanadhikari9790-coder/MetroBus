@@ -8,6 +8,10 @@ from .views import (
     PostTripLocationView,
     LatestTripLocationView,
     TripDetailView,
+    TripSimulationPauseView,
+    TripSimulationResetView,
+    TripSimulationStartView,
+    TripSimulationStepView,
 )
 
 urlpatterns = [
@@ -19,4 +23,8 @@ urlpatterns = [
     path("<int:trip_id>/end/", EndTripView.as_view(), name="trips-end"),
     path("<int:trip_id>/location/", PostTripLocationView.as_view(), name="trip-location-post"),
     path("<int:trip_id>/location/latest/", LatestTripLocationView.as_view(), name="trip-location-latest"),
+    path("<int:trip_id>/simulate/start/", TripSimulationStartView.as_view(), name="trip-sim-start"),
+    path("<int:trip_id>/simulate/pause/", TripSimulationPauseView.as_view(), name="trip-sim-pause"),
+    path("<int:trip_id>/simulate/reset/", TripSimulationResetView.as_view(), name="trip-sim-reset"),
+    path("<int:trip_id>/simulate/step/", TripSimulationStepView.as_view(), name="trip-sim-step"),
 ]

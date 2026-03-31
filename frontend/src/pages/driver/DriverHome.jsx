@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
@@ -137,15 +137,6 @@ function formatDateTime(value) { if (!value) return "--"; try { return new Date(
 function formatTime(value) { if (!value) return "--"; try { return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch { return value; } }
 function minutesUntil(value) { if (!value) return null; const delta = Math.round((new Date(value).getTime() - Date.now()) / 60000); return Number.isNaN(delta) ? null : delta; }
 function distanceBetween(a, b) { if (!a || !b) return Infinity; return Math.sqrt((Number(a[0]) - Number(b[0])) ** 2 + (Number(a[1]) - Number(b[1])) ** 2); }
-function computeHeading(fromPoint, toPoint) {
-  if (!fromPoint || !toPoint) return 0;
-  const lat1 = Number(fromPoint[0]) * Math.PI / 180;
-  const lat2 = Number(toPoint[0]) * Math.PI / 180;
-  const lngDelta = (Number(toPoint[1]) - Number(fromPoint[1])) * Math.PI / 180;
-  const y = Math.sin(lngDelta) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lngDelta);
-  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
-}
 function buildSimulationPoints(points, maxPoints = 100) {
   const clean = points.filter((point) => Array.isArray(point) && point.length === 2 && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])));
   if (clean.length <= maxPoints) return clean;
@@ -198,7 +189,6 @@ export default function DriverHome() {
   const locationWatch = useMemo(() => ({ id: null }), []);
   const wsRef = useMemo(() => ({ current: null }), []);
   const queueRef = useMemo(() => ({ current: [] }), []);
-  const simulationTimerRef = useRef(null);
 
   const activeTrip = dashboard?.active_trip ?? null;
   const schedules = dashboard?.schedules ?? [];
@@ -312,6 +302,8 @@ export default function DriverHome() {
       const response = await api.get("/api/trips/driver/dashboard/");
       setDashboard(response.data);
       setLatestLocation(response.data.latest_location || null);
+      setSimulationActive(Boolean(response.data.simulation?.is_active));
+      setSimulationIndex(Number(response.data.simulation?.current_index || 0));
       setErr("");
     } catch (error) {
       setErr(error?.response?.data?.detail || "Failed to load driver dashboard.");
@@ -400,6 +392,7 @@ export default function DriverHome() {
       try {
         const response = await api.post(`/api/trips/${activeTrip.id}/location/`, payload);
         setLatestLocation(response.data);
+        setSimulationActive(false);
       } catch {
         // Ignore HTTP fallback errors when WebSocket is already live.
       }
@@ -447,60 +440,80 @@ export default function DriverHome() {
     postLocation({ lat, lng, speed: null, heading: null });
   };
 
-  const pushSimulationPoint = useCallback(async (index) => {
-    if (!simulationPoints.length) {
-      setErr("No route points are available yet. Start a trip and load the route first.");
-      return false;
+  const applySimulationResponse = useCallback((data, statusText) => {
+    if (data?.latest_location) {
+      setLatestLocation(data.latest_location);
+      setManualLat(Number(data.latest_location.lat).toFixed(6));
+      setManualLng(Number(data.latest_location.lng).toFixed(6));
     }
-    const boundedIndex = Math.min(index, simulationPoints.length - 1);
-    const point = simulationPoints[boundedIndex];
-    const nextPoint = simulationPoints[Math.min(boundedIndex + 1, simulationPoints.length - 1)];
-    await postLocation({
-      lat: Number(point[0]),
-      lng: Number(point[1]),
-      speed: 18,
-      heading: computeHeading(point, nextPoint),
-    });
-    setManualLat(Number(point[0]).toFixed(6));
-    setManualLng(Number(point[1]).toFixed(6));
-    return boundedIndex < simulationPoints.length - 1;
-  }, [postLocation, simulationPoints]);
-
-  const startSimulation = useCallback(() => {
-    if (!activeTrip?.id) { setErr("Start a trip first."); return; }
-    if (simulationPoints.length < 2) { setErr("Load the route first so the simulator has points to send."); return; }
-    setAutoShare(false);
-    setErr("");
-    setMsg("Simulation started. Passenger tracking will follow this bus.");
-    setSimulationIndex((current) => (simulationActive || current >= simulationPoints.length - 1 ? 0 : current));
-    setSimulationActive(true);
-  }, [activeTrip?.id, simulationActive, simulationPoints.length]);
-
-  const pauseSimulation = useCallback(() => {
-    setSimulationActive(false);
-    setLocationStatus("Simulation paused.");
+    setSimulationActive(Boolean(data?.simulation?.is_active));
+    setSimulationIndex(Number(data?.simulation?.current_index || 0));
+    setLocationStatus(statusText);
   }, []);
 
-  const resetSimulation = useCallback(() => {
-    setSimulationActive(false);
-    setSimulationIndex(0);
-    if (simulationPoints[0]) {
-      setManualLat(Number(simulationPoints[0][0]).toFixed(6));
-      setManualLng(Number(simulationPoints[0][1]).toFixed(6));
+  const startSimulation = useCallback(async () => {
+    if (!activeTrip?.id) { setErr("Start a trip first."); return; }
+    if (simulationPoints.length < 2) { setErr("Load the route first so the simulator has points to send."); return; }
+    setLocationBusy(true);
+    setAutoShare(false);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/trips/${activeTrip.id}/simulate/start/`, {
+        points: simulationPoints,
+        step_interval_ms: Number(simulationSpeedMs),
+      });
+      applySimulationResponse(response.data, "Backend simulation running.");
+      setMsg("Simulation started. Passenger tracking will keep moving even after driver logout.");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to start the simulator.");
+    } finally {
+      setLocationBusy(false);
     }
-    setLocationStatus("Simulation reset to the route start.");
-  }, [simulationPoints]);
+  }, [activeTrip?.id, applySimulationResponse, simulationPoints, simulationSpeedMs]);
+
+  const pauseSimulation = useCallback(async () => {
+    if (!activeTrip?.id) return;
+    setLocationBusy(true);
+    setErr("");
+    try {
+      const response = await api.post(`/api/trips/${activeTrip.id}/simulate/pause/`);
+      applySimulationResponse(response.data, "Simulation paused.");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to pause the simulator.");
+    } finally {
+      setLocationBusy(false);
+    }
+  }, [activeTrip?.id, applySimulationResponse]);
+
+  const resetSimulation = useCallback(async () => {
+    if (!activeTrip?.id) return;
+    setLocationBusy(true);
+    setErr("");
+    try {
+      const response = await api.post(`/api/trips/${activeTrip.id}/simulate/reset/`);
+      applySimulationResponse(response.data, "Simulation reset to the route start.");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to reset the simulator.");
+    } finally {
+      setLocationBusy(false);
+    }
+  }, [activeTrip?.id, applySimulationResponse]);
 
   const sendSimulationStep = useCallback(async () => {
     if (!activeTrip?.id) { setErr("Start a trip first."); return; }
-    setSimulationActive(false);
+    setLocationBusy(true);
     setAutoShare(false);
-    const targetIndex = Math.min(simulationIndex, Math.max(simulationPoints.length - 1, 0));
-    const hasMore = await pushSimulationPoint(targetIndex);
-    setLocationStatus(`Simulation point ${targetIndex + 1}/${simulationPoints.length || 0} sent.`);
-    if (hasMore) setSimulationIndex(targetIndex + 1);
-    else setMsg("Simulation reached the final route point.");
-  }, [activeTrip?.id, pushSimulationPoint, simulationIndex, simulationPoints.length]);
+    setErr("");
+    try {
+      const response = await api.post(`/api/trips/${activeTrip.id}/simulate/step/`);
+      applySimulationResponse(response.data, `Simulation point ${Number(response.data?.simulation?.current_index || 0) + 1}/${simulationPoints.length || 0} sent.`);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to send the next simulation point.");
+    } finally {
+      setLocationBusy(false);
+    }
+  }, [activeTrip?.id, applySimulationResponse, simulationPoints.length]);
 
   useEffect(() => { setAutoShare(Boolean(activeTrip?.id)); }, [activeTrip?.id]);
   useEffect(() => {
@@ -514,38 +527,6 @@ export default function DriverHome() {
       if (locationWatch.id === id) locationWatch.id = null;
     };
   }, [autoShare, activeTrip?.id, clearWatch, locationWatch, postLocation, sendBrowserLocation]);
-  useEffect(() => {
-    if (!simulationActive) {
-      if (simulationTimerRef.current) {
-        clearTimeout(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      }
-      return undefined;
-    }
-    let cancelled = false;
-    const runStep = async () => {
-      const hasMore = await pushSimulationPoint(simulationIndex);
-      if (cancelled) return;
-      setLocationStatus(`Simulation point ${simulationIndex + 1}/${simulationPoints.length} live.`);
-      if (!hasMore) {
-        setSimulationActive(false);
-        setMsg("Route simulation completed.");
-        return;
-      }
-      simulationTimerRef.current = setTimeout(() => {
-        setSimulationIndex((current) => Math.min(current + 1, simulationPoints.length - 1));
-      }, Number(simulationSpeedMs));
-    };
-    runStep();
-    return () => {
-      cancelled = true;
-      if (simulationTimerRef.current) {
-        clearTimeout(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      }
-    };
-  }, [pushSimulationPoint, simulationActive, simulationIndex, simulationPoints.length, simulationSpeedMs]);
-
   const handleLogout = () => {
     clearWatch();
     clearToken();

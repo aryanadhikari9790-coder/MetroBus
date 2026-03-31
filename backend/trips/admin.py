@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import TripSchedule, Trip, TripLocation
+from .models import TripSchedule, Trip, TripLocation, TripSimulation
 
 
 
@@ -21,3 +21,9 @@ class TripAdmin(admin.ModelAdmin):
 class TripLocationAdmin(admin.ModelAdmin):
     list_display = ("id", "trip", "lat", "lng", "speed", "heading", "recorded_at")
     list_filter = ("trip",)
+
+
+@admin.register(TripSimulation)
+class TripSimulationAdmin(admin.ModelAdmin):
+    list_display = ("trip", "is_active", "current_index", "last_persisted_index", "step_interval_ms", "updated_at")
+    list_filter = ("is_active",)
