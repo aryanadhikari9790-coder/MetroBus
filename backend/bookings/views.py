@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from transport.models import Seat
+from transport.services import ensure_bus_seats
 from trips.models import Trip
 from .models import Booking, BookingSeat, OfflineBoarding, OfflineSeat
 from .serializers import (
@@ -50,6 +51,7 @@ class TripSeatAvailabilityView(APIView):
         if not trip:
             return Response({"detail": "Trip not found"}, status=404)
 
+        ensure_bus_seats(trip.bus)
         all_seats = Seat.objects.filter(bus=trip.bus).order_by("seat_no").values("id", "seat_no")
         taken = get_taken_seat_ids_for_trip(trip_id, from_order, to_order)
 
@@ -83,6 +85,7 @@ class CreateBookingView(APIView):
         to_order = ser.validated_data["to_stop_order"]
         seat_ids = ser.validated_data["seat_ids"]
 
+        ensure_bus_seats(trip.bus)
         # Validate seat ids belong to this bus
         valid_bus_seat_ids = set(Seat.objects.filter(bus=trip.bus, id__in=seat_ids).values_list("id", flat=True))
         if len(valid_bus_seat_ids) != len(seat_ids):
@@ -132,6 +135,7 @@ class CreateOfflineBoardingView(APIView):
         to_order = ser.validated_data["to_stop_order"]
         seat_ids = ser.validated_data["seat_ids"]
 
+        ensure_bus_seats(trip.bus)
         valid_bus_seat_ids = set(Seat.objects.filter(bus=trip.bus, id__in=seat_ids).values_list("id", flat=True))
         if len(valid_bus_seat_ids) != len(seat_ids):
             return Response({"detail": "One or more seats are invalid for this bus"}, status=400)

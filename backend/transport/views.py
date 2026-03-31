@@ -4,7 +4,8 @@ from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Stop, Route, RouteStop, RouteFare, Bus, Seat
+from .models import Stop, Route, RouteStop, RouteFare, Bus
+from .services import ensure_bus_seats
 from .serializers import StopSerializer, RouteListSerializer, CreateRouteSerializer, BusSerializer
 
 User = get_user_model()
@@ -138,19 +139,7 @@ class AdminBusManageView(APIView):
             plate_number=plate, capacity=capacity, is_active=is_active,
             driver=driver, helper=helper
         )
-        # Auto-generate seats: rows A-Z, columns 1-N
-        seats_to_create = []
-        cols = 4
-        rows_needed = (capacity + cols - 1) // cols
-        seat_count = 0
-        for row_idx in range(rows_needed):
-            row_letter = chr(ord('A') + row_idx)
-            for col in range(1, cols + 1):
-                if seat_count >= capacity:
-                    break
-                seats_to_create.append(Seat(bus=bus, seat_no=f"{row_letter}{col}"))
-                seat_count += 1
-        Seat.objects.bulk_create(seats_to_create)
+        ensure_bus_seats(bus)
         return Response({
             "message": f"Bus '{plate}' created with {capacity} seats.",
             "bus": BusSerializer(bus).data,

@@ -137,13 +137,38 @@ export default function PassengerHome() {
     }
   }, []);
 
-  const loadSeats = async (tripId, fromOrder, toOrder) => {
+  const syncTripSeatMeta = useCallback((tripId, seatsData) => {
+    const openSeats = seatsData.filter((seat) => seat.available).length;
+    const occupancy = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
+    const occupancyLabel = seatsData.length
+      ? occupancy >= 80
+        ? "High Occupancy"
+        : occupancy >= 50
+          ? "Med Occupancy"
+          : "Low Occupancy"
+      : "Seat map unavailable";
+    const apply = (list) => list.map((trip) => (
+      String(trip.id) === String(tripId)
+        ? { ...trip, open_seats: openSeats, occupancy_label: occupancyLabel }
+        : trip
+    ));
+    setRouteFeed((current) => apply(current));
+    setMatchedTrips((current) => apply(current));
+  }, []);
+
+  const loadSeats = useCallback(async (tripId, fromOrder, toOrder) => {
     if (!tripId || !fromOrder || !toOrder) { setSeats([]); setSelectedSeatIds([]); return; }
     setLoadingSeats(true);
-    try { const response = await api.get(`/api/bookings/trips/${tripId}/availability/?from=${fromOrder}&to=${toOrder}`); setSeats(response.data.seats || []); setSelectedSeatIds([]); }
+    try {
+      const response = await api.get(`/api/bookings/trips/${tripId}/availability/?from=${fromOrder}&to=${toOrder}`);
+      const seatsData = response.data.seats || [];
+      setSeats(seatsData);
+      setSelectedSeatIds([]);
+      syncTripSeatMeta(tripId, seatsData);
+    }
     catch (error) { setErr(error?.response?.data?.detail || "Unable to load seats."); setSeats([]); }
     finally { setLoadingSeats(false); }
-  };
+  }, [syncTripSeatMeta]);
 
   const buildRouteFeed = useCallback(async (liveTrips) => {
     const ctxMap = await ensureCtx(liveTrips);
@@ -213,7 +238,7 @@ export default function PassengerHome() {
       return;
     }
     loadSeats(acceptedTrip.id, acceptedTrip.from_order, acceptedTrip.to_order);
-  }, [acceptedTrip?.from_order, acceptedTrip?.id, acceptedTrip?.to_order]);
+  }, [acceptedTrip?.from_order, acceptedTrip?.id, acceptedTrip?.to_order, loadSeats]);
 
   useEffect(() => {
     if (routePolyline.length < 2) { setRoadPolyline([]); return; }

@@ -326,14 +326,16 @@ export function PlannerCard({
               />
             );
           })}
-          {routeMatches.map(({ trip, index, bus }) => (
-            <Marker
-              key={trip.id}
-              position={bus.point}
-              icon={createBusIcon({ label: routeCode(trip, index), heading: bus.heading })}
-            >
-              <Popup closeButton={false} offset={[0, -18]}>
-                <div className="min-w-[15rem] space-y-3 text-[var(--mb-text)]">
+          {routeMatches.map(({ trip, index, bus }) => {
+            const canAccept = trip.open_seats == null || trip.open_seats > 0;
+            return (
+              <Marker
+                key={trip.id}
+                position={bus.point}
+                icon={createBusIcon({ label: routeCode(trip, index), heading: bus.heading })}
+              >
+                <Popup closeButton={false} offset={[0, -18]}>
+                  <div className="min-w-[15rem] space-y-3 text-[var(--mb-text)]">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[0.62rem] font-black uppercase tracking-[0.2em] text-[var(--mb-purple)]">Live Bus</p>
@@ -364,14 +366,15 @@ export function PlannerCard({
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
+                      disabled={!canAccept}
                       onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
                         onSelectTrip?.(trip.id);
                       }}
-                      className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
+                      className={`rounded-full px-4 py-2.5 text-sm font-black text-white ${canAccept ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] shadow-[var(--mb-shadow-strong)]" : "bg-[#dcc8e5] text-[#876f92]"}`}
                     >
-                      Accept
+                      {canAccept ? "Accept" : "Full"}
                     </button>
                     <button
                       type="button"
@@ -385,10 +388,11 @@ export function PlannerCard({
                       Decline
                     </button>
                   </div>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
         </MapContainer>
       </div>
 
@@ -416,6 +420,7 @@ export function PlannerCard({
           <div className="space-y-3">
             {matchedTrips.map((trip, index) => {
               const active = String(selectedTripId) === String(trip.id);
+              const canAccept = trip.open_seats == null || trip.open_seats > 0;
               return (
                 <div
                   key={trip.id}
@@ -454,10 +459,11 @@ export function PlannerCard({
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <button
                       type="button"
+                      disabled={!canAccept}
                       onClick={() => onSelectTrip?.(trip.id)}
-                      className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
+                      className={`rounded-full px-4 py-3 text-sm font-black text-white ${canAccept ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] shadow-[var(--mb-shadow-strong)]" : "bg-[#dcc8e5] text-[#876f92]"}`}
                     >
-                      Accept
+                      {canAccept ? "Accept" : "Full"}
                     </button>
                     <button
                       type="button"
@@ -599,6 +605,7 @@ export function SeatButton({ seat, selected, onClick }) {
 
 export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle, onBook, onPay, bookingBusy, paymentBusy, loadingSeats, lastBookingId, lastBookingSummary, pickupStop, dropStop }) {
   const selectedLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
+  const openSeatCount = seats.filter((seat) => seat.available).length;
   const total = lastBookingSummary?.fare_total || ((trip?.fare_estimate || 50) * selectedSeatIds.length);
   if (!trip) return null;
   return (
@@ -609,7 +616,7 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
           <h3 className="mt-2 text-2xl font-black text-[var(--mb-text)]">{trip.bus_plate || "MetroBus"} • {pickupStop?.name || "Pickup"} to {dropStop?.name || "Drop"}</h3>
         </div>
         <div className="rounded-full bg-[var(--mb-bg-alt)] px-4 py-2 text-sm font-black text-[var(--mb-purple)]">
-          {trip.open_seats ?? 0} seats
+          {loadingSeats ? "Loading..." : `${openSeatCount || trip.open_seats || 0} seats`}
         </div>
       </div>
 
@@ -618,13 +625,30 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
       </div>
 
       <div className="mt-5">
-        {loadingSeats ? <p className="text-sm text-[var(--mb-muted)]">Loading seat map...</p> : (
-          <div className="grid grid-cols-5 gap-3 sm:grid-cols-6">
-            {seats.map((seat) => (
-              <SeatButton key={seat.seat_id} seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => onSeatToggle(seat.seat_id)} />
-            ))}
+        {loadingSeats ? <p className="text-sm text-[var(--mb-muted)]">Loading seat map...</p> : null}
+        {!loadingSeats && !seats.length ? (
+          <div className="rounded-[26px] border border-dashed border-[var(--mb-border)] bg-white px-4 py-5 text-sm font-medium text-[var(--mb-muted)]">
+            Seat map is not ready for this bus yet. Try refreshing the search or picking another live bus.
           </div>
-        )}
+        ) : null}
+        {!loadingSeats && seats.length ? (
+          <>
+            <div className="mb-3 flex flex-wrap gap-2 text-[0.68rem] font-black uppercase tracking-[0.18em]">
+              <span className="rounded-full bg-white px-3 py-2 text-[var(--mb-purple)]">{openSeatCount} open</span>
+              <span className="rounded-full bg-[#f4e3f1] px-3 py-2 text-[#8d6f97]">{seats.length - openSeatCount} taken</span>
+            </div>
+            <div className="grid grid-cols-5 gap-3 sm:grid-cols-6">
+              {seats.map((seat) => (
+                <SeatButton key={seat.seat_id} seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => onSeatToggle(seat.seat_id)} />
+              ))}
+            </div>
+            {!openSeatCount ? (
+              <div className="mt-4 rounded-[24px] bg-[#f9ecf6] px-4 py-3 text-sm font-medium text-[var(--mb-muted)]">
+                This bus has no open seats left for the selected segment right now.
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </div>
 
       {selectedLabels.length ? (
