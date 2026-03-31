@@ -251,8 +251,9 @@ export default function PassengerHome() {
     if (!selectedTripId || !settings.liveTracking) return undefined;
     let socket = null;
     let subscribed = true;
+    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
     const connect = () => {
-      socket = new WebSocket(`ws://${window.location.hostname}:8000/ws/transport/trips/${selectedTripId}/`);
+      socket = new WebSocket(`${wsProtocol}://${window.location.hostname}:8000/ws/transport/trips/${selectedTripId}/`);
       socket.onmessage = (event) => {
         if (!subscribed) return;
         const data = JSON.parse(event.data);
