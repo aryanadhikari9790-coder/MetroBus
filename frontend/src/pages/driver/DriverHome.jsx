@@ -223,6 +223,21 @@ export default function DriverHome() {
   const fuelLevel = activeTrip ? 84 : 85;
   const predictedPax = activeTrip ? "3-5" : "2-4";
   const shiftStartTime = nextSchedule?.scheduled_start_time ? formatTime(nextSchedule.scheduled_start_time) : "08:30 AM";
+  const lastShiftDate = new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
+  const lastShiftEarnings = 4800;
+  const lastShiftPassengers = 245;
+  const lastShiftDuration = "8h 15m";
+  const lastShiftRank = "Top 5%";
+  const historyMetrics = [
+    { label: "Fuel Efficiency", value: "4.2", suffix: "km/L", icon: "fuel" },
+    { label: "On-Time", value: "98%", suffix: "", icon: "history" },
+    { label: "Safety Score", value: "4.9/5", suffix: "", icon: "alert" },
+  ];
+  const recentHistoryTrips = [
+    { route: "Route 42A: Downtown Express", time: "08:30 AM - 09:45 AM", earnings: "Rs. 840" },
+    { route: "Route 12: Westside Terminal", time: "10:15 AM - 11:30 AM", earnings: "Rs. 620" },
+    { route: "Route 05: Airport Shuttle", time: "12:00 PM - 01:45 PM", earnings: "Rs. 1,150" },
+  ];
   const activeTripStartedLabel = activeTrip?.started_at ? formatTime(activeTrip.started_at) : shiftStartTime;
   const currentStopName = routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || routeStops[0]?.stop?.name || "--";
   const routeStatusLabel = activeTrip?.deviation_mode ? "Deviation Mode" : "On Route";
@@ -673,7 +688,100 @@ export default function DriverHome() {
           )
         ) : null}
 
-        {activeTab === "history" ? <div className="mt-5 space-y-5"><Panel className="bg-[linear-gradient(135deg,var(--drv-soft),rgba(255,255,255,0.85))]"><SectionLabel>Last Shift Summary</SectionLabel><p className="mt-3 text-5xl font-black">NPR 1,250</p><p className="mt-2 text-sm text-[var(--drv-muted)]">Total earnings from the last completed trip</p></Panel><div className="grid grid-cols-2 gap-3">{[{ label: "Passengers", value: "42" }, { label: "Duration", value: "42 min" }].map((card) => <Panel key={card.label}><p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p><p className="mt-3 text-4xl font-black">{card.value}</p></Panel>)}</div><Panel><SectionLabel>Efficiency Report</SectionLabel>{[{ label: "Fuel Efficiency", value: "12.4 km/L" }, { label: "On-Time Performance", value: "98%" }, { label: "Last Route", value: formatTime(nextSchedule?.scheduled_start_time) }].map((row) => <div key={row.label} className="flex items-center justify-between border-b border-[var(--drv-border)] py-4 last:border-0"><span className="text-sm text-[var(--drv-muted)]">{row.label}</span><span className="text-sm font-black">{row.value}</span></div>)}</Panel></div> : null}
+        {activeTab === "history" ? (
+          <div className="mt-5 space-y-5 pb-32">
+            <div className="flex items-end justify-between gap-4 px-1">
+              <div>
+                <SectionLabel>Current Status</SectionLabel>
+                <h2 className="mt-3 text-5xl font-black leading-[0.94]">
+                  Last Shift
+                  <span className="block text-[var(--drv-purple)]">Summary</span>
+                </h2>
+              </div>
+              <p className="pb-2 text-sm font-medium text-[var(--drv-muted)]">{lastShiftDate}</p>
+            </div>
+
+            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--drv-shadow-strong)]">
+              <div className="grid h-12 w-12 place-items-center rounded-[1.2rem] bg-white/14 text-white">
+                <Icon name="wallet" />
+              </div>
+              <p className="mt-8 text-lg font-medium text-white/82">Total Earnings</p>
+              <p className="mt-4 text-6xl font-black leading-none">Rs. {lastShiftEarnings.toLocaleString()}</p>
+              <div className="mt-8 h-px bg-white/20" />
+              <div className="mt-5 grid grid-cols-3 gap-3">
+                {[
+                  { label: "Passengers", value: lastShiftPassengers },
+                  { label: "Duration", value: lastShiftDuration },
+                  { label: "Efficiency", value: lastShiftRank },
+                ].map((item) => (
+                  <div key={item.label}>
+                    <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/70">{item.label}</p>
+                    <p className="mt-2 text-2xl font-black leading-tight">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {historyMetrics.map((metric, index) => (
+                <Panel key={metric.label} className={index === 2 ? "bg-[rgba(243,224,250,0.95)]" : "bg-[rgba(252,227,252,0.82)]"}>
+                  <div className="flex items-center gap-4">
+                    <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--drv-purple)]">
+                      <Icon name={metric.icon} />
+                    </div>
+                    <div>
+                      <p className="text-[0.72rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{metric.label}</p>
+                      <p className="mt-2 text-4xl font-black leading-none">
+                        {metric.value}
+                        {metric.suffix ? <span className="ml-1 text-base font-semibold text-[var(--drv-muted)]">{metric.suffix}</span> : null}
+                      </p>
+                    </div>
+                  </div>
+                </Panel>
+              ))}
+            </div>
+
+            <div>
+              <div className="mb-3 flex items-center justify-between px-1">
+                <h3 className="text-3xl font-black">Recent Trips</h3>
+                <button type="button" className="text-[0.72rem] font-black uppercase tracking-[0.2em] text-[var(--drv-purple)]">
+                  View All
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {recentHistoryTrips.map((trip, index) => (
+                  <Panel key={`${trip.route}-${trip.time}`} className={index === 1 ? "bg-[rgba(251,234,252,0.86)]" : "bg-white/88"}>
+                    <div className="flex items-start gap-4">
+                      <div className="mt-1 grid h-12 w-12 place-items-center rounded-[1.1rem] bg-[rgba(140,18,235,0.1)] text-[var(--drv-purple)]">
+                        <Icon name="bus" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-2xl font-black leading-tight">{trip.route}</p>
+                        <p className="mt-2 text-sm text-[var(--drv-muted)]">{trip.time}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Earnings</p>
+                        <p className="mt-2 text-2xl font-black">{trip.earnings}</p>
+                      </div>
+                    </div>
+                  </Panel>
+                ))}
+              </div>
+            </div>
+
+            <ActionButton tone="primary" className="w-full !justify-between !py-5 !pl-7 !pr-6 text-base">
+              <span>Mark Shift Complete</span>
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-white/16">
+                <Icon name="history" className="h-5 w-5" />
+              </span>
+            </ActionButton>
+
+            <p className="text-center text-sm leading-6 text-[var(--drv-muted)]">
+              Shift ending at 16:30. All data will be synced automatically after completion.
+            </p>
+          </div>
+        ) : null}
 
         {activeTab === "earnings" ? <div className="mt-5 space-y-5"><Panel className="bg-[linear-gradient(135deg,var(--drv-soft),rgba(255,255,255,0.85))]"><SectionLabel>Today's Earnings</SectionLabel><p className="mt-3 text-5xl font-black">NPR {todaysEarnings.toLocaleString()}</p><p className="mt-2 text-sm text-[var(--drv-muted)]">Driver-side earnings snapshot</p></Panel><div className="grid grid-cols-2 gap-3">{[{ label: "Completed Trips", value: completedTrips }, { label: "Passengers", value: totalPassengers }].map((card) => <Panel key={card.label}><p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p><p className="mt-3 text-4xl font-black">{card.value}</p></Panel>)}</div><Panel><SectionLabel>Breakdown</SectionLabel>{[{ label: "App Bookings", value: "NPR 2,800" }, { label: "Cash Collections", value: "NPR 1,700" }, { label: "Manual Entries", value: "8 pax" }].map((row) => <div key={row.label} className="flex items-center justify-between border-b border-[var(--drv-border)] py-4 last:border-0"><span className="text-sm text-[var(--drv-muted)]">{row.label}</span><span className="text-sm font-black">{row.value}</span></div>)}</Panel></div> : null}
 
