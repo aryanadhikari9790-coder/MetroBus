@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
   createBusIcon,
   distKm,
@@ -240,7 +240,41 @@ function StopPicker({ label, value, stops, onChange }) {
   );
 }
 
-export function PlannerCard({ stops, pickupStopId, dropStopId, selectionMode, onPickupChange, onDropChange, onMapPickMode, onFindRoutes, findingRoutes, mapPoints, pickupStop, dropStop }) {
+export function PlannerCard({
+  stops,
+  pickupStopId,
+  dropStopId,
+  selectionMode,
+  onPickupChange,
+  onDropChange,
+  onMapPickMode,
+  onFindRoutes,
+  findingRoutes,
+  mapPoints,
+  pickupStop,
+  dropStop,
+  matchedTrips = [],
+  selectedTripId,
+  onSelectTrip,
+  onDeclineTrip,
+  displayLine = [],
+}) {
+  const routeMatches = useMemo(
+    () =>
+      matchedTrips
+        .map((trip, index) => {
+          const bus = getBusPoint(trip, displayLine);
+          if (!bus?.point) return null;
+          return { trip, index, bus };
+        })
+        .filter(Boolean),
+    [displayLine, matchedTrips],
+  );
+
+  const plannerPoints = useMemo(() => {
+    const busPoints = routeMatches.map((item) => item.bus.point).filter(Boolean);
+    return [...mapPoints, ...busPoints];
+  }, [mapPoints, routeMatches]);
   return (
     <section className="mt-5 rounded-[32px] bg-[var(--mb-card)] p-4 shadow-[var(--mb-shadow)]">
       <div className="flex items-center justify-between gap-3">
@@ -272,7 +306,7 @@ export function PlannerCard({ stops, pickupStopId, dropStopId, selectionMode, on
       <div className="mt-4 overflow-hidden rounded-[30px]">
         <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-56 w-full">
           <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-          <MapViewport points={mapPoints} />
+          <MapViewport points={plannerPoints} />
           {stops.map((stop) => {
             const point = toPoint(stop.lat, stop.lng);
             if (!point) return null;
@@ -292,18 +326,145 @@ export function PlannerCard({ stops, pickupStopId, dropStopId, selectionMode, on
               />
             );
           })}
+          {routeMatches.map(({ trip, index, bus }) => (
+            <Marker
+              key={trip.id}
+              position={bus.point}
+              icon={createBusIcon({ label: routeCode(trip, index), heading: bus.heading })}
+            >
+              <Popup closeButton={false} offset={[0, -18]}>
+                <div className="min-w-[15rem] space-y-3 text-[var(--mb-text)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[0.62rem] font-black uppercase tracking-[0.2em] text-[var(--mb-purple)]">Live Bus</p>
+                      <p className="mt-1 text-lg font-black">{trip.bus_plate || routeCode(trip, index)}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] ${String(selectedTripId) === String(trip.id) ? "bg-[var(--mb-purple)] text-white" : "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]"}`}>
+                      {String(selectedTripId) === String(trip.id) ? "Selected" : "Match"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-2xl bg-[var(--mb-bg-alt)] px-3 py-2">
+                      <p className="font-bold uppercase tracking-[0.16em] text-[var(--mb-muted)]">Occupancy</p>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{trip.occupancy_label || "Live service"}</p>
+                    </div>
+                    <div className="rounded-2xl bg-[var(--mb-bg-alt)] px-3 py-2">
+                      <p className="font-bold uppercase tracking-[0.16em] text-[var(--mb-muted)]">ETA</p>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{fmtEta(trip.eta)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-[var(--mb-bg-alt)] px-3 py-2">
+                      <p className="font-bold uppercase tracking-[0.16em] text-[var(--mb-muted)]">Fare</p>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{fmtMoney(trip.fare_estimate || 50)}</p>
+                    </div>
+                    <div className="rounded-2xl bg-[var(--mb-bg-alt)] px-3 py-2">
+                      <p className="font-bold uppercase tracking-[0.16em] text-[var(--mb-muted)]">Seats</p>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{trip.open_seats ?? 0} open</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSelectTrip?.(trip.id)}
+                      className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeclineTrip?.(trip.id)}
+                      className="rounded-full border border-[var(--mb-border)] bg-white px-4 py-2.5 text-sm font-black text-[var(--mb-text)]"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
         </MapContainer>
       </div>
 
       <div className="mt-4 flex items-center justify-between gap-3 rounded-[24px] bg-[var(--mb-bg-alt)] p-4">
         <div>
-          <p className="text-sm font-semibold text-[var(--mb-text)]">{pickupStop?.name || "Choose pickup"} → {dropStop?.name || "Choose destination"}</p>
+          <p className="text-sm font-semibold text-[var(--mb-text)]">{pickupStop?.name || "Choose pickup"} to {dropStop?.name || "Choose destination"}</p>
           <p className="mt-1 text-xs text-[var(--mb-muted)]">Choose both points to see live buses and seat availability.</p>
         </div>
         <button type="button" onClick={onFindRoutes} disabled={findingRoutes} className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
           {findingRoutes ? "Finding..." : "Find buses"}
         </button>
       </div>
+      {matchedTrips.length ? (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--mb-purple)]">Live Route Matches</p>
+              <p className="mt-1 text-sm text-[var(--mb-muted)]">Tap a bus marker or choose a bus below to continue booking.</p>
+            </div>
+            <span className="rounded-full bg-[#f6dbff] px-3 py-1.5 text-[0.7rem] font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">
+              {matchedTrips.length} bus{matchedTrips.length !== 1 ? "es" : ""}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {matchedTrips.map((trip, index) => {
+              const active = String(selectedTripId) === String(trip.id);
+              return (
+                <div
+                  key={trip.id}
+                  className={`rounded-[28px] border p-4 shadow-[var(--mb-shadow)] transition ${
+                    active
+                      ? "border-transparent bg-[linear-gradient(180deg,#fff7fd,#f7ddfb)] ring-2 ring-[rgba(141,18,235,0.16)]"
+                      : "border-[var(--mb-border)] bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Bus</p>
+                      <p className="mt-1 truncate text-xl font-black text-[var(--mb-text)]">{trip.bus_plate || routeCode(trip, index)}</p>
+                      <p className="mt-1 truncate text-sm text-[var(--mb-muted)]">{trip.route_name}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1.5 text-[0.68rem] font-black uppercase tracking-[0.18em] ${active ? "bg-[var(--mb-purple)] text-white" : "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]"}`}>
+                      {active ? "Accepted" : "Suggested"}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[22px] bg-[var(--mb-bg-alt)] px-3 py-3">
+                      <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-muted)]">Occupancy</p>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{trip.occupancy_label || "Live service"}</p>
+                    </div>
+                    <div className="rounded-[22px] bg-[var(--mb-bg-alt)] px-3 py-3">
+                      <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-muted)]">ETA</p>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{fmtEta(trip.eta)}</p>
+                    </div>
+                    <div className="rounded-[22px] bg-[var(--mb-bg-alt)] px-3 py-3">
+                      <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-muted)]">Fare</p>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{fmtMoney(trip.fare_estimate || 50)}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => onSelectTrip?.(trip.id)}
+                      className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onDeclineTrip?.(trip.id)}
+                      className="rounded-full border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-black text-[var(--mb-text)]"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -320,11 +481,25 @@ export function QuickRouteCard({ icon, label, caption, onClick }) {
   );
 }
 
-export function NearbyMapCard({ stops, displayLine, selectedTrip }) {
+export function NearbyMapCard({ stops, displayLine, selectedTrip, matchedTrips = [], selectedTripId, onSelectTrip }) {
+  const routeMatches = useMemo(
+    () =>
+      matchedTrips
+        .map((trip, index) => {
+          const bus = getBusPoint(trip, displayLine);
+          if (!bus?.point) return null;
+          return { trip, index, bus };
+        })
+        .filter(Boolean),
+    [displayLine, matchedTrips],
+  );
+
   const points = useMemo(() => {
     const line = displayLine.length ? displayLine : stops.map((stop) => toPoint(stop.lat, stop.lng)).filter(Boolean);
-    return line.length ? line : [[28.2096, 83.9856]];
-  }, [displayLine, stops]);
+    const busPoints = routeMatches.map((item) => item.bus.point).filter(Boolean);
+    const merged = [...line, ...busPoints];
+    return merged.length ? merged : [[28.2096, 83.9856]];
+  }, [displayLine, routeMatches, stops]);
 
   return (
     <div className="overflow-hidden rounded-[38px] bg-[#24182c] shadow-[var(--mb-shadow-strong)]">
@@ -338,13 +513,31 @@ export function NearbyMapCard({ stops, displayLine, selectedTrip }) {
             if (!point) return null;
             return <CircleMarker key={stop.id} center={point} radius={6} pathOptions={{ color: "#f9d4fa", fillColor: "#b641ff", fillOpacity: 0.9 }} />;
           })}
+          {routeMatches.map(({ trip, index, bus }) => (
+            <Marker
+              key={trip.id}
+              position={bus.point}
+              icon={createBusIcon({ label: routeCode(trip, index), heading: bus.heading })}
+              eventHandlers={{ click: () => onSelectTrip?.(trip.id) }}
+            />
+          ))}
         </MapContainer>
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(193,76,255,0.18),transparent_46%)]" />
         <div className="absolute right-4 top-4 rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)]">LIVE</div>
+        {matchedTrips.length ? (
+          <div className="absolute left-4 top-4 rounded-full bg-white/90 px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+            {matchedTrips.length} route match{matchedTrips.length !== 1 ? "es" : ""}
+          </div>
+        ) : null}
         <div className="absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-black/32 px-4 py-2 text-sm font-semibold text-white backdrop-blur">
           <Icon name="pin" className="h-4 w-4" />
-          {selectedTrip?.pickup_stop_name || stops[0]?.name || "Downtown Hub"} • {selectedTrip ? fmtEta(selectedTrip.eta) : "Nearby now"}
+          {selectedTrip?.pickup_stop_name || stops[0]?.name || "Downtown Hub"} � {selectedTrip ? fmtEta(selectedTrip.eta) : "Nearby now"}
         </div>
+        {selectedTripId && matchedTrips.length ? (
+          <div className="absolute bottom-16 right-4 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[var(--mb-shadow-strong)]">
+            Selected bus live
+          </div>
+        ) : null}
       </div>
     </div>
   );

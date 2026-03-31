@@ -41,6 +41,7 @@ export default function PassengerHome() {
   const [selectionMode, setSelectionMode] = useState("");
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [matchedTrips, setMatchedTrips] = useState([]);
+  const [dismissedMatchIds, setDismissedMatchIds] = useState([]);
   const [selectedTripId, setSelectedTripId] = useState("");
   const [seats, setSeats] = useState([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
@@ -88,7 +89,11 @@ export default function PassengerHome() {
 
   const pickupStop = stops.find((stop) => String(stop.id) === String(pickupStopId)) || null;
   const dropStop = stops.find((stop) => String(stop.id) === String(dropStopId)) || null;
-  const displayTrips = matchedTrips.length ? matchedTrips : routeFeed;
+  const visibleMatchedTrips = useMemo(
+    () => matchedTrips.filter((trip) => !dismissedMatchIds.includes(String(trip.id))),
+    [dismissedMatchIds, matchedTrips],
+  );
+  const displayTrips = matchedTrips.length ? visibleMatchedTrips : routeFeed;
   const selectedTrip = displayTrips.find((trip) => String(trip.id) === String(selectedTripId)) || displayTrips[0] || null;
   const routeStops = useMemo(() => (
     selectedTrip ? tripContexts[selectedTrip.id]?.route_stops || [] : []
@@ -238,6 +243,7 @@ export default function PassengerHome() {
     if (!pickupStopId || !dropStopId) { setErr("Choose both pickup and destination stops first."); setPlannerOpen(true); return; }
     if (String(pickupStopId) === String(dropStopId)) { setErr("Pickup and destination must be different."); return; }
     setFindingRoutes(true); setErr(""); setMsg("");
+    setDismissedMatchIds([]);
     try {
       const ctxMap = await ensureCtx(trips);
       const matches = [];
@@ -290,6 +296,18 @@ export default function PassengerHome() {
     if (type === "home") setPickupStopId(String(stops[0]?.id || ""));
     if (type === "work") setDropStopId(String(stops[1]?.id || stops[0]?.id || ""));
     if (type === "gym") setDropStopId(String(stops[2]?.id || stops[1]?.id || ""));
+  };
+  const acceptMatchedTrip = (tripId) => {
+    setSelectedTripId(String(tripId));
+    setPlannerOpen(true);
+    setErr("");
+    setMsg("Bus selected. You can continue with seat booking below.");
+  };
+  const declineMatchedTrip = (tripId) => {
+    setDismissedMatchIds((current) => (
+      current.includes(String(tripId)) ? current : [...current, String(tripId)]
+    ));
+    setSelectedSeatIds([]);
   };
   const toggleSeat = (seatId) => setSelectedSeatIds((current) => current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId]);
 
@@ -347,7 +365,134 @@ export default function PassengerHome() {
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
-        {activeView === "home" ? <><section className="rounded-[42px] bg-[radial-gradient(circle_at_top_right,rgba(182,65,255,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.94),rgba(255,241,249,0.95))] p-5 shadow-[var(--mb-shadow)] md:p-8"><p className="text-sm font-black uppercase tracking-[0.3em] text-[var(--mb-purple)]">Hello, {(user?.full_name || "Passenger").split(" ")[0]}</p><h1 className="mt-4 text-[3.4rem] font-black leading-[0.96] text-[var(--mb-text)] md:text-[4.6rem]">Where to <span className="text-[var(--mb-purple)]">next?</span></h1><SearchBar summary={pickupStop && dropStop ? `${pickupStop.name} → ${dropStop.name}` : "Search destination..."} onOpenPlanner={() => setPlannerOpen((current) => !current)} onSearch={() => { setPlannerOpen(true); findRoutes(); }} />{plannerOpen ? <PlannerCard stops={stops} pickupStopId={pickupStopId} dropStopId={dropStopId} selectionMode={selectionMode} onPickupChange={setPickupStopId} onDropChange={setDropStopId} onMapPickMode={handleMapSelect} onFindRoutes={findRoutes} findingRoutes={findingRoutes} mapPoints={mapPoints} pickupStop={pickupStop} dropStop={dropStop} /> : null}</section><section className="mt-8"><div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-3xl font-black text-[var(--mb-text)]">Quick Routes</h2><button type="button" onClick={() => setPlannerOpen(true)} className="text-lg font-black text-[var(--mb-purple)]">Edit</button></div><div className="flex gap-4 overflow-x-auto pb-2"><QuickRouteCard icon="home" label="Home" caption={user?.home_location_label || "Saved pickup"} onClick={() => applyQuickRoute("home")} /><QuickRouteCard icon="briefcase" label="Work" caption={user?.office_location_label || "Office route"} onClick={() => applyQuickRoute("work")} /><QuickRouteCard icon="dumbbell" label="Gym" caption={stops[2]?.name || "Popular route"} onClick={() => applyQuickRoute("gym")} /></div></section><section className="mt-10"><h2 className="mb-4 text-3xl font-black text-[var(--mb-text)]">Nearby Stops</h2><NearbyMapCard stops={routeStops.length ? routeStops.map((item) => item.stop).filter(Boolean) : nearbyStops} displayLine={displayLine} selectedTrip={selectedTrip} /><div className="mt-5 grid gap-4 sm:grid-cols-2"><StopFeatureCard icon="pin" eyebrow={`Station ${nearbyStops[0]?.id || 14}`} title={nearbyStops[0]?.name || "North Plaza"} /><StopFeatureCard icon="star" eyebrow="Recommended" title={nearbyStops[1]?.name || "Main Terminal"} featured /></div></section><section className="mt-10"><div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-3xl font-black text-[var(--mb-text)]">Available Buses</h2><span className="rounded-full bg-[#f6dbff] px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Refreshed just now</span></div><div className="space-y-4">{displayTrips.length ? displayTrips.slice(0, 4).map((trip, index) => <LiveBusCard key={trip.id} trip={trip} index={index} active={String(trip.id) === String(selectedTripId)} now={now} onClick={() => { setSelectedTripId(String(trip.id)); setActiveView(matchedTrips.length ? "home" : "track"); setPlannerOpen(matchedTrips.length); }} />) : <div className="rounded-[32px] bg-[var(--mb-card)] px-5 py-8 text-center text-lg font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">No live buses at the moment. Try refreshing in a few seconds.</div>}</div></section>{matchedTrips.length ? <ReservationBuilder trip={selectedTrip} seats={seats} selectedSeatIds={selectedSeatIds} onSeatToggle={toggleSeat} onBook={bookSeats} onPay={pay} bookingBusy={bookingBusy} paymentBusy={paymentBusy} loadingSeats={loadingSeats} lastBookingId={lastBookingId} lastBookingSummary={lastBookingSummary} pickupStop={pickupStop} dropStop={dropStop} /> : null}<button type="button" onClick={() => setPlannerOpen((current) => !current)} className="fixed bottom-32 right-6 z-30 grid h-20 w-20 place-items-center rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)] md:right-[max(2rem,calc((100vw-68rem)/2+1.5rem))]"><Icon name="plus" className="h-9 w-9" /></button></> : null}
+        {activeView === "home" ? (
+          <>
+            <section className="rounded-[42px] bg-[radial-gradient(circle_at_top_right,rgba(182,65,255,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.94),rgba(255,241,249,0.95))] p-5 shadow-[var(--mb-shadow)] md:p-8">
+              <p className="text-sm font-black uppercase tracking-[0.3em] text-[var(--mb-purple)]">
+                Hello, {(user?.full_name || "Passenger").split(" ")[0]}
+              </p>
+              <h1 className="mt-4 text-[3.4rem] font-black leading-[0.96] text-[var(--mb-text)] md:text-[4.6rem]">
+                Where to <span className="text-[var(--mb-purple)]">next?</span>
+              </h1>
+              <SearchBar
+                summary={pickupStop && dropStop ? `${pickupStop.name} to ${dropStop.name}` : "Search destination..."}
+                onOpenPlanner={() => setPlannerOpen((current) => !current)}
+                onSearch={() => {
+                  setPlannerOpen(true);
+                  findRoutes();
+                }}
+              />
+              {plannerOpen ? (
+                <PlannerCard
+                  stops={stops}
+                  pickupStopId={pickupStopId}
+                  dropStopId={dropStopId}
+                  selectionMode={selectionMode}
+                  onPickupChange={setPickupStopId}
+                  onDropChange={setDropStopId}
+                  onMapPickMode={handleMapSelect}
+                  onFindRoutes={findRoutes}
+                  findingRoutes={findingRoutes}
+                  mapPoints={mapPoints}
+                  pickupStop={pickupStop}
+                  dropStop={dropStop}
+                  matchedTrips={visibleMatchedTrips}
+                  selectedTripId={selectedTripId}
+                  onSelectTrip={acceptMatchedTrip}
+                  onDeclineTrip={declineMatchedTrip}
+                  displayLine={displayLine}
+                />
+              ) : null}
+            </section>
+
+            <section className="mt-8">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-3xl font-black text-[var(--mb-text)]">Quick Routes</h2>
+                <button type="button" onClick={() => setPlannerOpen(true)} className="text-lg font-black text-[var(--mb-purple)]">
+                  Edit
+                </button>
+              </div>
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                <QuickRouteCard icon="home" label="Home" caption={user?.home_location_label || "Saved pickup"} onClick={() => applyQuickRoute("home")} />
+                <QuickRouteCard icon="briefcase" label="Work" caption={user?.office_location_label || "Office route"} onClick={() => applyQuickRoute("work")} />
+                <QuickRouteCard icon="dumbbell" label="Gym" caption={stops[2]?.name || "Popular route"} onClick={() => applyQuickRoute("gym")} />
+              </div>
+            </section>
+
+            <section className="mt-10">
+              <h2 className="mb-4 text-3xl font-black text-[var(--mb-text)]">Nearby Stops</h2>
+              <NearbyMapCard
+                stops={routeStops.length ? routeStops.map((item) => item.stop).filter(Boolean) : nearbyStops}
+                displayLine={displayLine}
+                selectedTrip={selectedTrip}
+                matchedTrips={visibleMatchedTrips}
+                selectedTripId={selectedTripId}
+                onSelectTrip={acceptMatchedTrip}
+              />
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <StopFeatureCard icon="pin" eyebrow={`Station ${nearbyStops[0]?.id || 14}`} title={nearbyStops[0]?.name || "North Plaza"} />
+                <StopFeatureCard icon="star" eyebrow="Recommended" title={nearbyStops[1]?.name || "Main Terminal"} featured />
+              </div>
+            </section>
+
+            <section className="mt-10">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-3xl font-black text-[var(--mb-text)]">Available Buses</h2>
+                <span className="rounded-full bg-[#f6dbff] px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">
+                  Refreshed just now
+                </span>
+              </div>
+              <div className="space-y-4">
+                {displayTrips.length ? (
+                  displayTrips.slice(0, 4).map((trip, index) => (
+                    <LiveBusCard
+                      key={trip.id}
+                      trip={trip}
+                      index={index}
+                      active={String(trip.id) === String(selectedTripId)}
+                      now={now}
+                      onClick={() => {
+                        setSelectedTripId(String(trip.id));
+                        setActiveView(visibleMatchedTrips.length ? "home" : "track");
+                        setPlannerOpen(Boolean(visibleMatchedTrips.length));
+                      }}
+                    />
+                  ))
+                ) : (
+                  <div className="rounded-[32px] bg-[var(--mb-card)] px-5 py-8 text-center text-lg font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
+                    No live buses at the moment. Try refreshing in a few seconds.
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {visibleMatchedTrips.length ? (
+              <ReservationBuilder
+                trip={selectedTrip}
+                seats={seats}
+                selectedSeatIds={selectedSeatIds}
+                onSeatToggle={toggleSeat}
+                onBook={bookSeats}
+                onPay={pay}
+                bookingBusy={bookingBusy}
+                paymentBusy={paymentBusy}
+                loadingSeats={loadingSeats}
+                lastBookingId={lastBookingId}
+                lastBookingSummary={lastBookingSummary}
+                pickupStop={pickupStop}
+                dropStop={dropStop}
+              />
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => setPlannerOpen((current) => !current)}
+              className="fixed bottom-32 right-6 z-30 grid h-20 w-20 place-items-center rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)] md:right-[max(2rem,calc((100vw-68rem)/2+1.5rem))]"
+            >
+              <Icon name="plus" className="h-9 w-9" />
+            </button>
+          </>
+        ) : null}
 
         {activeView === "track" ? <section className="space-y-5"><TrackMap trip={selectedTrip} displayLine={displayLine} now={now} /><DriverCard trip={selectedTrip} /><div className="grid gap-4 sm:grid-cols-2"><MetricCard icon="seat" label="Seats" value={`${selectedTrip?.open_seats ?? 12} Free`} /><MetricCard icon="snow" label="Climate" value="22°C Fixed" /></div><div className="grid gap-4 sm:grid-cols-[1.4fr_0.8fr]"><button type="button" onClick={shareTrip} className="inline-flex items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-5 text-2xl font-black text-white shadow-[var(--mb-shadow-strong)]"><Icon name="share" className="h-7 w-7" />Share Trip</button><button type="button" onClick={() => { window.location.href = "tel:100"; }} className="inline-flex items-center justify-center gap-3 rounded-full bg-[var(--mb-danger)] px-6 py-5 text-2xl font-black text-white"><Icon name="alert" className="h-7 w-7" />SOS</button></div></section> : null}
 
