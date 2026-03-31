@@ -146,7 +146,7 @@ function computeHeading(fromPoint, toPoint) {
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(lngDelta);
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
-function buildSimulationPoints(points, maxPoints = 20) {
+function buildSimulationPoints(points, maxPoints = 100) {
   const clean = points.filter((point) => Array.isArray(point) && point.length === 2 && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])));
   if (clean.length <= maxPoints) return clean;
   const sampled = [];

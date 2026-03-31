@@ -32,6 +32,7 @@ class BookingSerializer(serializers.ModelSerializer):
 
 
 class PassengerBookingListSerializer(serializers.ModelSerializer):
+    trip_id = serializers.IntegerField(source="trip.id", read_only=True)
     route_name = serializers.CharField(source="trip.route.name", read_only=True)
     bus_plate = serializers.CharField(source="trip.bus.plate_number", read_only=True)
     trip_status = serializers.CharField(source="trip.status", read_only=True)
@@ -46,6 +47,7 @@ class PassengerBookingListSerializer(serializers.ModelSerializer):
         model = Booking
         fields = (
             "id",
+            "trip_id",
             "status",
             "fare_total",
             "created_at",

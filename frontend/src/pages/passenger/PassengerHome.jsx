@@ -232,6 +232,13 @@ export default function PassengerHome() {
   }, [loadBase, loadBookings]);
 
   useEffect(() => {
+    if (!activeBooking?.trip_id) return;
+    const bookingTripId = String(activeBooking.trip_id);
+    setSelectedTripId((current) => (acceptedTripId ? current || bookingTripId : bookingTripId));
+    setAcceptedTripId((current) => current || bookingTripId);
+  }, [acceptedTripId, activeBooking?.trip_id]);
+
+  useEffect(() => {
     if (!acceptedTrip?.id || !acceptedTrip.from_order || !acceptedTrip.to_order) {
       setSeats([]);
       setSelectedSeatIds([]);
@@ -361,7 +368,10 @@ export default function PassengerHome() {
     try {
       const response = await api.post(`/api/bookings/trips/${acceptedTrip.id}/book/`, { from_stop_order: acceptedTrip.from_order, to_stop_order: acceptedTrip.to_order, seat_ids: selectedSeatIds });
       setLastBookingId(response.data.id); setLastBookingSummary(response.data); setTicketBookingId(response.data.id);
-      setMsg(`Booking #${response.data.id} confirmed. Choose Cash, eSewa, or Khalti below.`);
+      setActiveView("track");
+      setPlannerOpen(false);
+      setSelectedTripId(String(acceptedTrip.id));
+      setMsg(`Booking #${response.data.id} confirmed. Your live bus is now open in Track.`);
       await loadSeats(acceptedTrip.id, acceptedTrip.from_order, acceptedTrip.to_order);
       await loadBookings({ silent: true });
       setTimeout(() => bookingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
