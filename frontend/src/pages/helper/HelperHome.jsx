@@ -7,6 +7,7 @@ import { useTheme } from "../../ThemeContext";
 
 const LIGHT_THEME = {
   "--hlp-bg": "#fff7fb",
+  "--hlp-bg-end": "rgba(255,243,249,0.98)",
   "--hlp-surface": "rgba(255,255,255,0.9)",
   "--hlp-soft": "#f9e3fb",
   "--hlp-border": "rgba(169,103,210,0.16)",
@@ -15,12 +16,15 @@ const LIGHT_THEME = {
   "--hlp-purple": "#8c12eb",
   "--hlp-purple-2": "#c243ff",
   "--hlp-plum": "#4a2656",
+  "--hlp-header": "rgba(255,247,251,0.92)",
+  "--hlp-nav": "rgba(255,252,255,0.92)",
   "--hlp-shadow": "0 26px 58px rgba(161,69,197,0.12)",
   "--hlp-shadow-strong": "0 28px 62px rgba(140,18,235,0.22)",
 };
 
 const DARK_THEME = {
   "--hlp-bg": "#140d1a",
+  "--hlp-bg-end": "rgba(18,12,24,0.98)",
   "--hlp-surface": "rgba(34,22,43,0.92)",
   "--hlp-soft": "rgba(96,51,119,0.48)",
   "--hlp-border": "rgba(202,161,233,0.14)",
@@ -29,6 +33,8 @@ const DARK_THEME = {
   "--hlp-purple": "#cb7cff",
   "--hlp-purple-2": "#8c12eb",
   "--hlp-plum": "#26152c",
+  "--hlp-header": "rgba(20,13,26,0.9)",
+  "--hlp-nav": "rgba(27,18,34,0.92)",
   "--hlp-shadow": "0 26px 58px rgba(0,0,0,0.24)",
   "--hlp-shadow-strong": "0 28px 62px rgba(140,18,235,0.28)",
 };
@@ -39,6 +45,8 @@ const TABS = [
   { id: "verify", label: "Verify", icon: "shield" },
   { id: "route", label: "Route", icon: "map" },
 ];
+
+const APP_SHELL_CLASS = "mx-auto w-full max-w-[31rem]";
 
 function Icon({ name, className = "h-5 w-5" }) {
   const common = { className, fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", viewBox: "0 0 24 24" };
@@ -235,6 +243,7 @@ export default function HelperHome() {
   const tripStarted = formatTime(selectedTrip?.started_at) || "08:30 AM";
   const assignedDriverName = selectedTrip?.driver_name || "Robert Fox";
   const driverBadgeId = selectedTrip?.id ? `ID-MB-${selectedTrip.id}` : "ID-MB-782";
+  const helperHeaderStatus = selectedTrip ? "Trip Live" : trips.length ? `${trips.length} Live` : "Standby";
 
   const loadTrips = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingTrips(true);
@@ -407,25 +416,33 @@ export default function HelperHome() {
   }
 
   return (
-    <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--hlp-bg),rgba(255,243,249,0.98))] text-[var(--hlp-text)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[rgba(255,247,251,0.92)] px-4 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+    <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--hlp-bg),var(--hlp-bg-end))] text-[var(--hlp-text)]">
+      <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[var(--hlp-header)] px-4 py-4 backdrop-blur-xl">
+        <div className={`${APP_SHELL_CLASS} flex items-center justify-between gap-3`}>
           <div className="flex items-center gap-3">
             <HeaderButton onClick={() => loadTrips()}>
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>
+              <Icon name="refresh" />
             </HeaderButton>
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-[var(--hlp-shadow)]">
-              <span className="text-[0.58rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
+            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--hlp-shadow)]">
+              <span className="text-[0.6rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
             </div>
-            <p className="text-[1.05rem] font-black uppercase tracking-[0.02em] text-[var(--hlp-purple)]">METROBUS HELPER</p>
+            <div className="min-w-0">
+              <p className="truncate text-[1rem] font-black tracking-[0.01em] text-[var(--hlp-purple)]">MetroBus Helper</p>
+              <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Staff Operations</p>
+            </div>
           </div>
-          <HeaderButton onClick={handleLogout}>
-            <Icon name="profile" />
-          </HeaderButton>
+          <div className="flex items-center gap-2">
+            <Chip tone={selectedTrip ? "live" : "soft"} className="px-3 py-2">
+              {helperHeaderStatus}
+            </Chip>
+            <HeaderButton onClick={handleLogout}>
+              <Icon name="profile" />
+            </HeaderButton>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5 pb-32">
+      <main className={`${APP_SHELL_CLASS} px-4 py-5 pb-32 sm:px-5`}>
         {err ? <div className="mb-4 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
@@ -459,9 +476,9 @@ export default function HelperHome() {
         {activeTab === "trip" ? (
           <div className="mt-5 space-y-5">
             <div className="px-1">
-              <h2 className="text-[1.35rem] font-black">HelperDashboard</h2>
-              <p className="mt-1 text-base text-[var(--hlp-muted)]">Monitoring active transit operations</p>
-            </div>
+                <h2 className="text-[1.35rem] font-black">Helper Dashboard</h2>
+                <p className="mt-1 text-base text-[var(--hlp-muted)]">Monitoring active transit operations</p>
+              </div>
 
             <div className="max-w-[15rem]">
               <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setVerifiedPayment(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: "No live trips available" }]} />
@@ -723,7 +740,7 @@ export default function HelperHome() {
           </div>
         ) : null}
       </main>
-      <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[rgba(255,252,255,0.92)] p-2 shadow-[var(--hlp-shadow)] backdrop-blur-xl">
+      <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[var(--hlp-nav)] p-2 shadow-[var(--hlp-shadow)] backdrop-blur-xl">
         <div className="grid grid-cols-4 gap-2">
           {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}
         </div>

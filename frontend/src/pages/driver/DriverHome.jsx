@@ -9,6 +9,7 @@ import { useTheme } from "../../ThemeContext";
 
 const LIGHT_THEME = {
   "--drv-bg": "#fff7fb",
+  "--drv-bg-end": "rgba(255,241,248,0.98)",
   "--drv-surface": "rgba(255,255,255,0.86)",
   "--drv-soft": "#f8def9",
   "--drv-border": "rgba(167,96,204,0.16)",
@@ -17,12 +18,15 @@ const LIGHT_THEME = {
   "--drv-purple": "#8c12eb",
   "--drv-purple-2": "#c243ff",
   "--drv-plum": "#472751",
+  "--drv-header": "rgba(255,247,251,0.9)",
+  "--drv-nav": "rgba(255,252,255,0.9)",
   "--drv-shadow": "0 24px 56px rgba(155,54,184,0.12)",
   "--drv-shadow-strong": "0 26px 60px rgba(141,18,235,0.22)",
 };
 
 const DARK_THEME = {
   "--drv-bg": "#130d19",
+  "--drv-bg-end": "rgba(18,12,24,0.98)",
   "--drv-surface": "rgba(33,22,42,0.9)",
   "--drv-soft": "rgba(81,44,104,0.52)",
   "--drv-border": "rgba(196,152,233,0.14)",
@@ -31,6 +35,8 @@ const DARK_THEME = {
   "--drv-purple": "#c56bff",
   "--drv-purple-2": "#8c12eb",
   "--drv-plum": "#25142d",
+  "--drv-header": "rgba(19,13,25,0.9)",
+  "--drv-nav": "rgba(28,19,35,0.92)",
   "--drv-shadow": "0 24px 56px rgba(0,0,0,0.24)",
   "--drv-shadow-strong": "0 26px 60px rgba(141,18,235,0.28)",
 };
@@ -48,6 +54,7 @@ function Icon({ name, className = "h-5 w-5" }) {
     case "wallet": return <svg {...common}><rect x="4" y="6" width="16" height="12" rx="3" /><path d="M14 11h6" /><path d="M16.5 11h.01" /></svg>;
     case "bus": return <svg {...common}><rect x="5" y="5" width="14" height="11" rx="3" /><path d="M7.5 16v3" /><path d="M16.5 16v3" /><path d="M7 10h10" /></svg>;
     case "fuel": return <svg {...common}><path d="M7 18V7a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v11" /><path d="M7 12h9" /><path d="m16 8 2 2v5a2 2 0 1 0 4 0v-5l-2-2" /></svg>;
+    case "refresh": return <svg {...common}><path d="M20 11a8 8 0 1 1-2.35-5.66" /><path d="M20 4v5h-5" /></svg>;
     case "play": return <svg {...common}><path d="m8 6 10 6-10 6V6Z" /></svg>;
     case "alert": return <svg {...common}><path d="M12 4 3.5 18h17L12 4Z" /><path d="M12 9v4" /><path d="M12 16h.01" /></svg>;
     case "ticket": return <svg {...common}><rect x="4" y="7" width="16" height="10" rx="2.8" /><path d="M9 7v10" /><path d="M9 10h.01" /><path d="M9 14h.01" /></svg>;
@@ -137,6 +144,8 @@ const TABS = [
   { id: "history", label: "History", icon: "history" },
   { id: "earnings", label: "Earnings", icon: "wallet" },
 ];
+
+const APP_SHELL_CLASS = "mx-auto w-full max-w-[31rem]";
 
 export default function DriverHome() {
   const navigate = useNavigate();
@@ -431,23 +440,23 @@ export default function DriverHome() {
   }
 
   return (
-    <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--drv-bg),rgba(255,241,248,0.98))] text-[var(--drv-text)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--drv-border)] bg-[rgba(255,247,251,0.9)] px-4 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+    <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--drv-bg),var(--drv-bg-end))] text-[var(--drv-text)]">
+      <header className="sticky top-0 z-30 border-b border-[var(--drv-border)] bg-[var(--drv-header)] px-4 py-4 backdrop-blur-xl">
+        <div className={`${APP_SHELL_CLASS} flex items-center justify-between gap-3`}>
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-sm font-black text-white shadow-[var(--drv-shadow-strong)]">{(user?.full_name || "DR").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--drv-shadow)]"><span className="text-xs font-black uppercase tracking-[0.2em] text-[var(--drv-purple)]">MB</span></div>
           </div>
           <div className="flex items-center gap-2">
-            {activeTab === "home" ? <Pill tone={activeTrip ? "live" : "idle"}>{activeTrip ? "Trip Live" : "Standby"}</Pill> : null}
-            <button type="button" onClick={() => loadDashboard()} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name="bell" /></button>
+            <Pill tone={activeTrip ? "live" : "idle"}>{activeTrip ? "Trip Live" : "Standby"}</Pill>
+            <button type="button" onClick={() => loadDashboard()} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name="refresh" /></button>
             {activeTab !== "home" ? <button type="button" onClick={toggle} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name={isDark ? "sun" : "moon"} /></button> : null}
             {activeTab !== "home" ? <button type="button" onClick={handleLogout} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-plum)] shadow-[var(--drv-shadow)]"><Icon name="logout" /></button> : null}
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5 pb-32">
+      <main className={`${APP_SHELL_CLASS} px-4 py-5 pb-32 sm:px-5`}>
         {err ? <div className="mb-4 rounded-[1.6rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[1.6rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
@@ -915,7 +924,7 @@ export default function DriverHome() {
         ) : null}
 
         {activeTab === "active" && activeTrip ? (
-          <div className="fixed bottom-[6.6rem] left-1/2 z-30 flex w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 gap-3">
+          <div className="fixed bottom-[6.6rem] left-1/2 z-30 flex w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 gap-3">
             <ActionButton tone="danger" onClick={endTrip} disabled={busy} className="flex-1 !py-4">
               {busy ? "Ending Trip" : "End Trip"}
             </ActionButton>
@@ -926,7 +935,7 @@ export default function DriverHome() {
           </div>
         ) : null}
 
-        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[30rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[rgba(255,252,255,0.9)] p-2 shadow-[var(--drv-shadow)] backdrop-blur-xl"><div className="grid grid-cols-4 gap-2">{TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]" : "text-[var(--drv-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}</div></div>
+        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[var(--drv-nav)] p-2 shadow-[var(--drv-shadow)] backdrop-blur-xl"><div className="grid grid-cols-4 gap-2">{TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]" : "text-[var(--drv-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}</div></div>
       </main>
     </div>
   );
