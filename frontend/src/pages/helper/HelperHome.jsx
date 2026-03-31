@@ -230,6 +230,8 @@ export default function HelperHome() {
   const upcomingStop = routeStops[Math.min(currentStopIndex + 1, routeStops.length - 1)] || null;
   const routeCondition = livePoint ? "Live movement on route" : "Waiting for GPS ping";
   const helperInitials = (user?.full_name || "Helper").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+  const compactHeader = activeTab !== "trip";
+  const verifyPreview = verifiedPayment || { method: "Cash", status: "Pending", amount: 450 };
 
   const loadTrips = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingTrips(true);
@@ -404,60 +406,79 @@ export default function HelperHome() {
   return (
     <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--hlp-bg),rgba(255,243,249,0.98))] text-[var(--hlp-text)]">
       <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[rgba(255,247,251,0.92)] px-4 py-4 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-sm font-black text-white shadow-[var(--hlp-shadow-strong)]">{helperInitials}</div>
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--hlp-shadow)]">
-              <span className="text-[0.62rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
+        {compactHeader ? (
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <HeaderButton>
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>
+              </HeaderButton>
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-[var(--hlp-shadow)]">
+                <span className="text-[0.58rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
+              </div>
+              <p className="text-[1.05rem] font-black uppercase tracking-[0.02em] text-[var(--hlp-purple)]">METROBUS HELPER</p>
             </div>
-            <div>
-              <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-purple)]">MetroBus Helper</p>
-              <p className="text-base font-black">{user?.full_name || "Helper"}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Chip tone={trips.length ? "live" : "soft"}>{trips.length ? `${trips.length} Live` : "Standby"}</Chip>
-            <HeaderButton onClick={() => loadTrips()}>
-              <Icon name="refresh" />
-            </HeaderButton>
-            <HeaderButton onClick={toggle}>
-              <Icon name={isDark ? "sun" : "moon"} />
-            </HeaderButton>
-            <HeaderButton onClick={handleLogout} className="text-[var(--hlp-plum)]">
-              <Icon name="logout" />
+            <HeaderButton onClick={handleLogout}>
+              <Icon name="profile" />
             </HeaderButton>
           </div>
-        </div>
+        ) : (
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-sm font-black text-white shadow-[var(--hlp-shadow-strong)]">{helperInitials}</div>
+              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--hlp-shadow)]">
+                <span className="text-[0.62rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
+              </div>
+              <div>
+                <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-purple)]">MetroBus Helper</p>
+                <p className="text-base font-black">{user?.full_name || "Helper"}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Chip tone={trips.length ? "live" : "soft"}>{trips.length ? `${trips.length} Live` : "Standby"}</Chip>
+              <HeaderButton onClick={() => loadTrips()}>
+                <Icon name="refresh" />
+              </HeaderButton>
+              <HeaderButton onClick={toggle}>
+                <Icon name={isDark ? "sun" : "moon"} />
+              </HeaderButton>
+              <HeaderButton onClick={handleLogout} className="text-[var(--hlp-plum)]">
+                <Icon name="logout" />
+              </HeaderButton>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-5 pb-32">
         {err ? <div className="mb-4 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
-        <section className="relative overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
-          <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
-          <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
-          <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{selectedTrip ? "LIVE\nSUPPORT" : "READY ON\nSHIFT"}</h1>
-          <p className="mt-4 text-base font-medium text-white/84">
-            {selectedTrip ? `${selectedTrip.route_name} is ready for boarding, payment checks, and route support.` : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
-          </p>
-          <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
-            <div className="flex items-center gap-4">
-              <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
-              <div>
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/74">Assigned Bus</p>
-                <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || selectedTrip?.bus_plate || "--"}</p>
-                <p className="mt-1 text-sm text-white/78">{assignedBus?.capacity || "--"} seats - Driver: {selectedTrip?.driver_name || assignedBus?.driver_name || "--"}</p>
+        {activeTab === "trip" ? <>
+          <section className="relative overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
+            <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
+            <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
+            <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{selectedTrip ? "LIVE\nSUPPORT" : "READY ON\nSHIFT"}</h1>
+            <p className="mt-4 text-base font-medium text-white/84">
+              {selectedTrip ? `${selectedTrip.route_name} is ready for boarding, payment checks, and route support.` : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
+            </p>
+            <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
+              <div className="flex items-center gap-4">
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
+                <div>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/74">Assigned Bus</p>
+                  <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || selectedTrip?.bus_plate || "--"}</p>
+                  <p className="mt-1 text-sm text-white/78">{assignedBus?.capacity || "--"} seats - Driver: {selectedTrip?.driver_name || assignedBus?.driver_name || "--"}</p>
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <div className="mt-5 grid grid-cols-3 gap-3">
-          <StatCard label="Open Seats" value={availableSeats.length} note="Current segment" icon="ticket" />
-          <StatCard label="Occupied" value={occupiedCount} note="Already reserved" icon="shield" />
-          <StatCard label="Marked" value={selectedCount} note="Offline seats" icon="money" />
-        </div>
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            <StatCard label="Open Seats" value={availableSeats.length} note="Current segment" icon="ticket" />
+            <StatCard label="Occupied" value={occupiedCount} note="Already reserved" icon="shield" />
+            <StatCard label="Marked" value={selectedCount} note="Offline seats" icon="money" />
+          </div>
+        </> : null}
 
         {activeTab === "trip" ? (
           <div className="mt-5 space-y-5">
@@ -581,10 +602,10 @@ export default function HelperHome() {
                 <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="shield" className="h-8 w-8" /></div>
               </div>
               <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                {[{ label: "Payment", value: verifiedPayment?.method || "Cash" }, { label: "Status", value: verifiedPayment?.status || "Pending" }, { label: "Amount", value: verifiedPayment?.amount ? `Rs. ${verifiedPayment.amount}` : "--" }].map((item) => (
+                {[{ label: "Payment", value: verifyPreview.method }, { label: "Status", value: verifyPreview.status }, { label: "Amount", value: verifyPreview.amount ? `Rs. ${verifyPreview.amount}` : "--" }].map((item) => (
                   <div key={item.label}>
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{item.label}</p>
-                    <p className={`mt-3 text-2xl font-black ${item.label === "Status" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
+                    <p className={`mt-3 text-2xl font-black ${item.label === "Status" ? "text-[#b91c1c]" : item.label === "Amount" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
                   </div>
                 ))}
               </div>
@@ -594,6 +615,7 @@ export default function HelperHome() {
               <Icon name="shield" />
             </PrimaryButton>
             <p className="text-center text-sm text-[var(--hlp-muted)]">By confirming, you acknowledge the receipt of physical cash from the commuter.</p>
+            <div className="h-48 rounded-[2.6rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(244,232,247,0.42))] shadow-[var(--hlp-shadow)]" />
           </div>
         ) : null}
 
