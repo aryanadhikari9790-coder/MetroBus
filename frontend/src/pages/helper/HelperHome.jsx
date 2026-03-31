@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
-import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { useTheme } from "../../ThemeContext";
 
@@ -55,6 +54,8 @@ function Icon({ name, className = "h-5 w-5" }) {
     case "ticket": return <svg {...common}><path d="M5 9a2 2 0 0 0 0 6v3h14v-3a2 2 0 0 0 0-6V6H5v3Z" /><path d="M12 6v12" /></svg>;
     case "map": return <svg {...common}><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2V6Z" /><path d="M9 4v14" /><path d="M15 6v14" /></svg>;
     case "swap": return <svg {...common}><path d="M7 7h11" /><path d="m14 4 4 3-4 3" /><path d="M17 17H6" /><path d="m10 14-4 3 4 3" /></svg>;
+    case "broadcast": return <svg {...common}><path d="M4 12a8 8 0 0 1 8-8" /><path d="M4 12a8 8 0 0 0 8 8" /><path d="M12 6a6 6 0 0 1 6 6" /><path d="M12 18a6 6 0 0 0 6-6" /><circle cx="12" cy="12" r="1.5" /></svg>;
+    case "headset": return <svg {...common}><path d="M4 12a8 8 0 0 1 16 0" /><rect x="4" y="12" width="3" height="6" rx="1.5" /><rect x="17" y="12" width="3" height="6" rx="1.5" /><path d="M7 18a5 5 0 0 0 5 3h2" /></svg>;
     case "pin": return <svg {...common}><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z" /><circle cx="12" cy="10" r="2.3" /></svg>;
     case "clock": return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg>;
     case "alert": return <svg {...common}><path d="M12 4 3.5 18h17L12 4Z" /><path d="M12 9v4" /><path d="M12 16h.01" /></svg>;
@@ -148,15 +149,6 @@ function MapViewport({ points }) {
   return null;
 }
 
-function formatDateTime(value) {
-  if (!value) return "--";
-  try {
-    return new Date(value).toLocaleString();
-  } catch {
-    return value;
-  }
-}
-
 function formatTime(value) {
   if (!value) return "--";
   try {
@@ -173,8 +165,7 @@ function distanceBetween(a, b) {
 
 export default function HelperHome() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { isDark, toggle } = useTheme();
+  const { isDark } = useTheme();
   const theme = useMemo(() => (isDark ? DARK_THEME : LIGHT_THEME), [isDark]);
 
   const [trips, setTrips] = useState([]);
@@ -236,9 +227,14 @@ export default function HelperHome() {
   const routeTitle = selectedTrip?.route_name || "Route 42A";
   const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
   const routeCondition = livePoint ? "Live movement on route" : "Waiting for GPS ping";
-  const helperInitials = (user?.full_name || "Helper").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase();
-  const compactHeader = activeTab !== "trip";
   const verifyPreview = verifiedPayment || { method: "Cash", status: "Pending", amount: 450 };
+  const helperTripHeroTitle = selectedTrip?.route_name || "Route 42A: Downtown Express";
+  const vehicleCapacity = assignedBus?.capacity || seats.length || 32;
+  const occupancyPercent = vehicleCapacity ? Math.round((occupiedCount / vehicleCapacity) * 100) : 56;
+  const helperDashboardMarked = selectedCount || 2;
+  const tripStarted = formatTime(selectedTrip?.started_at) || "08:30 AM";
+  const assignedDriverName = selectedTrip?.driver_name || "Robert Fox";
+  const driverBadgeId = selectedTrip?.id ? `ID-MB-${selectedTrip.id}` : "ID-MB-782";
 
   const loadTrips = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingTrips(true);
@@ -413,47 +409,20 @@ export default function HelperHome() {
   return (
     <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--hlp-bg),rgba(255,243,249,0.98))] text-[var(--hlp-text)]">
       <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[rgba(255,247,251,0.92)] px-4 py-4 backdrop-blur-xl">
-        {compactHeader ? (
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <HeaderButton>
-                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>
-              </HeaderButton>
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-[var(--hlp-shadow)]">
-                <span className="text-[0.58rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
-              </div>
-              <p className="text-[1.05rem] font-black uppercase tracking-[0.02em] text-[var(--hlp-purple)]">METROBUS HELPER</p>
-            </div>
-            <HeaderButton onClick={handleLogout}>
-              <Icon name="profile" />
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <HeaderButton onClick={() => loadTrips()}>
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>
             </HeaderButton>
-          </div>
-        ) : (
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-sm font-black text-white shadow-[var(--hlp-shadow-strong)]">{helperInitials}</div>
-              <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--hlp-shadow)]">
-                <span className="text-[0.62rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
-              </div>
-              <div>
-                <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-purple)]">MetroBus Helper</p>
-                <p className="text-base font-black">{user?.full_name || "Helper"}</p>
-              </div>
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-white shadow-[var(--hlp-shadow)]">
+              <span className="text-[0.58rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
             </div>
-            <div className="flex items-center gap-2">
-              <Chip tone={trips.length ? "live" : "soft"}>{trips.length ? `${trips.length} Live` : "Standby"}</Chip>
-              <HeaderButton onClick={() => loadTrips()}>
-                <Icon name="refresh" />
-              </HeaderButton>
-              <HeaderButton onClick={toggle}>
-                <Icon name={isDark ? "sun" : "moon"} />
-              </HeaderButton>
-              <HeaderButton onClick={handleLogout} className="text-[var(--hlp-plum)]">
-                <Icon name="logout" />
-              </HeaderButton>
-            </div>
+            <p className="text-[1.05rem] font-black uppercase tracking-[0.02em] text-[var(--hlp-purple)]">METROBUS HELPER</p>
           </div>
-        )}
+          <HeaderButton onClick={handleLogout}>
+            <Icon name="profile" />
+          </HeaderButton>
+        </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-5 pb-32">
@@ -489,44 +458,82 @@ export default function HelperHome() {
 
         {activeTab === "trip" ? (
           <div className="mt-5 space-y-5">
-            <SurfaceCard>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <SectionLabel>Live Trip</SectionLabel>
-                  <h2 className="mt-1 text-4xl font-black leading-[1.02]">Shift Dashboard</h2>
+            <div className="px-1">
+              <h2 className="text-[1.35rem] font-black">HelperDashboard</h2>
+              <p className="mt-1 text-base text-[var(--hlp-muted)]">Monitoring active transit operations</p>
+            </div>
+
+            <div className="max-w-[15rem]">
+              <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setVerifiedPayment(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: "No live trips available" }]} />
+            </div>
+
+            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]">
+              <Chip tone="dark" className="bg-white/18">Active Trip</Chip>
+              <h3 className="mt-6 text-[3rem] font-black leading-[0.92]">{helperTripHeroTitle}</h3>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">Started {tripStarted}</span>
+                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">On Time</span>
+              </div>
+              <div className="mt-6 rounded-[1.8rem] border border-white/18 bg-white/10 p-4">
+                <div className="flex items-center gap-4">
+                  <div className="grid h-14 w-14 place-items-center rounded-full bg-white/16 text-base font-black">{assignedDriverName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
+                  <div>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-white/72">Assigned Driver</p>
+                    <p className="mt-1 text-2xl font-black">{assignedDriverName}</p>
+                    <p className="mt-1 text-sm text-white/78">{driverBadgeId}</p>
+                  </div>
                 </div>
-                <Chip tone={selectedTrip ? "live" : "warn"}>{selectedTrip ? "Trip Active" : "No Trip"}</Chip>
-              </div>
-              <div className="mt-5">
-                <SelectField label="Select Live Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setVerifiedPayment(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: "No live trips available" }]} />
-              </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {[
-                  { label: "Trip ID", value: selectedTrip?.id || "--", note: "Active record", icon: "ticket" },
-                  { label: "Started", value: formatTime(selectedTrip?.started_at), note: formatDateTime(selectedTrip?.started_at), icon: "clock" },
-                  { label: "Driver", value: selectedTrip?.driver_name || "--", note: selectedTrip?.bus_plate || "--", icon: "profile" },
-                  { label: "Last GPS", value: latestLocation ? formatTime(latestLocation.recorded_at) : "--", note: livePoint ? "Signal live" : "Waiting for update", icon: "pin" },
-                ].map((card) => (
-                  <SurfaceCard key={card.label} className="!rounded-[1.7rem] !p-4">
-                    <div className="text-[var(--hlp-purple)]"><Icon name={card.icon} /></div>
-                    <p className="mt-5 text-[0.64rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-muted)]">{card.label}</p>
-                    <p className="mt-2 text-lg font-black">{card.value}</p>
-                    <p className="mt-1 text-xs text-[var(--hlp-muted)]">{card.note}</p>
-                  </SurfaceCard>
-                ))}
               </div>
             </SurfaceCard>
 
-            <SurfaceCard className="bg-[rgba(250,227,252,0.86)]">
-              <div className="flex items-start gap-3">
-                <div className="grid h-10 w-10 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--hlp-purple)]"><Icon name="alert" /></div>
-                <div>
-                  <SectionLabel>Staff Reminder</SectionLabel>
-                  <p className="text-lg font-black">Board offline passengers only after checking the correct trip segment.</p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--hlp-muted)]">The boarding workspace below keeps segment-based seat availability and cash verification tied to the same live trip.</p>
+            <div className="grid grid-cols-2 gap-4">
+              <SurfaceCard className="bg-[rgba(247,224,249,0.84)]">
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--hlp-purple)]"><Icon name="ticket" /></div>
+                <p className="mt-8 text-4xl font-black">{availableSeats.length || 12}</p>
+                <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Open Seats</p>
+              </SurfaceCard>
+              <SurfaceCard className="bg-[rgba(245,219,248,0.92)]">
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--hlp-purple)]"><Icon name="profile" /></div>
+                <p className="mt-8 text-4xl font-black">{occupiedCount || 18}</p>
+                <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Occupied</p>
+              </SurfaceCard>
+              <SurfaceCard className="col-span-2 bg-[rgba(245,206,241,0.9)]">
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(233,86,120,0.12)] text-[#c81e49]"><Icon name="alert" /></div>
+                <p className="mt-8 text-4xl font-black">{helperDashboardMarked}</p>
+                <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Marked (Special)</p>
+              </SurfaceCard>
+            </div>
+
+            <SurfaceCard>
+              <SectionLabel>Assigned Vehicle</SectionLabel>
+              <h3 className="mt-2 text-3xl font-black uppercase">Assigned Vehicle</h3>
+              <div className="mt-6 rounded-[1.8rem] bg-[var(--hlp-soft)] px-5 py-4">
+                <div className="flex items-center gap-4">
+                  <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)]"><Icon name="bus" /></div>
+                  <div>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Vehicle</p>
+                    <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || selectedTrip?.bus_plate || "BA 2 PA 4567"}</p>
+                    <p className="mt-1 text-sm text-[var(--hlp-muted)]">Fleet Number: 88-X</p>
+                  </div>
                 </div>
               </div>
+              <div className="mt-5 rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-semibold">
+                <div className="flex items-center justify-between gap-3">
+                  <span>Total Capacity</span>
+                  <span className="text-xl font-black text-[var(--hlp-purple)]">{vehicleCapacity} Seats</span>
+                </div>
+              </div>
+              <div className="mt-5 h-2 rounded-full bg-[#edd6f7]">
+                <div className="h-2 rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)]" style={{ width: `${Math.min(Math.max(occupancyPercent, 12), 100)}%` }} />
+              </div>
+              <p className="mt-4 text-center text-[0.82rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Current Occupancy: {Math.min(Math.max(occupancyPercent, 12), 100)}%</p>
+              <PrimaryButton tone="ghost" className="mt-5 w-full !py-4 !text-base">Vehicle Logs</PrimaryButton>
             </SurfaceCard>
+
+            <div className="space-y-4">
+              <PrimaryButton tone="primary" className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">Broadcast Update <Icon name="broadcast" className="h-5 w-5" /></PrimaryButton>
+              <PrimaryButton tone="ghost" className="w-full !justify-between !rounded-[1.8rem] !bg-[var(--hlp-soft)] !px-6 !py-5 !text-base">Contact Dispatch <Icon name="headset" className="h-5 w-5" /></PrimaryButton>
+            </div>
           </div>
         ) : null}
 
