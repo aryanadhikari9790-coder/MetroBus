@@ -271,6 +271,7 @@ export default function PassengerHome() {
       let openSeats = null;
       let seatTotal = null;
       let occupancy = null;
+      let fareEstimate = Number(trip.fare_estimate || 0);
       let occupancyLabel = "Live service";
       if (first && last && Number(last.stop_order) > Number(first.stop_order)) {
         try {
@@ -280,6 +281,7 @@ export default function PassengerHome() {
           openSeats = seatsData.filter((seat) => seat.available).length;
           occupancy = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
           occupancyLabel = occupancy >= 80 ? "High Occupancy" : occupancy >= 50 ? "Med Occupancy" : "Low Occupancy";
+          fareEstimate = Number(availability.data.fare_per_seat || 0) || fareEstimate;
         } catch {
           // Fall back to live service copy when seat availability is unavailable.
         }
@@ -296,6 +298,7 @@ export default function PassengerHome() {
         seats_total: seatTotal,
         occupancy_percent: occupancy,
         occupancy_label: occupancyLabel,
+        fare_estimate: fareEstimate,
         eta: estimateEta(toLocPoint(trip.latest_location), first ? toPoint(first.stop?.lat, first.stop?.lng) : null, routePoints, trip.latest_location?.speed),
       };
     }));
@@ -396,6 +399,7 @@ export default function PassengerHome() {
         const seatsData = availability.data.seats || [];
         const openSeats = seatsData.filter((seat) => seat.available).length;
         const occupancy = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
+        const fareEstimate = Number(availability.data.fare_per_seat || 0);
         const routePoints = rows.map((item) => toPoint(item.stop?.lat, item.stop?.lng)).filter(Boolean);
         matches.push({
           ...trip,
@@ -410,7 +414,7 @@ export default function PassengerHome() {
           occupancy_percent: occupancy,
           occupancy_label: occupancy >= 80 ? "High Occupancy" : occupancy >= 50 ? "Med Occupancy" : "Low Occupancy",
           eta: estimateEta(toLocPoint(trip.latest_location), toPoint(pickupRow.stop?.lat, pickupRow.stop?.lng), routePoints, trip.latest_location?.speed),
-          fare_estimate: 50,
+          fare_estimate: fareEstimate || 0,
         });
       }
       setMatchedTrips(matches);

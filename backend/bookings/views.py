@@ -74,6 +74,10 @@ class TripSeatAvailabilityView(APIView):
             return Response({"detail": "Trip not found"}, status=404)
 
         ensure_bus_seats(trip.bus)
+        try:
+            fare_per_seat = get_fare_for_segment(trip.route_id, from_order, to_order)
+        except ValueError:
+            fare_per_seat = None
         all_seats = Seat.objects.filter(bus=trip.bus).order_by("seat_no").values("id", "seat_no")
         taken = get_taken_seat_ids_for_trip(trip_id, from_order, to_order)
 
@@ -89,6 +93,7 @@ class TripSeatAvailabilityView(APIView):
             "trip_id": trip_id,
             "from_stop_order": from_order,
             "to_stop_order": to_order,
+            "fare_per_seat": fare_per_seat,
             "seats": data,
         })
 
