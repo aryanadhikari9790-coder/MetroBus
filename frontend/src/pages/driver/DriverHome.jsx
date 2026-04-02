@@ -184,6 +184,7 @@ export default function DriverHome() {
   const [simulationPointsCount, setSimulationPointsCount] = useState(0);
   const [simulationSpeedMs, setSimulationSpeedMs] = useState("3000");
   const [routeStops, setRouteStops] = useState([]);
+  const [passengerRequests, setPassengerRequests] = useState([]);
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [activeTab, setActiveTab] = useState("home");
   const [expandStops, setExpandStops] = useState(false);
@@ -228,6 +229,14 @@ export default function DriverHome() {
     });
     return best;
   }, [liveBusPoint, routePolyline]);
+  const pendingPickupRequests = useMemo(
+    () => passengerRequests.filter((request) => request.stage === "pickup"),
+    [passengerRequests],
+  );
+  const onboardDropRequests = useMemo(
+    () => passengerRequests.filter((request) => request.stage === "dropoff"),
+    [passengerRequests],
+  );
 
   const currentBus = currentTrip?.bus_plate || nextSchedule?.bus_plate || manualOptions.buses.find((bus) => String(bus.id) === busId)?.plate_number || "--";
   const currentRoute = currentTrip?.route_name || nextSchedule?.route_name || manualOptions.routes.find((route) => String(route.id) === routeId)?.name || "--";
@@ -253,7 +262,7 @@ export default function DriverHome() {
   const completedTrips = currentTrip ? 8 : 6;
   const totalPassengers = currentTrip ? 124 : 42;
   const fuelLevel = currentTrip ? 84 : 85;
-  const predictedPax = currentTrip ? "3-5" : "2-4";
+  const predictedPax = currentTrip ? `${passengerRequests.length || 0}` : "0";
   const shiftStartTime = nextSchedule?.scheduled_start_time ? formatTime(nextSchedule.scheduled_start_time) : "08:30 AM";
   const lastShiftDate = new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
   const lastShiftEarnings = 4800;
@@ -291,6 +300,7 @@ export default function DriverHome() {
   const routeStatusLabel = currentTrip?.deviation_mode ? "Deviation Mode" : tripAwaitingStart ? "Awaiting Start" : "On Route";
   const gpsStateLabel = autoShare ? "GPS Live" : latestLocation ? "Manual Mode" : "Waiting";
   const stopsRemaining = routeStops.length ? Math.max(routeStops.length - Math.max(stopProgressIndex + 1, 1), 0) : 0;
+  const priorityPassengerStop = pendingPickupRequests[0]?.marker_stop_name || onboardDropRequests[0]?.marker_stop_name || "--";
   const routeProgressPct = routeStops.length > 1 && stopProgressIndex >= 0
     ? Math.min(100, Math.max(12, Math.round((stopProgressIndex / (routeStops.length - 1)) * 100)))
     : liveBusPoint ? 18 : 0;
@@ -358,8 +368,21 @@ export default function DriverHome() {
     if (!helperId && manualOptions.helpers.length) setHelperId(String(manualOptions.helpers[0].id));
   }, [manualOptions, routeId, busId, helperId]);
   useEffect(() => {
-    if (!currentTrip?.id) { setRouteStops([]); setRoadPolyline([]); return; }
-    api.get(`/api/trips/${currentTrip.id}/`).then((response) => setRouteStops(response.data.route_stops || [])).catch(() => setRouteStops([]));
+    if (!currentTrip?.id) {
+      setRouteStops([]);
+      setPassengerRequests([]);
+      setRoadPolyline([]);
+      return;
+    }
+    api.get(`/api/trips/${currentTrip.id}/`)
+      .then((response) => {
+        setRouteStops(response.data.route_stops || []);
+        setPassengerRequests(response.data.passenger_requests || []);
+      })
+      .catch(() => {
+        setRouteStops([]);
+        setPassengerRequests([]);
+      });
   }, [currentTrip?.id]);
   useEffect(() => {
     if (routePolyline.length < 2) { setRoadPolyline([]); return; }
@@ -839,8 +862,8 @@ export default function DriverHome() {
                       <p className="mt-2 text-lg font-black">{routeStatusLabel}</p>
                     </div>
                     <div className="rounded-[1.4rem] bg-white/12 px-4 py-3">
-                      <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/70">Prediction</p>
-                      <p className="mt-2 text-lg font-black">{predictedPax} pax</p>
+                      <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/70">Passenger Stops</p>
+                      <p className="mt-2 text-lg font-black">{predictedPax} active</p>
                     </div>
                   </div>
                 </div>
@@ -901,6 +924,15 @@ export default function DriverHome() {
                       {liveBusPoint ? `${stopsRemaining} remaining stop${stopsRemaining === 1 ? "" : "s"} on this trip.` : "Share location to sync the live marker and route progress."}
                     </p>
                   </div>
+                  {passengerRequests.length ? (
+                    <div className="pointer-events-none absolute bottom-4 right-4 z-[500] rounded-[1.5rem] bg-white/92 px-4 py-3 text-right shadow-[var(--drv-shadow)] backdrop-blur-xl">
+                      <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-[var(--drv-purple)]">Passenger Demand</p>
+                      <p className="mt-2 text-sm font-black text-[var(--drv-text)]">
+                        {pendingPickupRequests.length} pickup{pendingPickupRequests.length === 1 ? "" : "s"} • {onboardDropRequests.length} onboard
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--drv-muted)]">Priority stop: {priorityPassengerStop}</p>
+                    </div>
+                  ) : null}
 
                   <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
                     <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
@@ -919,6 +951,37 @@ export default function DriverHome() {
                           pathOptions={{ color: current ? "#8c12eb" : "#b68ac8", fillColor: current ? "#8c12eb" : "#edd6f7", fillOpacity: 0.95 }}
                         >
                           <Popup>Stop {item.stop_order}: {item.stop?.name}</Popup>
+                        </CircleMarker>
+                      );
+                    })}
+                    {passengerRequests.map((request) => {
+                      const lat = Number(request.marker_lat);
+                      const lng = Number(request.marker_lng);
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                      const isPickup = request.stage === "pickup";
+                      return (
+                        <CircleMarker
+                          key={`${request.booking_id}-${request.stage}`}
+                          center={[lat, lng]}
+                          radius={isPickup ? 10 : 8}
+                          pathOptions={{
+                            color: isPickup ? "#ff4fd8" : "#8c12eb",
+                            fillColor: isPickup ? "#ff9ae8" : "#c243ff",
+                            fillOpacity: 0.96,
+                          }}
+                        >
+                          <Popup>
+                            <div className="space-y-1">
+                              <p className="text-sm font-black text-[var(--drv-text)]">{request.passenger_name}</p>
+                              <p className="text-xs font-semibold text-[var(--drv-purple)]">{request.stage_label}</p>
+                              <p className="text-xs text-[var(--drv-muted)]">
+                                {request.pickup_stop_name} → {request.destination_stop_name}
+                              </p>
+                              <p className="text-xs text-[var(--drv-muted)]">
+                                Seats: {(request.seat_labels || []).join(", ") || request.seats_count}
+                              </p>
+                            </div>
+                          </Popup>
                         </CircleMarker>
                       );
                     })}
@@ -1053,6 +1116,46 @@ export default function DriverHome() {
                       <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Remaining</p>
                       <p className="mt-2 text-lg font-black">{stopsRemaining} stops</p>
                     </div>
+                  </div>
+
+                  <div className="mt-4 rounded-[1.5rem] border border-[var(--drv-border)] bg-white/78 px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <SectionLabel>Passenger Stops</SectionLabel>
+                        <p className="mt-1 text-xl font-black">Upcoming pickup and drop requests</p>
+                      </div>
+                      <Pill tone={pendingPickupRequests.length ? "warn" : "idle"}>
+                        {pendingPickupRequests.length} pickup
+                      </Pill>
+                    </div>
+
+                    {passengerRequests.length ? (
+                      <div className="mt-4 space-y-3">
+                        {passengerRequests.slice(0, 5).map((request) => (
+                          <div key={`request-${request.booking_id}-${request.stage}`} className="rounded-[1.3rem] bg-[var(--drv-soft)] px-4 py-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-black text-[var(--drv-text)]">{request.passenger_name}</p>
+                                <p className="mt-1 text-xs font-black uppercase tracking-[0.18em] text-[var(--drv-purple)]">{request.stage_label}</p>
+                              </div>
+                              <span className="rounded-full bg-white px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.14em] text-[var(--drv-purple)]">
+                                {(request.seat_labels || []).join(", ") || `${request.seats_count} seat`}
+                              </span>
+                            </div>
+                            <p className="mt-3 text-sm font-semibold text-[var(--drv-text)]">
+                              {request.pickup_stop_name} → {request.destination_stop_name}
+                            </p>
+                            <p className="mt-1 text-xs text-[var(--drv-muted)]">
+                              Marker stop: {request.marker_stop_name} • Payment {request.payment_status}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm leading-6 text-[var(--drv-muted)]">
+                        No passenger pickup or drop requests are active yet for this trip.
+                      </p>
+                    )}
                   </div>
                 </Panel>
               </div>

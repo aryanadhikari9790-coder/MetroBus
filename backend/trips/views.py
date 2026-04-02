@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from accounts.models import User
+from bookings.models import Booking
 from transport.models import Route, Bus, RouteStop
 from transport.serializers import RouteStopSerializer
 from .models import Trip, TripSchedule, TripLocation
@@ -101,6 +102,74 @@ def _respond_with_trip(trip, message, status_code=200):
         },
         status=status_code,
     )
+
+
+def _can_view_trip_bookings(user, trip):
+    if not user or not user.is_authenticated:
+        return False
+    if _is_admin_user(user):
+        return True
+    return user.id in {trip.driver_id, trip.helper_id}
+
+
+def _serialize_trip_passenger_requests(trip, route_stops):
+    stop_lookup = {item.stop_order: item.stop for item in route_stops}
+    requests = []
+    summary = {
+        "pending_pickups": 0,
+        "onboard_dropoffs": 0,
+        "total_active_bookings": 0,
+    }
+
+    bookings = (
+        Booking.objects.filter(trip=trip, status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED])
+        .select_related("passenger", "payment")
+        .prefetch_related("booking_seats__seat")
+        .order_by("from_stop_order", "created_at")
+    )
+
+    for booking in bookings:
+        if booking.completed_at:
+            continue
+
+        pickup_stop = stop_lookup.get(booking.from_stop_order)
+        destination_stop = stop_lookup.get(booking.to_stop_order)
+        stage = "dropoff" if booking.checked_in_at else "pickup"
+        marker_stop = destination_stop if stage == "dropoff" else pickup_stop
+
+        if not marker_stop:
+            continue
+
+        summary["total_active_bookings"] += 1
+        if stage == "pickup":
+            summary["pending_pickups"] += 1
+        else:
+            summary["onboard_dropoffs"] += 1
+
+        requests.append(
+            {
+                "booking_id": booking.id,
+                "passenger_name": booking.passenger.full_name,
+                "passenger_phone": booking.passenger.phone,
+                "stage": stage,
+                "stage_label": "Waiting Pickup" if stage == "pickup" else "Onboard Drop-off",
+                "pickup_stop_name": pickup_stop.name if pickup_stop else f"Stop {booking.from_stop_order}",
+                "pickup_stop_order": booking.from_stop_order,
+                "destination_stop_name": destination_stop.name if destination_stop else f"Stop {booking.to_stop_order}",
+                "destination_stop_order": booking.to_stop_order,
+                "marker_stop_name": marker_stop.name,
+                "marker_stop_order": booking.to_stop_order if stage == "dropoff" else booking.from_stop_order,
+                "marker_lat": marker_stop.lat,
+                "marker_lng": marker_stop.lng,
+                "seats_count": booking.seats_count,
+                "seat_labels": [item.seat.seat_no for item in booking.booking_seats.all()],
+                "payment_status": booking.payment.status if getattr(booking, "payment", None) else "UNPAID",
+                "payment_method": booking.payment.method if getattr(booking, "payment", None) else None,
+                "checked_in_at": booking.checked_in_at,
+            }
+        )
+
+    return requests, summary
 
 
 def _confirm_trip_start(trip, actor):
@@ -543,10 +612,17 @@ class TripDetailView(APIView):
             return Response({"detail": "Trip not found"}, status=404)
 
         route_stops = RouteStop.objects.filter(route=trip.route).select_related("stop").order_by("stop_order")
-        return Response({
+        payload = {
             "trip": TripSerializer(trip).data,
             "route_stops": RouteStopSerializer(route_stops, many=True).data,
-        })
+        }
+
+        if _can_view_trip_bookings(request.user, trip):
+            passenger_requests, passenger_summary = _serialize_trip_passenger_requests(trip, route_stops)
+            payload["passenger_requests"] = passenger_requests
+            payload["passenger_summary"] = passenger_summary
+
+        return Response(payload)
 
 
 class TripSimulationStartView(APIView):
