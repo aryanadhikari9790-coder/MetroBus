@@ -26,7 +26,7 @@ import {
   TicketQrCard,
   TrackMap,
 } from "../../components/passenger/PassengerUI";
-import { buildFormPost, downloadInvoice, estimateEta, PASSENGER_THEME, toLocPoint, toPoint, useSplash } from "./passengerUtils";
+import { buildFormPost, distKm, downloadInvoice, estimateEta, PASSENGER_THEME, toLocPoint, toPoint, useSplash } from "./passengerUtils";
 
 export default function PassengerHome() {
   const navigate = useNavigate();
@@ -94,6 +94,26 @@ export default function PassengerHome() {
 
   const pickupStop = stops.find((stop) => String(stop.id) === String(pickupStopId)) || null;
   const dropStop = stops.find((stop) => String(stop.id) === String(dropStopId)) || null;
+  const homeStopMatch = useMemo(() => {
+    const homePoint = toPoint(user?.home_lat, user?.home_lng);
+    if (!homePoint || !stops.length) return null;
+    return stops.reduce((best, stop) => {
+      const stopPoint = toPoint(stop.lat, stop.lng);
+      if (!stopPoint) return best;
+      const distance = distKm(homePoint, stopPoint);
+      return !best || distance < best.distance ? { stop, distance } : best;
+    }, null)?.stop || null;
+  }, [stops, user?.home_lat, user?.home_lng]);
+  const officeStopMatch = useMemo(() => {
+    const officePoint = toPoint(user?.office_lat, user?.office_lng);
+    if (!officePoint || !stops.length) return null;
+    return stops.reduce((best, stop) => {
+      const stopPoint = toPoint(stop.lat, stop.lng);
+      if (!stopPoint) return best;
+      const distance = distKm(officePoint, stopPoint);
+      return !best || distance < best.distance ? { stop, distance } : best;
+    }, null)?.stop || null;
+  }, [stops, user?.office_lat, user?.office_lng]);
   const liveTripsById = useMemo(() => {
     const index = new Map();
     routeFeed.forEach((trip) => {
@@ -391,9 +411,41 @@ export default function PassengerHome() {
   };
   const applyQuickRoute = (type) => {
     setPlannerOpen(true);
+    setSelectionMode("");
+    setErr("");
     if (!stops.length) return;
-    if (type === "home") setPickupStopId(String(stops[0]?.id || ""));
-    if (type === "work") setDropStopId(String(stops[1]?.id || stops[0]?.id || ""));
+    if (type === "home") {
+      if (!homeStopMatch) {
+        setErr("Your saved home location is not ready yet. Please search or pick a pickup point on the map.");
+        return;
+      }
+      setPickupStopId(String(homeStopMatch.id));
+      if (!dropStopId) {
+        if (officeStopMatch && String(officeStopMatch.id) !== String(homeStopMatch.id)) setDropStopId(String(officeStopMatch.id));
+        else {
+          const fallbackStop = stops.find((stop) => String(stop.id) !== String(homeStopMatch.id));
+          if (fallbackStop) setDropStopId(String(fallbackStop.id));
+        }
+      }
+      setMsg(`Pickup set to ${homeStopMatch.name}, the nearest stop to your saved home.`);
+      return;
+    }
+    if (type === "work") {
+      if (!officeStopMatch) {
+        setErr("Your saved office location is not available yet. Please search or pick a destination on the map.");
+        return;
+      }
+      if (!pickupStopId) {
+        if (homeStopMatch && String(homeStopMatch.id) !== String(officeStopMatch.id)) setPickupStopId(String(homeStopMatch.id));
+        else {
+          const fallbackStop = stops.find((stop) => String(stop.id) !== String(officeStopMatch.id));
+          if (fallbackStop) setPickupStopId(String(fallbackStop.id));
+        }
+      }
+      setDropStopId(String(officeStopMatch.id));
+      setMsg(`Destination set to ${officeStopMatch.name}, the nearest stop to your saved office.`);
+      return;
+    }
     if (type === "gym") setDropStopId(String(stops[2]?.id || stops[1]?.id || ""));
   };
   const acceptMatchedTrip = (tripId) => {
@@ -579,8 +631,8 @@ export default function PassengerHome() {
                 </button>
               </div>
               <div className="flex gap-4 overflow-x-auto pb-2">
-                <QuickRouteCard icon="home" label="Home" caption={user?.home_location_label || "Saved pickup"} onClick={() => applyQuickRoute("home")} />
-                <QuickRouteCard icon="briefcase" label="Work" caption={user?.office_location_label || "Office route"} onClick={() => applyQuickRoute("work")} />
+                <QuickRouteCard icon="home" label="Home" caption={homeStopMatch?.name || user?.home_location_label || "Saved pickup"} onClick={() => applyQuickRoute("home")} />
+                <QuickRouteCard icon="briefcase" label="Work" caption={officeStopMatch?.name || user?.office_location_label || "Office route"} onClick={() => applyQuickRoute("work")} />
                 <QuickRouteCard icon="dumbbell" label="Gym" caption={stops[2]?.name || "Popular route"} onClick={() => applyQuickRoute("gym")} />
               </div>
             </section>
