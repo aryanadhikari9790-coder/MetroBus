@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
@@ -190,10 +190,14 @@ export default function HelperHome() {
   const [offlineBusy, setOfflineBusy] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
   const [verifyBookingId, setVerifyBookingId] = useState("");
-  const [verifiedPayment, setVerifiedPayment] = useState(null);
+  const [ticketLookup, setTicketLookup] = useState(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [activeTab, setActiveTab] = useState("trip");
+  const scannerVideoRef = useRef(null);
+  const scannerStreamRef = useRef(null);
+  const scannerFrameRef = useRef(null);
 
   const activeTrip = dashboard?.active_trip ?? null;
   const pendingTrip = dashboard?.pending_trip ?? null;
@@ -243,7 +247,8 @@ export default function HelperHome() {
   const routeTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A";
   const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
   const routeCondition = livePoint ? "Live movement on route" : tripAwaitingStart ? "Waiting for both start confirmations" : "Waiting for GPS ping";
-  const verifyPreview = verifiedPayment || { method: "Cash", status: "Pending", amount: 450 };
+  const verifyPreview = ticketLookup?.payment || { method: "Cash", status: "Pending", amount: 450 };
+  const scanSupported = typeof window !== "undefined" && "BarcodeDetector" in window && Boolean(navigator.mediaDevices?.getUserMedia);
   const helperTripHeroTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A: Downtown Express";
   const vehicleCapacity = assignedBus?.capacity || seats.length || 32;
   const occupancyPercent = vehicleCapacity ? Math.round((occupiedCount / vehicleCapacity) * 100) : 56;
@@ -453,25 +458,151 @@ export default function HelperHome() {
     );
   };
 
-  const verifyCash = async () => {
-    if (!verifyBookingId.trim()) {
-      setErr("Enter a booking ID.");
-      return;
+  const lookupTicket = useCallback(async (referenceOverride) => {
+    const reference = String(referenceOverride ?? verifyBookingId).trim();
+    if (!reference) {
+      setErr("Enter or scan a booking ticket first.");
+      return null;
     }
     setVerifyBusy(true);
     setErr("");
     setMsg("");
-    setVerifiedPayment(null);
     try {
-      const response = await api.post(`/api/payments/cash/verify/${verifyBookingId.trim()}/`);
-      setVerifiedPayment(response.data);
-      setMsg(`Payment verified for booking #${verifyBookingId.trim()}.`);
+      const response = await api.post("/api/bookings/lookup/", { reference });
+      setVerifyBookingId(reference);
+      setTicketLookup(response.data.booking);
+      setMsg(`Ticket loaded for ${response.data.booking.passenger_name}.`);
+      return response.data.booking;
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Ticket lookup failed.");
+      return null;
+    } finally {
+      setVerifyBusy(false);
+    }
+  }, [verifyBookingId]);
+
+  const verifyCash = async () => {
+    const booking = ticketLookup || await lookupTicket();
+    if (!booking?.id) return;
+    setVerifyBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/payments/cash/verify/${booking.id}/`);
+      setTicketLookup(response.data.booking);
+      setMsg(response.data.message || `Payment verified for booking #${booking.id}.`);
+      await loadDashboard({ silent: true });
     } catch (error) {
       setErr(error?.response?.data?.detail || "Verification failed.");
     } finally {
       setVerifyBusy(false);
     }
   };
+
+  const boardPassenger = async () => {
+    if (!ticketLookup?.id) {
+      setErr("Load a ticket before boarding the passenger.");
+      return;
+    }
+    setVerifyBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/bookings/${ticketLookup.id}/board/`);
+      setTicketLookup(response.data.booking);
+      setMsg(response.data.message || "Passenger marked as boarded.");
+      await loadDashboard({ silent: true });
+      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Boarding update failed.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const completePassengerRide = async () => {
+    if (!ticketLookup?.id) {
+      setErr("Load a ticket before completing the ride.");
+      return;
+    }
+    setVerifyBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/bookings/${ticketLookup.id}/complete/`);
+      setTicketLookup(response.data.booking);
+      setMsg(response.data.message || "Ride completed.");
+      await loadDashboard({ silent: true });
+      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Ride completion failed.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!scannerOpen || !scanSupported) return undefined;
+
+    let active = true;
+    const BarcodeDetectorCtor = window.BarcodeDetector;
+    const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
+
+    const stopScanner = () => {
+      if (scannerFrameRef.current) cancelAnimationFrame(scannerFrameRef.current);
+      scannerFrameRef.current = null;
+      if (scannerStreamRef.current) {
+        scannerStreamRef.current.getTracks().forEach((track) => track.stop());
+        scannerStreamRef.current = null;
+      }
+      if (scannerVideoRef.current) scannerVideoRef.current.srcObject = null;
+    };
+
+    const scanFrame = async () => {
+      if (!active || !scannerVideoRef.current) return;
+      try {
+        const results = await detector.detect(scannerVideoRef.current);
+        const rawValue = results?.[0]?.rawValue;
+        if (rawValue) {
+          setScannerOpen(false);
+          stopScanner();
+          await lookupTicket(rawValue);
+          return;
+        }
+      } catch {
+        // Continue scanning silently when the browser reports no frame yet.
+      }
+      if (active) scannerFrameRef.current = requestAnimationFrame(scanFrame);
+    };
+
+    const startScanner = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (!active) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        scannerStreamRef.current = stream;
+        if (scannerVideoRef.current) {
+          scannerVideoRef.current.srcObject = stream;
+          await scannerVideoRef.current.play();
+        }
+        scannerFrameRef.current = requestAnimationFrame(scanFrame);
+      } catch (error) {
+        setScannerOpen(false);
+        setErr(error?.message || "Camera access is required to scan the passenger QR.");
+      }
+    };
+
+    startScanner();
+    return () => {
+      active = false;
+      stopScanner();
+    };
+  }, [lookupTicket, scanSupported, scannerOpen]);
 
   const handleLogout = () => {
     clearToken();
@@ -555,7 +686,7 @@ export default function HelperHome() {
               </div>
 
             <div className="max-w-[15rem]">
-              <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setVerifiedPayment(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: tripAwaitingStart ? "Trip is waiting for driver/helper confirmation" : "No live trips available" }]} disabled={!trips.length} />
+              <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setTicketLookup(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: tripAwaitingStart ? "Trip is waiting for driver/helper confirmation" : "No live trips available" }]} disabled={!trips.length} />
             </div>
 
             <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]">
@@ -735,20 +866,40 @@ export default function HelperHome() {
             <div className="px-1">
               <SectionLabel>Transit Verification</SectionLabel>
               <h2 className="mt-2 text-6xl font-black leading-[0.9]">Verify Payment</h2>
-              <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Enter the booking ID provided by the commuter to validate an onboard cash transaction before confirming it in the system.</p>
+              <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Scan the passenger ticket QR or enter the ticket code to verify payment, confirm boarding, and complete the ride when the passenger gets off.</p>
             </div>
             <SurfaceCard className="rounded-[2.4rem]">
-              <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">Booking ID</label>
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">Ticket Code / QR Payload</label>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
                 <div className="relative">
-                  <input type="text" value={verifyBookingId} onChange={(event) => setVerifyBookingId(event.target.value)} placeholder="MB-8829-441" className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold text-[var(--hlp-text)] outline-none" />
+                  <input type="text" value={verifyBookingId} onChange={(event) => setVerifyBookingId(event.target.value)} placeholder="METROBUS:TICKET:MBT-XXXX" className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold text-[var(--hlp-text)] outline-none" />
                   <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--hlp-purple)]"><Icon name="qr" className="h-6 w-6" /></span>
                 </div>
-                <PrimaryButton tone="primary" onClick={verifyCash} disabled={verifyBusy} className="!px-8 !py-4">
-                  {verifyBusy ? "Verifying" : "Verify"}
+                <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy} className="!px-8 !py-4">
+                  {verifyBusy ? "Loading" : "Load Ticket"}
+                </PrimaryButton>
+                <PrimaryButton tone="ghost" onClick={() => setScannerOpen(true)} disabled={!scanSupported || verifyBusy} className="!px-8 !py-4">
+                  Scan QR
                 </PrimaryButton>
               </div>
+              {!scanSupported ? <p className="mt-3 text-sm text-[var(--hlp-muted)]">Live QR scanning is not supported in this browser, so use the ticket code or pasted QR value.</p> : null}
             </SurfaceCard>
+
+            {scannerOpen ? (
+              <SurfaceCard className="rounded-[2.4rem] overflow-hidden">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <SectionLabel>Live Scanner</SectionLabel>
+                    <p className="mt-2 text-2xl font-black">Point the camera at the passenger QR</p>
+                  </div>
+                  <PrimaryButton tone="ghost" onClick={() => setScannerOpen(false)} className="!px-5 !py-3">Close</PrimaryButton>
+                </div>
+                <div className="mt-4 overflow-hidden rounded-[1.8rem] bg-[var(--hlp-soft)]">
+                  <video ref={scannerVideoRef} className="h-72 w-full object-cover" muted playsInline />
+                </div>
+              </SurfaceCard>
+            ) : null}
+
             <SurfaceCard className="rounded-[2.4rem] border-[rgba(215,149,239,0.45)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -757,20 +908,38 @@ export default function HelperHome() {
                 </div>
                 <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="shield" className="h-8 w-8" /></div>
               </div>
-              <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                {[{ label: "Payment", value: verifyPreview.method }, { label: "Status", value: verifyPreview.status }, { label: "Amount", value: verifyPreview.amount ? `Rs. ${verifyPreview.amount}` : "--" }].map((item) => (
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                {[{ label: "Passenger", value: ticketLookup?.passenger_name || "Load a ticket" }, { label: "Route", value: ticketLookup?.route_name || "--" }, { label: "Seats", value: ticketLookup?.seat_labels?.join(", ") || "--" }, { label: "Payment", value: verifyPreview.method || "--" }, { label: "Status", value: verifyPreview.status || "--" }, { label: "Amount", value: verifyPreview.amount ? `Rs. ${verifyPreview.amount}` : "--" }].map((item) => (
                   <div key={item.label}>
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{item.label}</p>
                     <p className={`mt-3 text-2xl font-black ${item.label === "Status" ? "text-[#b91c1c]" : item.label === "Amount" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
                   </div>
                 ))}
               </div>
+              {ticketLookup ? (
+                <div className="mt-5 rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-medium text-[var(--hlp-text)]">
+                  <p><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
+                  <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
+                  <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Ticket:</span> {ticketLookup.ticket_code}</p>
+                </div>
+              ) : null}
             </SurfaceCard>
-            <PrimaryButton tone="danger" className="w-full !py-5 !text-base">
-              Confirm Payment
-              <Icon name="shield" />
-            </PrimaryButton>
-            <p className="text-center text-sm text-[var(--hlp-muted)]">By confirming, you acknowledge the receipt of physical cash from the commuter.</p>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <PrimaryButton tone="danger" onClick={verifyCash} disabled={verifyBusy || !ticketLookup?.can_verify_cash} className="w-full !py-5 !text-base">
+                Confirm Cash
+                <Icon name="shield" />
+              </PrimaryButton>
+              <PrimaryButton tone="primary" onClick={boardPassenger} disabled={verifyBusy || !ticketLookup?.can_board} className="w-full !py-5 !text-base">
+                Mark Boarded
+                <Icon name="ticket" />
+              </PrimaryButton>
+              <PrimaryButton tone="ghost" onClick={completePassengerRide} disabled={verifyBusy || !ticketLookup?.can_complete} className="w-full !py-5 !text-base">
+                Complete Ride
+                <Icon name="map" />
+              </PrimaryButton>
+            </div>
+            <p className="text-center text-sm text-[var(--hlp-muted)]">Cash must be confirmed before boarding. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
             <div className="h-48 rounded-[2.6rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(244,232,247,0.42))] shadow-[var(--hlp-shadow)]" />
           </div>
         ) : null}

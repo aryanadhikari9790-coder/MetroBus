@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from trips.models import Trip
 from transport.models import Seat
+from .tickets import build_ticket_payload, generate_ticket_code
 
 
 class Booking(models.Model):
@@ -22,8 +23,25 @@ class Booking(models.Model):
 
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.CONFIRMED)
 
+    ticket_code = models.CharField(max_length=20, unique=True, default=generate_ticket_code, editable=False)
     fare_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     discount_applied_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    checked_in_at = models.DateTimeField(null=True, blank=True)
+    checked_in_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="checked_in_bookings",
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="completed_bookings",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -31,14 +49,17 @@ class Booking(models.Model):
         ordering = ["-created_at"]
         constraints = [
             models.CheckConstraint(
-    condition=models.Q(to_stop_order__gt=models.F("from_stop_order")),
-    name="chk_booking_to_gt_from",
-)
-
+                condition=models.Q(to_stop_order__gt=models.F("from_stop_order")),
+                name="chk_booking_to_gt_from",
+            )
         ]
 
     def __str__(self):
         return f"Booking #{self.id} Trip {self.trip_id} ({self.status})"
+
+    @property
+    def ticket_payload(self):
+        return build_ticket_payload(self.ticket_code)
 
 
 class BookingSeat(models.Model):
@@ -68,11 +89,10 @@ class OfflineBoarding(models.Model):
     class Meta:
         ordering = ["-created_at"]
         constraints = [
-         models.CheckConstraint(
-    condition=models.Q(to_stop_order__gt=models.F("from_stop_order")),
-    name="chk_offline_to_gt_from",
-)
-
+            models.CheckConstraint(
+                condition=models.Q(to_stop_order__gt=models.F("from_stop_order")),
+                name="chk_offline_to_gt_from",
+            )
         ]
 
     def __str__(self):

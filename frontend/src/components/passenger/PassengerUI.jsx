@@ -109,6 +109,8 @@ export function Icon({ name, className = "h-5 w-5" }) {
       return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.7 2.7 0 0 1 5 .9c0 1.8-2 2.2-2.5 3.5" /><path d="M12 17h.01" /></svg>;
     case "plus":
       return <svg {...common}><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
+    case "qr":
+      return <svg {...common}><path d="M4 4h5v5H4z" /><path d="M15 4h5v5h-5z" /><path d="M4 15h5v5H4z" /><path d="M15 15h2" /><path d="M18 15v5" /><path d="M15 18h3" /></svg>;
     case "edit":
       return <svg {...common}><path d="m4 20 4.5-1 9-9a2.2 2.2 0 0 0-3.1-3.1l-9 9L4 20Z" /></svg>;
     case "download":
@@ -603,6 +605,88 @@ export function SeatButton({ seat, selected, onClick }) {
   );
 }
 
+export function TicketQrCard({ booking, title = "Ride Ticket", compact = false }) {
+  if (!booking) return null;
+  const paymentLabel = booking.payment_method || booking.payment?.method || "UNPAID";
+  const paymentStatus = booking.payment_status || booking.payment?.status || "UNPAID";
+  const boardingStatus = booking.completed_at ? "Completed" : booking.checked_in_at ? "Onboard" : "Ready to board";
+  return (
+    <div className={`rounded-[32px] bg-[linear-gradient(135deg,#fff,#f8e5fb)] shadow-[var(--mb-shadow)] ${compact ? "p-4" : "p-5"}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">{title}</p>
+          <h3 className="mt-2 text-2xl font-black text-[var(--mb-text)]">{booking.passenger_name || "MetroBus Passenger"}</h3>
+          <p className="mt-1 text-sm font-semibold text-[var(--mb-muted)]">{booking.route_name} • {booking.bus_plate}</p>
+        </div>
+        <div className="rounded-full bg-white px-3 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">
+          {boardingStatus}
+        </div>
+      </div>
+
+      <div className={`mt-4 grid gap-4 ${compact ? "md:grid-cols-[1fr_1.05fr]" : "md:grid-cols-[1fr_1.15fr]"}`}>
+        <div className="rounded-[28px] bg-white p-4 shadow-[var(--mb-shadow)]">
+          <div className="flex items-center gap-2 text-[var(--mb-purple)]">
+            <Icon name="qr" className="h-5 w-5" />
+            <p className="text-xs font-bold uppercase tracking-[0.22em]">Scan on boarding</p>
+          </div>
+          <div className="mt-4 overflow-hidden rounded-[22px] bg-white p-3">
+            {booking.ticket_qr_svg ? (
+              <div
+                className="[&_svg]:h-full [&_svg]:w-full [&_svg]:max-h-[13rem]"
+                dangerouslySetInnerHTML={{ __html: booking.ticket_qr_svg }}
+              />
+            ) : (
+              <div className="grid h-44 place-items-center rounded-[20px] bg-[var(--mb-bg-alt)] text-sm font-medium text-[var(--mb-muted)]">
+                QR is being prepared.
+              </div>
+            )}
+          </div>
+          <div className="mt-3 rounded-[20px] bg-[var(--mb-bg-alt)] px-3 py-3 text-xs font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">
+            {booking.ticket_code}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[24px] bg-white p-4 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Pickup</p>
+              <p className="mt-2 text-xl font-black text-[var(--mb-text)]">{booking.pickup_stop_name}</p>
+            </div>
+            <div className="rounded-[24px] bg-white p-4 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Drop</p>
+              <p className="mt-2 text-xl font-black text-[var(--mb-text)]">{booking.destination_stop_name}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[24px] bg-white p-4 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Seat</p>
+              <p className="mt-2 text-xl font-black text-[var(--mb-text)]">{(booking.seat_labels || []).join(", ") || "--"}</p>
+            </div>
+            <div className="rounded-[24px] bg-white p-4 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Fare</p>
+              <p className="mt-2 text-xl font-black text-[var(--mb-text)]">{fmtMoney(booking.fare_total)}</p>
+            </div>
+          </div>
+
+          <div className="rounded-[24px] bg-white p-4 shadow-[var(--mb-shadow)]">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Payment</p>
+                <p className="mt-2 text-lg font-black text-[var(--mb-text)]">{paymentLabel}</p>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Status</p>
+                <p className="mt-2 text-lg font-black text-[var(--mb-purple)]">{paymentStatus}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle, onBook, onPay, bookingBusy, paymentBusy, loadingSeats, lastBookingId, lastBookingSummary, pickupStop, dropStop }) {
   const selectedLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
   const openSeatCount = seats.filter((seat) => seat.available).length;
@@ -673,10 +757,11 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
 
       {lastBookingId ? (
         <div className="mt-4 space-y-3">
+          <TicketQrCard booking={lastBookingSummary} title="Step 2 • Your ticket" />
           <div className="rounded-[24px] bg-[linear-gradient(135deg,#fff,#f8e5fb)] p-4">
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Step 2 • Choose payment</p>
+            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Step 3 • Choose payment</p>
             <p className="mt-2 text-sm text-[var(--mb-muted)]">
-              Booking #{lastBookingId} is ready. Pay cash onboard or continue with your Nepali payment gateway.
+              Booking #{lastBookingId} is ready. Choose how you want to pay when boarding, or pay online now with your Nepali payment gateway.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">

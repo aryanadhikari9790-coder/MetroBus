@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -12,21 +13,42 @@ from .serializers import (
     OfflineCreateSerializer,
     OfflineBoardingSerializer,
     PassengerBookingListSerializer,
+    HelperLookupSerializer,
+    HelperBookingTicketSerializer,
 )
 from .permissions import IsPassenger, IsHelper
 from .services import validate_seats_available, get_fare_for_segment, get_taken_seat_ids_for_trip
+from .tickets import parse_ticket_reference
+
+
+def _booking_queryset():
+    return (
+        Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment")
+        .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
+    )
+
+
+def _resolve_ticket_booking(reference):
+    parsed = parse_ticket_reference(reference)
+    queryset = _booking_queryset()
+    if parsed["booking_id"]:
+        return queryset.filter(id=parsed["booking_id"]).first()
+    if parsed["ticket_code"]:
+        return queryset.filter(ticket_code=parsed["ticket_code"]).first()
+    return None
+
+
+def _can_manage_booking(user, booking):
+    if not booking:
+        return False
+    return bool(user.is_superuser or booking.trip.helper_id == user.id)
 
 
 class PassengerBookingsView(APIView):
     permission_classes = [IsAuthenticated, IsPassenger]
 
     def get(self, request):
-        bookings = (
-            Booking.objects.filter(passenger=request.user)
-            .select_related("trip__route", "trip__bus", "payment")
-            .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
-            .order_by("-created_at")
-        )
+        bookings = _booking_queryset().filter(passenger=request.user).order_by("-created_at")
 
         route_cache = {}
         for booking in bookings:
@@ -118,6 +140,7 @@ class CreateBookingView(APIView):
         for sid in seat_ids:
             BookingSeat.objects.create(booking=booking, seat_id=sid)
 
+        booking = _booking_queryset().filter(id=booking.id).first()
         return Response(BookingSerializer(booking).data, status=201)
 
 
@@ -159,3 +182,81 @@ class CreateOfflineBoardingView(APIView):
             "offline_boarding": OfflineBoardingSerializer(ob).data,
             "seat_ids": seat_ids,
         }, status=201)
+
+
+class HelperBookingLookupView(APIView):
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request):
+        ser = HelperLookupSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        booking = _resolve_ticket_booking(ser.validated_data["reference"])
+        if not booking:
+            return Response({"detail": "Booking ticket not found."}, status=404)
+        if not _can_manage_booking(request.user, booking):
+            return Response({"detail": "This ticket does not belong to your assigned trip."}, status=403)
+
+        return Response({"booking": HelperBookingTicketSerializer(booking).data})
+
+
+class HelperBoardBookingView(APIView):
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request, booking_id: int):
+        booking = _booking_queryset().filter(id=booking_id).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=404)
+        if not _can_manage_booking(request.user, booking):
+            return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
+        if booking.status == Booking.Status.COMPLETED:
+            return Response(
+                {"message": "This ride is already completed.", "booking": HelperBookingTicketSerializer(booking).data},
+                status=200,
+            )
+
+        payment = getattr(booking, "payment", None)
+        if not payment:
+            return Response({"detail": "Passenger must choose a payment method before boarding."}, status=400)
+        if payment.status != "SUCCESS":
+            return Response({"detail": "Payment is not verified yet."}, status=400)
+
+        if not booking.checked_in_at:
+            booking.checked_in_at = timezone.now()
+            booking.checked_in_by = request.user
+            booking.save(update_fields=["checked_in_at", "checked_in_by"])
+            booking = _booking_queryset().filter(id=booking.id).first()
+
+        return Response(
+            {"message": "Passenger marked as boarded.", "booking": HelperBookingTicketSerializer(booking).data},
+            status=200,
+        )
+
+
+class HelperCompleteBookingView(APIView):
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request, booking_id: int):
+        booking = _booking_queryset().filter(id=booking_id).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=404)
+        if not _can_manage_booking(request.user, booking):
+            return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
+        if booking.status == Booking.Status.COMPLETED:
+            return Response(
+                {"message": "Ride already completed and seat already released.", "booking": HelperBookingTicketSerializer(booking).data},
+                status=200,
+            )
+        if not booking.checked_in_at:
+            return Response({"detail": "Passenger must be boarded before completing the ride."}, status=400)
+
+        booking.status = Booking.Status.COMPLETED
+        booking.completed_at = timezone.now()
+        booking.completed_by = request.user
+        booking.save(update_fields=["status", "completed_at", "completed_by"])
+        booking = _booking_queryset().filter(id=booking.id).first()
+
+        return Response(
+            {"message": "Ride completed and the seat is now free for the next segment.", "booking": HelperBookingTicketSerializer(booking).data},
+            status=200,
+        )

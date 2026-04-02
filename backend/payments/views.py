@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from bookings.models import Booking
+from bookings.serializers import HelperBookingTicketSerializer
 from .models import Payment
 from .serializers import CreatePaymentSerializer, PaymentSerializer
 from .permissions import IsPassenger, IsHelperOrAdmin
@@ -129,7 +130,19 @@ class VerifyCashPaymentView(APIView):
         payment.verified_at = timezone.now()
         payment.save(update_fields=["status", "verified_by", "verified_at"])
 
-        return Response(PaymentSerializer(payment).data)
+        booking = (
+            Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment")
+            .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
+            .filter(id=booking.id)
+            .first()
+        )
+        return Response(
+            {
+                "message": f"Cash payment verified for booking #{booking.id}.",
+                "payment": PaymentSerializer(payment).data,
+                "booking": HelperBookingTicketSerializer(booking).data,
+            }
+        )
 
 
 # =========================
