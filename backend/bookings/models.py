@@ -26,6 +26,14 @@ class Booking(models.Model):
     ticket_code = models.CharField(max_length=20, unique=True, default=generate_ticket_code, editable=False)
     fare_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     discount_applied_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    payment_requested_at = models.DateTimeField(null=True, blank=True)
+    payment_requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment_requests_sent",
+    )
     checked_in_at = models.DateTimeField(null=True, blank=True)
     checked_in_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

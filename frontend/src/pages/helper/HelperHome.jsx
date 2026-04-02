@@ -499,6 +499,25 @@ export default function HelperHome() {
     }
   };
 
+  const requestPassengerPayment = async () => {
+    if (!ticketLookup?.id) {
+      setErr("Load a ticket before requesting passenger payment.");
+      return;
+    }
+    setVerifyBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/bookings/${ticketLookup.id}/request-payment/`);
+      setTicketLookup(response.data.booking);
+      setMsg(response.data.message || "Payment request sent to the passenger.");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to request payment.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
   const boardPassenger = async () => {
     if (!ticketLookup?.id) {
       setErr("Load a ticket before boarding the passenger.");
@@ -921,11 +940,18 @@ export default function HelperHome() {
                   <p><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
                   <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
                   <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Ticket:</span> {ticketLookup.ticket_code}</p>
+                  {ticketLookup.payment_requested_at ? (
+                    <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Payment Request:</span> Sent {formatTime(ticketLookup.payment_requested_at)}</p>
+                  ) : null}
                 </div>
               ) : null}
             </SurfaceCard>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <PrimaryButton tone="primary" onClick={requestPassengerPayment} disabled={verifyBusy || !ticketLookup?.can_request_payment} className="w-full !py-5 !text-base">
+                Request Payment
+                <Icon name="money" />
+              </PrimaryButton>
               <PrimaryButton tone="danger" onClick={verifyCash} disabled={verifyBusy || !ticketLookup?.can_verify_cash} className="w-full !py-5 !text-base">
                 Confirm Cash
                 <Icon name="shield" />
@@ -939,7 +965,7 @@ export default function HelperHome() {
                 <Icon name="map" />
               </PrimaryButton>
             </div>
-            <p className="text-center text-sm text-[var(--hlp-muted)]">Cash must be confirmed before boarding. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
+            <p className="text-center text-sm text-[var(--hlp-muted)]">Scan the QR, request passenger payment if needed, confirm cash when collected, then mark the rider boarded. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
             <div className="h-48 rounded-[2.6rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(244,232,247,0.42))] shadow-[var(--hlp-shadow)]" />
           </div>
         ) : null}

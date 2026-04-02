@@ -14,6 +14,7 @@ import {
   MetricCard,
   NearbyMapCard,
   OccupancySheet,
+  PaymentRequestCard,
   PaymentShowcase,
   PlannerCard,
   ProfileCard,
@@ -151,6 +152,8 @@ export default function PassengerHome() {
   );
   const displayTrips = matchedTrips.length ? visibleMatchedTrips : routeFeed;
   const activeBooking = bookings.find((booking) => ["CONFIRMED", "PENDING"].includes(booking.status)) || null;
+  const paymentActionBooking = bookings.find((booking) => booking.needs_payment_selection && ["CONFIRMED", "PENDING"].includes(booking.status)) || null;
+  const paymentPendingBooking = bookings.find((booking) => booking.payment_pending_verification && ["CONFIRMED", "PENDING"].includes(booking.status)) || null;
   const pastBookings = bookings.filter((booking) => ["COMPLETED", "CANCELLED", "NO_SHOW"].includes(booking.status) || booking.trip_status === "ENDED");
   const historyBooking = pastBookings[0] || bookings[0] || null;
   const latestPaidBooking = bookings.find((booking) => booking.payment_status === "SUCCESS") || null;
@@ -545,15 +548,17 @@ export default function PassengerHome() {
     finally { setBookingBusy(false); }
   };
 
-  const pay = async (method) => {
-    if (!lastBookingId) { setErr("Create a booking first."); return; }
+  const pay = async (method, bookingId = lastBookingId) => {
+    if (!bookingId) { setErr("Create a booking first."); return; }
     setPaymentBusy(true); setErr(""); setMsg("");
     try {
-      const response = await api.post("/api/payments/create/", { booking_id: lastBookingId, method });
+      const response = await api.post("/api/payments/create/", { booking_id: bookingId, method });
       const { redirect, payment } = response.data;
       if (response.data.wallet) setWalletSummary(response.data.wallet);
       setLastBookingSummary((current) => (
-        current ? { ...current, payment_status: payment?.status || current.payment_status, payment_method: payment?.method || current.payment_method, payment: payment || current.payment } : current
+        current && Number(current.id) === Number(bookingId)
+          ? { ...current, payment_status: payment?.status || current.payment_status, payment_method: payment?.method || current.payment_method, payment: payment || current.payment }
+          : current
       ));
       if (redirect?.type === "REDIRECT" && redirect.url) { window.location.href = redirect.url; return; }
       if (redirect?.type === "FORM_POST" && redirect.url) { buildFormPost(redirect); return; }
@@ -617,6 +622,22 @@ export default function PassengerHome() {
       <main className="mx-auto max-w-5xl px-5 pb-44 pt-28 md:px-6 md:pt-32">
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
+        {paymentActionBooking ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[rgba(141,18,235,0.12)] bg-white px-4 py-3 shadow-[var(--mb-shadow)]">
+            <div>
+              <p className="text-sm font-black text-[var(--mb-text)]">A helper requested payment for Booking #{paymentActionBooking.id}.</p>
+              <p className="mt-1 text-sm text-[var(--mb-muted)]">Open Track or My Rides to choose your payment method before boarding.</p>
+            </div>
+            <button type="button" onClick={() => setActiveView("track")} className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
+              Pay Now
+            </button>
+          </div>
+        ) : null}
+        {!paymentActionBooking && paymentPendingBooking ? (
+          <div className="mb-4 rounded-[24px] border border-[rgba(141,18,235,0.12)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
+            Payment for Booking #{paymentPendingBooking.id} is pending. {paymentPendingBooking.payment_method === "CASH" ? "Please hand the fare to the helper for verification." : "Keep MetroBus open while the payment completes."}
+          </div>
+        ) : null}
 
         {activeView === "home" ? (
           <>
@@ -752,9 +773,9 @@ export default function PassengerHome() {
           </>
         ) : null}
 
-        {activeView === "track" ? <section className="space-y-5"><TrackMap trip={selectedTrip} displayLine={displayLine} now={now} /><DriverCard trip={selectedTrip} /><div className="grid gap-4 sm:grid-cols-2"><MetricCard icon="seat" label="Seats" value={`${selectedTrip?.open_seats ?? 12} Free`} /><MetricCard icon="snow" label="Climate" value="22°C Fixed" /></div><div className="grid gap-4 sm:grid-cols-[1.4fr_0.8fr]"><button type="button" onClick={shareTrip} className="inline-flex items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-5 text-2xl font-black text-white shadow-[var(--mb-shadow-strong)]"><Icon name="share" className="h-7 w-7" />Share Trip</button><button type="button" onClick={() => { window.location.href = "tel:100"; }} className="inline-flex items-center justify-center gap-3 rounded-full bg-[var(--mb-danger)] px-6 py-5 text-2xl font-black text-white"><Icon name="alert" className="h-7 w-7" />SOS</button></div></section> : null}
+        {activeView === "track" ? <section className="space-y-5">{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}<TrackMap trip={selectedTrip} displayLine={displayLine} now={now} /><DriverCard trip={selectedTrip} /><div className="grid gap-4 sm:grid-cols-2"><MetricCard icon="seat" label="Seats" value={`${selectedTrip?.open_seats ?? 12} Free`} /><MetricCard icon="snow" label="Climate" value="22°C Fixed" /></div><div className="grid gap-4 sm:grid-cols-[1.4fr_0.8fr]"><button type="button" onClick={shareTrip} className="inline-flex items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-5 text-2xl font-black text-white shadow-[var(--mb-shadow-strong)]"><Icon name="share" className="h-7 w-7" />Share Trip</button><button type="button" onClick={() => { window.location.href = "tel:100"; }} className="inline-flex items-center justify-center gap-3 rounded-full bg-[var(--mb-danger)] px-6 py-5 text-2xl font-black text-white"><Icon name="alert" className="h-7 w-7" />SOS</button></div></section> : null}
 
-        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? activeBooking ? <ReservationCard booking={activeBooking} onReschedule={() => { setPlannerOpen(true); setActiveView("home"); }} onViewTicket={() => setTicketBookingId(activeBooking.id)} /> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
+        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <ReservationCard booking={activeBooking} onReschedule={() => { setPlannerOpen(true); setActiveView("home"); }} onViewTicket={() => setTicketBookingId(activeBooking.id)} /> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
 
         {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} walletSummary={walletSummary} onTopUp={() => topUpWallet(500)} onBuyPass={buyRidePass} actionBusy={walletBusy} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
       </main>

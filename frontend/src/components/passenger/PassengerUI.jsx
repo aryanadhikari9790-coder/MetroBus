@@ -630,6 +630,30 @@ export function SeatButton({ seat, selected, onClick }) {
   );
 }
 
+function buildPaymentOptions(total, walletSummary) {
+  const options = [
+    { label: "Cash", method: "CASH", note: "Pay onboard", disabled: false },
+    { label: "eSewa", method: "ESEWA", note: "Online payment", disabled: false },
+    { label: "Khalti", method: "KHALTI", note: "Online payment", disabled: false },
+    {
+      label: "Metro Wallet",
+      method: "WALLET",
+      note: walletSummary ? `${fmtMoney(walletSummary.balance)} available` : "Wallet balance unavailable",
+      disabled: walletSummary ? Number(walletSummary.balance) < Number(total) : true,
+    },
+    {
+      label: "Ride Pass",
+      method: "PASS",
+      note: walletSummary?.pass_active ? `${walletSummary.pass_rides_remaining} rides remaining` : "No active pass",
+      disabled: !walletSummary?.pass_active,
+    },
+  ];
+  if (walletSummary?.reward_free_ride_ready) {
+    options.push({ label: "Free Ride", method: "REWARD", note: `${walletSummary.reward_points} reward points ready`, disabled: false });
+  }
+  return options;
+}
+
 export function OccupancySheet({ trip, seats = [], loading, onClose }) {
   if (!trip) return null;
   const openCount = seats.filter((seat) => seat.available).length;
@@ -788,16 +812,7 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
   const selectedLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
   const openSeatCount = seats.filter((seat) => seat.available).length;
   const total = lastBookingSummary?.fare_total || ((trip?.fare_estimate || 50) * selectedSeatIds.length);
-  const paymentOptions = [
-    { label: "Cash", method: "CASH", note: "Pay onboard", disabled: false },
-    { label: "eSewa", method: "ESEWA", note: "Online payment", disabled: false },
-    { label: "Khalti", method: "KHALTI", note: "Online payment", disabled: false },
-    { label: "Metro Wallet", method: "WALLET", note: walletSummary ? `${fmtMoney(walletSummary.balance)} available` : "Wallet balance unavailable", disabled: walletSummary ? Number(walletSummary.balance) < Number(total) : true },
-    { label: "Ride Pass", method: "PASS", note: walletSummary?.pass_active ? `${walletSummary.pass_rides_remaining} rides remaining` : "No active pass", disabled: !walletSummary?.pass_active },
-  ];
-  if (walletSummary?.reward_free_ride_ready) {
-    paymentOptions.push({ label: "Free Ride", method: "REWARD", note: `${walletSummary.reward_points} reward points ready`, disabled: false });
-  }
+  const paymentOptions = buildPaymentOptions(total, walletSummary);
   if (!trip) return null;
   return (
     <section className="mt-5 rounded-[34px] bg-[var(--mb-card)] p-5 shadow-[var(--mb-shadow)]">
@@ -906,6 +921,81 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
         </div>
       ) : null}
     </section>
+  );
+}
+
+export function PaymentRequestCard({ booking, walletSummary, paymentBusy, onPay }) {
+  if (!booking) return null;
+  const paymentOptions = buildPaymentOptions(booking.fare_total, walletSummary);
+  const waitingForCash = booking.payment_method === "CASH" && booking.payment_pending_verification;
+  const waitingForGateway = booking.payment_pending_verification && booking.payment_method && booking.payment_method !== "CASH";
+
+  return (
+    <div className="rounded-[34px] bg-[linear-gradient(180deg,#fff,#f8e5fb)] p-5 shadow-[var(--mb-shadow)]">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Helper Payment Request</p>
+          <h3 className="mt-2 text-2xl font-black text-[var(--mb-text)]">Booking #{booking.id} is ready for payment</h3>
+          <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">
+            {booking.payment_requested_by_name
+              ? `${booking.payment_requested_by_name} scanned your ticket and is waiting for your payment choice.`
+              : "Your helper scanned the ticket and is waiting for your payment choice."}
+          </p>
+        </div>
+        <div className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+          {fmtMoney(booking.fare_total)}
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Route</p>
+          <p className="mt-2 text-lg font-black text-[var(--mb-text)]">{booking.route_name}</p>
+        </div>
+        <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Seat</p>
+          <p className="mt-2 text-lg font-black text-[var(--mb-text)]">{(booking.seat_labels || []).join(", ") || "--"}</p>
+        </div>
+        <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Payment State</p>
+          <p className="mt-2 text-lg font-black text-[var(--mb-purple)]">{booking.payment_status}</p>
+        </div>
+      </div>
+
+      {booking.needs_payment_selection ? (
+        <>
+          <p className="mt-5 text-sm font-medium text-[var(--mb-muted)]">
+            Choose how you want to pay before boarding. Cash stays pending until the helper confirms collection.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {paymentOptions.map((option) => (
+              <button
+                key={option.method}
+                type="button"
+                onClick={() => onPay(option.method, booking.id)}
+                disabled={paymentBusy || option.disabled}
+                className={`rounded-[24px] border px-4 py-4 text-left text-sm font-black shadow-[var(--mb-shadow)] disabled:opacity-60 ${option.disabled ? "border-[var(--mb-border)] bg-[#f5edf7] text-[var(--mb-muted)]" : "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]"}`}
+              >
+                <span className="block text-base">{paymentBusy ? "Processing..." : option.label}</span>
+                <span className="mt-1 block text-xs font-semibold text-[var(--mb-muted)]">{option.note}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {waitingForCash ? (
+        <div className="mt-5 rounded-[24px] bg-white px-4 py-4 text-sm font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
+          Cash selected. Please hand the fare to the helper so they can verify and mark you boarded.
+        </div>
+      ) : null}
+
+      {waitingForGateway ? (
+        <div className="mt-5 rounded-[24px] bg-white px-4 py-4 text-sm font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
+          Your payment is being processed. Keep MetroBus open until the status changes.
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -23,7 +23,7 @@ from .tickets import parse_ticket_reference
 
 def _booking_queryset():
     return (
-        Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment")
+        Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by")
         .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
     )
 
@@ -234,6 +234,42 @@ class HelperBoardBookingView(APIView):
 
         return Response(
             {"message": "Passenger marked as boarded.", "booking": HelperBookingTicketSerializer(booking).data},
+            status=200,
+        )
+
+
+class HelperRequestBookingPaymentView(APIView):
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request, booking_id: int):
+        booking = _booking_queryset().filter(id=booking_id).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=404)
+        if not _can_manage_booking(request.user, booking):
+            return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
+        if booking.status == Booking.Status.COMPLETED:
+            return Response({"detail": "This ride is already completed."}, status=400)
+
+        payment = getattr(booking, "payment", None)
+        if payment and payment.status == "SUCCESS":
+            return Response(
+                {
+                    "message": "This booking is already paid.",
+                    "booking": HelperBookingTicketSerializer(booking).data,
+                },
+                status=200,
+            )
+
+        booking.payment_requested_at = timezone.now()
+        booking.payment_requested_by = request.user
+        booking.save(update_fields=["payment_requested_at", "payment_requested_by"])
+        booking = _booking_queryset().filter(id=booking.id).first()
+
+        return Response(
+            {
+                "message": "Payment request sent to the passenger. Ask them to choose a payment option in MetroBus.",
+                "booking": HelperBookingTicketSerializer(booking).data,
+            },
             status=200,
         )
 
