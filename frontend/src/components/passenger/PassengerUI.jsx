@@ -644,7 +644,9 @@ function buildPaymentOptions(total, walletSummary) {
     {
       label: "Ride Pass",
       method: "PASS",
-      note: walletSummary?.pass_active ? `${walletSummary.pass_rides_remaining} rides remaining` : "No active pass",
+      note: walletSummary?.pass_active
+        ? `${walletSummary.pass_plan_label || "Active pass"} • ${walletSummary.pass_rides_remaining} rides remaining`
+        : "No active pass",
       disabled: !walletSummary?.pass_active,
     },
   ];
@@ -1165,9 +1167,10 @@ export function ProfileCard({ user, profileForm, setProfileForm, onSave, profile
   );
 }
 
-export function PaymentShowcase({ latestPaidBooking, walletSummary, onTopUp, onBuyPass, actionBusy }) {
+export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = [], onTopUp, onBuyPass, actionBusy }) {
+  const activePlanCode = walletSummary?.pass_plan || "";
   const passLabel = walletSummary?.pass_active
-    ? `${walletSummary.pass_rides_remaining} rides left`
+    ? `${walletSummary.pass_rides_remaining} of ${walletSummary.pass_total_rides || walletSummary.pass_rides_remaining} rides left`
     : walletSummary?.pass_valid_until
       ? `Expired ${fmtDate(walletSummary.pass_valid_until)}`
       : "No pass active";
@@ -1204,15 +1207,48 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, onTopUp, onB
         <div className="rounded-[30px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
           <div className="text-[var(--mb-purple)]"><Icon name="wallet" className="h-7 w-7" /></div>
           <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Ride Pass</p>
-          <p className="mt-2 text-4xl font-black text-[var(--mb-purple)]">{passLabel}</p>
+          <p className="mt-2 text-4xl font-black text-[var(--mb-purple)]">{walletSummary?.pass_active ? (walletSummary.pass_plan_label || "Active pass") : passLabel}</p>
           <p className="mt-3 text-sm font-medium text-[var(--mb-muted)]">
             {walletSummary?.pass_active
-              ? `Valid until ${fmtDate(walletSummary.pass_valid_until)}`
-              : "Activate a 20 ride pass for regular travel."}
+              ? `${passLabel} • valid until ${fmtDate(walletSummary.pass_valid_until)}`
+              : "Choose a weekly, monthly, or flexible ride pass for regular travel."}
           </p>
-          <button type="button" onClick={onBuyPass} disabled={actionBusy} className="mt-4 rounded-full bg-white px-4 py-3 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)] disabled:opacity-60">
-            Activate 20 Ride Pass
-          </button>
+          <div className="mt-4 grid gap-3">
+            {passPlans.map((plan) => {
+              const isActive = walletSummary?.pass_active && activePlanCode === plan.code;
+              return (
+                <button
+                  key={plan.code}
+                  type="button"
+                  onClick={() => onBuyPass(plan.code)}
+                  disabled={actionBusy}
+                  className={`rounded-[24px] border px-4 py-4 text-left shadow-[var(--mb-shadow)] transition disabled:opacity-60 ${
+                    isActive
+                      ? "border-[rgba(141,18,235,0.18)] bg-white"
+                      : "border-transparent bg-white/80 hover:border-[rgba(141,18,235,0.14)]"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-base font-black text-[var(--mb-text)]">{plan.label}</p>
+                      <p className="mt-1 text-sm font-medium text-[var(--mb-muted)]">{plan.summary}</p>
+                    </div>
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                      isActive
+                        ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white"
+                        : "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]"
+                    }`}>
+                      {isActive ? "Active" : "Choose"}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-purple)]">
+                    <span className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-2">{plan.rides_count} rides</span>
+                    <span className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-2">{plan.validity_days} days</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
         <div className="rounded-[30px] bg-white p-5 shadow-[var(--mb-shadow)]">
           <div className="text-[var(--mb-purple)]"><Icon name="track" className="h-7 w-7" /></div>

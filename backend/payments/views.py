@@ -23,6 +23,7 @@ from .wallets import (
     FREE_RIDE_REWARD_POINTS,
     calculate_reward_points,
     pass_expiry_date,
+    serialize_pass_plans,
 )
 
 
@@ -229,7 +230,7 @@ class PassengerWalletSummaryView(APIView):
     permission_classes = [IsAuthenticated, IsPassenger]
 
     def get(self, request):
-        return Response({"wallet": _wallet_response_data(_wallet_for(request.user))})
+        return Response({"wallet": _wallet_response_data(_wallet_for(request.user)), "pass_plans": serialize_pass_plans()})
 
 
 class PassengerWalletTopUpView(APIView):
@@ -259,13 +260,16 @@ class PassengerPassPurchaseView(APIView):
         serializer.is_valid(raise_exception=True)
 
         wallet = _wallet_for(request.user)
-        wallet.pass_rides_remaining += serializer.validated_data["rides_count"]
+        wallet.pass_plan = serializer.validated_data["plan"]
+        wallet.pass_total_rides = serializer.validated_data["rides_count"]
+        wallet.pass_rides_remaining = serializer.validated_data["rides_count"]
         wallet.pass_valid_until = pass_expiry_date(serializer.validated_data["validity_days"])
-        wallet.save(update_fields=["pass_rides_remaining", "pass_valid_until", "updated_at"])
+        wallet.save(update_fields=["pass_plan", "pass_total_rides", "pass_rides_remaining", "pass_valid_until", "updated_at"])
         return Response(
             {
-                "message": "Ride pass activated successfully.",
+                "message": f"{serializer.validated_data['plan_label']} activated successfully.",
                 "wallet": _wallet_response_data(wallet),
+                "pass_plans": serialize_pass_plans(),
             },
             status=201,
         )

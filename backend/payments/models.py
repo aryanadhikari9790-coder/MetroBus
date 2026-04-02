@@ -49,6 +49,8 @@ class PassengerWallet(models.Model):
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     reward_points = models.PositiveIntegerField(default=0)
     lifetime_reward_points = models.PositiveIntegerField(default=0)
+    pass_plan = models.CharField(max_length=24, blank=True, default="")
+    pass_total_rides = models.PositiveIntegerField(default=0)
     pass_rides_remaining = models.PositiveIntegerField(default=0)
     pass_valid_until = models.DateField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
