@@ -13,6 +13,17 @@ from .utils import build_full_name, normalize_nepal_phone
 User = get_user_model()
 
 
+def _absolute_media_url(serializer, value):
+    if not value:
+        return None
+    try:
+        url = value.url
+    except ValueError:
+        return None
+    request = serializer.context.get("request")
+    return request.build_absolute_uri(url) if request else url
+
+
 class PhoneTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = User.USERNAME_FIELD  # resolves to "phone"
 
@@ -202,6 +213,15 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class MeSerializer(serializers.ModelSerializer):
+    official_photo_url = serializers.SerializerMethodField()
+    license_photo_url = serializers.SerializerMethodField()
+
+    def get_official_photo_url(self, obj):
+        return _absolute_media_url(self, obj.official_photo)
+
+    def get_license_photo_url(self, obj):
+        return _absolute_media_url(self, obj.license_photo)
+
     class Meta:
         model = User
         fields = (
@@ -210,9 +230,15 @@ class MeSerializer(serializers.ModelSerializer):
             "phone",
             "phone_verified",
             "email",
+            "address",
             "role",
             "is_staff",
             "is_superuser",
+            "official_photo_url",
+            "official_photo_verified",
+            "license_number",
+            "license_photo_url",
+            "license_verified",
             "home_location_label",
             "home_lat",
             "home_lng",
@@ -242,18 +268,61 @@ class MeUpdateSerializer(serializers.ModelSerializer):
 
 
 class AdminUserListSerializer(serializers.ModelSerializer):
+    official_photo_url = serializers.SerializerMethodField()
+    license_photo_url = serializers.SerializerMethodField()
+
+    def get_official_photo_url(self, obj):
+        return _absolute_media_url(self, obj.official_photo)
+
+    def get_license_photo_url(self, obj):
+        return _absolute_media_url(self, obj.license_photo)
+
     class Meta:
         model = User
-        fields = ("id", "full_name", "phone", "phone_verified", "email", "role", "is_active", "is_staff", "created_at")
+        fields = (
+            "id",
+            "full_name",
+            "phone",
+            "phone_verified",
+            "email",
+            "address",
+            "role",
+            "is_active",
+            "is_staff",
+            "official_photo_url",
+            "official_photo_verified",
+            "license_number",
+            "license_photo_url",
+            "license_verified",
+            "created_at",
+        )
 
 
 class AdminCreateUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     role = serializers.ChoiceField(choices=["DRIVER", "HELPER", "ADMIN"])
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    official_photo = serializers.ImageField(required=False, allow_null=True)
+    official_photo_verified = serializers.BooleanField(required=False, default=False)
+    license_number = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    license_photo = serializers.ImageField(required=False, allow_null=True)
+    license_verified = serializers.BooleanField(required=False, default=False)
 
     class Meta:
         model = User
-        fields = ("full_name", "phone", "email", "password", "role")
+        fields = (
+            "full_name",
+            "phone",
+            "email",
+            "password",
+            "role",
+            "address",
+            "official_photo",
+            "official_photo_verified",
+            "license_number",
+            "license_photo",
+            "license_verified",
+        )
 
     def validate_phone(self, value):
         try:
@@ -273,6 +342,36 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This email is already in use.")
         return value
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        role = attrs.get("role")
+        address = (attrs.get("address") or "").strip()
+        official_photo = attrs.get("official_photo")
+        license_number = (attrs.get("license_number") or "").strip()
+        license_photo = attrs.get("license_photo")
+
+        if role in {"DRIVER", "HELPER"}:
+            if not address:
+                raise serializers.ValidationError({"address": "Address is required for staff accounts."})
+            if not official_photo:
+                raise serializers.ValidationError({"official_photo": "An official staff photo is required."})
+            attrs["official_photo_verified"] = True
+
+        if role == "DRIVER":
+            if not license_number:
+                raise serializers.ValidationError({"license_number": "Driver license number is required."})
+            if not license_photo:
+                raise serializers.ValidationError({"license_photo": "Driver license photo is required."})
+            attrs["license_verified"] = True
+        else:
+            attrs["license_number"] = ""
+            attrs["license_photo"] = None
+            attrs["license_verified"] = False
+
+        attrs["address"] = address
+        attrs["license_number"] = license_number
+        return attrs
+
     def create(self, validated_data):
         return User.objects.create_user(
             phone=validated_data["phone"],
@@ -280,6 +379,13 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
             full_name=validated_data["full_name"],
             email=validated_data.get("email"),
             role=validated_data["role"],
+            address=validated_data.get("address", ""),
+            official_photo=validated_data.get("official_photo"),
+            official_photo_verified=validated_data.get("official_photo_verified", False),
+            license_number=validated_data.get("license_number", ""),
+            license_photo=validated_data.get("license_photo"),
+            license_verified=validated_data.get("license_verified", False),
             phone_verified=True,
             is_active=True,
+            is_staff=validated_data["role"] == User.Role.ADMIN,
         )

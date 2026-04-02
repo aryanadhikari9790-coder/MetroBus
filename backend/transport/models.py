@@ -44,8 +44,21 @@ class RouteStop(models.Model):
 
 
 class Bus(models.Model):
+    class Condition(models.TextChoices):
+        NEW = "NEW", "New"
+        NORMAL = "NORMAL", "Normal"
+        OLD = "OLD", "Old"
+
+    display_name = models.CharField(max_length=80, blank=True, default="")
     plate_number = models.CharField(max_length=30, unique=True)
+    model_year = models.PositiveIntegerField(null=True, blank=True)
+    condition = models.CharField(max_length=20, choices=Condition.choices, default=Condition.NORMAL)
+    layout_rows = models.PositiveIntegerField(default=9)
+    layout_columns = models.PositiveIntegerField(default=4)
     capacity = models.PositiveIntegerField(default=35)
+    exterior_photo = models.ImageField(upload_to="buses/exterior/", null=True, blank=True)
+    interior_photo = models.ImageField(upload_to="buses/interior/", null=True, blank=True)
+    seat_photo = models.ImageField(upload_to="buses/seats/", null=True, blank=True)
     is_active = models.BooleanField(default=True)
     driver = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -11,6 +11,18 @@ from .serializers import StopSerializer, RouteListSerializer, CreateRouteSeriali
 User = get_user_model()
 
 
+def _serializer_context(request):
+    return {"request": request}
+
+
+def _parse_bool(value, default=False):
+    if value in (None, ""):
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 class ActiveStopsView(APIView):
     permission_classes = [permissions.AllowAny]
 
@@ -107,16 +119,21 @@ class AdminBusManageView(APIView):
         if denial:
             return denial
         buses = Bus.objects.prefetch_related("seats").order_by("-id")
-        return Response({"buses": BusSerializer(buses, many=True).data})
+        return Response({"buses": BusSerializer(buses, many=True, context=_serializer_context(request)).data})
 
     @transaction.atomic
     def post(self, request):
         denial = self._ensure_admin(request)
         if denial:
             return denial
+        display_name = request.data.get("display_name", "").strip()
         plate = request.data.get("plate_number", "").strip().upper()
-        capacity = int(request.data.get("capacity", 35))
-        is_active = request.data.get("is_active", True)
+        model_year_raw = request.data.get("model_year")
+        condition = str(request.data.get("condition", Bus.Condition.NORMAL)).upper()
+        layout_rows_raw = request.data.get("layout_rows", 9)
+        layout_columns_raw = request.data.get("layout_columns", 4)
+        capacity_raw = request.data.get("capacity")
+        is_active = _parse_bool(request.data.get("is_active", True), default=True)
         driver_id = request.data.get("driver")
         helper_id = request.data.get("helper")
 
@@ -124,8 +141,34 @@ class AdminBusManageView(APIView):
             return Response({"detail": "plate_number is required."}, status=400)
         if Bus.objects.filter(plate_number=plate).exists():
             return Response({"detail": f"Bus '{plate}' already exists."}, status=400)
+        try:
+            layout_rows = int(layout_rows_raw)
+            layout_columns = int(layout_columns_raw)
+        except (TypeError, ValueError):
+            return Response({"detail": "layout_rows and layout_columns must be valid integers."}, status=400)
+        if layout_rows < 1 or layout_rows > 30 or layout_columns < 1 or layout_columns > 8:
+            return Response({"detail": "Seat layout must be within 1-30 rows and 1-8 columns."}, status=400)
+
+        try:
+            capacity = int(capacity_raw) if capacity_raw not in (None, "") else layout_rows * layout_columns
+        except (TypeError, ValueError):
+            return Response({"detail": "capacity must be a valid integer."}, status=400)
         if capacity < 1 or capacity > 200:
             return Response({"detail": "capacity must be between 1 and 200."}, status=400)
+        if capacity > layout_rows * layout_columns:
+            return Response({"detail": "Seat capacity cannot be greater than rows × columns."}, status=400)
+
+        model_year = None
+        if model_year_raw not in (None, ""):
+            try:
+                model_year = int(model_year_raw)
+            except (TypeError, ValueError):
+                return Response({"detail": "model_year must be a valid year."}, status=400)
+            if model_year < 1980 or model_year > 2100:
+                return Response({"detail": "model_year must be between 1980 and 2100."}, status=400)
+
+        if condition not in Bus.Condition.values:
+            return Response({"detail": "condition must be NEW, NORMAL, or OLD."}, status=400)
             
         driver, helper = None, None
         if driver_id:
@@ -136,13 +179,24 @@ class AdminBusManageView(APIView):
             if not helper: return Response({"detail": "Invalid helper."}, status=400)
 
         bus = Bus.objects.create(
-            plate_number=plate, capacity=capacity, is_active=is_active,
-            driver=driver, helper=helper
+            display_name=display_name,
+            plate_number=plate,
+            model_year=model_year,
+            condition=condition,
+            layout_rows=layout_rows,
+            layout_columns=layout_columns,
+            capacity=capacity,
+            exterior_photo=request.data.get("exterior_photo"),
+            interior_photo=request.data.get("interior_photo"),
+            seat_photo=request.data.get("seat_photo"),
+            is_active=is_active,
+            driver=driver,
+            helper=helper,
         )
         ensure_bus_seats(bus)
         return Response({
             "message": f"Bus '{plate}' created with {capacity} seats.",
-            "bus": BusSerializer(bus).data,
+            "bus": BusSerializer(bus, context=_serializer_context(request)).data,
         }, status=201)
 
 
@@ -166,6 +220,7 @@ class AdminBusDetailView(APIView):
             
         driver_id = request.data.get("driver")
         helper_id = request.data.get("helper")
+        updated_fields = []
         
         if driver_id is not None:
             if driver_id == "":
@@ -174,6 +229,7 @@ class AdminBusDetailView(APIView):
                 driver = User.objects.filter(id=driver_id, role=User.Role.DRIVER).first()
                 if not driver: return Response({"detail": "Invalid driver."}, status=400)
                 bus.driver = driver
+            updated_fields.append("driver")
                 
         if helper_id is not None:
             if helper_id == "":
@@ -182,12 +238,33 @@ class AdminBusDetailView(APIView):
                 helper = User.objects.filter(id=helper_id, role=User.Role.HELPER).first()
                 if not helper: return Response({"detail": "Invalid helper."}, status=400)
                 bus.helper = helper
-                
-        bus.save(update_fields=["driver", "helper"])
+            updated_fields.append("helper")
+
+        for field in ("display_name", "condition"):
+            if field in request.data:
+                setattr(bus, field, request.data.get(field) or "")
+                updated_fields.append(field)
+
+        if "model_year" in request.data:
+            raw_value = request.data.get("model_year")
+            if raw_value in ("", None):
+                bus.model_year = None
+            else:
+                try:
+                    bus.model_year = int(raw_value)
+                except (TypeError, ValueError):
+                    return Response({"detail": "model_year must be a valid year."}, status=400)
+            updated_fields.append("model_year")
+
+        if "is_active" in request.data:
+            bus.is_active = _parse_bool(request.data.get("is_active"), default=bus.is_active)
+            updated_fields.append("is_active")
+
+        bus.save(update_fields=sorted(set(updated_fields)) or None)
         
         return Response({
             "message": "Bus assigned staff updated.",
-            "bus": BusSerializer(bus).data
+            "bus": BusSerializer(bus, context=_serializer_context(request)).data
         })
 
 
@@ -206,4 +283,4 @@ class MyAssignedBusView(APIView):
         if not bus:
             return Response({"bus": None})
             
-        return Response({"bus": BusSerializer(bus).data})
+        return Response({"bus": BusSerializer(bus, context=_serializer_context(request)).data})

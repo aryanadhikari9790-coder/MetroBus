@@ -2,6 +2,17 @@ from rest_framework import serializers
 from .models import Stop, Route, RouteStop, Bus
 
 
+def _absolute_media_url(serializer, value):
+    if not value:
+        return None
+    try:
+        url = value.url
+    except ValueError:
+        return None
+    request = serializer.context.get("request")
+    return request.build_absolute_uri(url) if request else url
+
+
 class StopSerializer(serializers.ModelSerializer):
     class Meta:
         model = Stop
@@ -58,11 +69,42 @@ class BusSerializer(serializers.ModelSerializer):
     seats_count = serializers.SerializerMethodField()
     driver_name = serializers.CharField(source="driver.full_name", read_only=True)
     helper_name = serializers.CharField(source="helper.full_name", read_only=True)
+    exterior_photo_url = serializers.SerializerMethodField()
+    interior_photo_url = serializers.SerializerMethodField()
+    seat_photo_url = serializers.SerializerMethodField()
 
     def get_seats_count(self, obj):
         return obj.seats.count()
 
+    def get_exterior_photo_url(self, obj):
+        return _absolute_media_url(self, obj.exterior_photo)
+
+    def get_interior_photo_url(self, obj):
+        return _absolute_media_url(self, obj.interior_photo)
+
+    def get_seat_photo_url(self, obj):
+        return _absolute_media_url(self, obj.seat_photo)
+
     class Meta:
         model = Bus
-        fields = ("id", "plate_number", "capacity", "is_active", "seats_count", "created_at", "driver", "helper", "driver_name", "helper_name")
+        fields = (
+            "id",
+            "display_name",
+            "plate_number",
+            "model_year",
+            "condition",
+            "layout_rows",
+            "layout_columns",
+            "capacity",
+            "is_active",
+            "seats_count",
+            "created_at",
+            "driver",
+            "helper",
+            "driver_name",
+            "helper_name",
+            "exterior_photo_url",
+            "interior_photo_url",
+            "seat_photo_url",
+        )
 

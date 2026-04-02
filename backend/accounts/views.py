@@ -77,13 +77,13 @@ class MeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        return Response(MeSerializer(request.user).data)
+        return Response(MeSerializer(request.user, context={"request": request}).data)
 
     def patch(self, request):
         serializer = MeUpdateSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(MeSerializer(request.user).data)
+        return Response(MeSerializer(request.user, context={"request": request}).data)
 
 
 class AdminDashboardView(APIView):
@@ -250,7 +250,7 @@ class AdminUserListCreateView(APIView):
         qs = User.objects.all().order_by("-created_at")
         if role:
             qs = qs.filter(role=role.upper())
-        return Response({"users": AdminUserListSerializer(qs, many=True).data})
+        return Response({"users": AdminUserListSerializer(qs, many=True, context={"request": request}).data})
 
     def post(self, request):
         denial = self._ensure_admin(request)
@@ -261,5 +261,5 @@ class AdminUserListCreateView(APIView):
         user = serializer.save()
         return Response({
             "message": f"User '{user.full_name}' created as {user.role}.",
-            "user": AdminUserListSerializer(user).data,
+            "user": AdminUserListSerializer(user, context={"request": request}).data,
         }, status=201)
