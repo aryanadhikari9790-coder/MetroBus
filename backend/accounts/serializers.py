@@ -321,6 +321,20 @@ class AdminUserListSerializer(serializers.ModelSerializer):
         )
 
 
+class AdminUserReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("official_photo_verified", "license_verified", "is_active")
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs.get("official_photo_verified") and not self.instance.official_photo:
+            raise serializers.ValidationError({"official_photo_verified": "Upload an official photo before marking it verified."})
+        if attrs.get("license_verified") and not self.instance.license_photo:
+            raise serializers.ValidationError({"license_verified": "Upload a license photo before marking it verified."})
+        return attrs
+
+
 class AdminCreateUserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
     role = serializers.ChoiceField(choices=["DRIVER", "HELPER", "ADMIN"])
@@ -378,14 +392,12 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"address": "Address is required for staff accounts."})
             if not official_photo:
                 raise serializers.ValidationError({"official_photo": "An official staff photo is required."})
-            attrs["official_photo_verified"] = True
 
         if role == "DRIVER":
             if not license_number:
                 raise serializers.ValidationError({"license_number": "Driver license number is required."})
             if not license_photo:
                 raise serializers.ValidationError({"license_photo": "Driver license photo is required."})
-            attrs["license_verified"] = True
         else:
             attrs["license_number"] = ""
             attrs["license_photo"] = None

@@ -122,12 +122,20 @@ export default function AdminHome() {
   const [uRole, setURole]                   = useState("DRIVER");
   const [uMgmtBusy, setUMgmtBusy]           = useState(false);
   const [uMgmtMsg, setUMgmtMsg]             = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState("ALL");
+  const [reviewBusyId, setReviewBusyId]     = useState(null);
+  const [reviewMsg, setReviewMsg]           = useState("");
 
   const loadDB     = async ({ silent = false } = {}) => { if (!silent) setLoading(true); try { const r = await api.get("/api/auth/admin/dashboard/"); setDashboard(r.data); setErr(""); } catch (e) { setErr(e?.response?.data?.detail || "Failed to load dashboard."); } finally { if (!silent) setLoading(false); } };
   const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentStops(r.data.recent_stops || []); setRecentRoutes(r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
   const loadSched  = async () => { try { const r = await api.get("/api/trips/admin/schedules/"); setSchedOpts({ routes: r.data.routes || [], buses: r.data.buses || [], drivers: r.data.drivers || [], helpers: r.data.helpers || [], recent_schedules: r.data.recent_schedules || [] }); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load schedules."); } };
   const loadBuses  = async () => { try { const r = await api.get("/api/transport/admin/buses/"); setBusList(r.data.buses || []); } catch { /* silent */ } };
-  const loadUsers  = async (role) => { try { const r = await api.get(`/api/auth/admin/users/${role ? `?role=${role}` : ""}`); setUserList(r.data.users || []); } catch { /* silent */ } };
+  const loadUsers  = async (role = null) => {
+    try {
+      const r = await api.get(`/api/auth/admin/users/${role ? `?role=${role}` : ""}`);
+      setUserList(r.data.users || []);
+    } catch { /* silent */ }
+  };
 
   useEffect(() => { loadDB(); loadRoute(); loadSched(); loadBuses(); loadUsers(); const id = setInterval(() => loadDB({ silent: true }), 10000); return () => clearInterval(id); }, []);
   useEffect(() => { setSegmentFares(c => Array.from({ length: Math.max(selectedStopIds.length - 1, 0) }, (_, i) => c[i] || "")); }, [selectedStopIds]);
@@ -291,6 +299,30 @@ export default function AdminHome() {
       await loadSched();
     }
     catch (e) { const d = e?.response?.data; setErr(d?.phone?.[0] || d?.email?.[0] || d?.detail || "Failed to create user."); } finally { setUMgmtBusy(false); }
+  };
+
+  const setStaffFilter = async (role) => {
+    setUserRoleFilter(role);
+    await loadUsers(role === "ALL" ? null : role);
+  };
+
+  const reviewUser = async (staffUser, payload) => {
+    setReviewBusyId(staffUser.id);
+    setErr("");
+    setReviewMsg("");
+    try {
+      const r = await api.patch(`/api/auth/admin/users/${staffUser.id}/review/`, payload);
+      const updatedUser = r.data.user;
+      setUserList(current => current.map(row => (row.id === updatedUser.id ? updatedUser : row)));
+      setReviewMsg(r.data.message || `Updated ${staffUser.full_name}.`);
+      await loadDB({ silent: true });
+      await loadSched();
+    } catch (e) {
+      const d = e?.response?.data;
+      setErr(d?.official_photo_verified?.[0] || d?.license_verified?.[0] || d?.detail || "Failed to update staff review.");
+    } finally {
+      setReviewBusyId(null);
+    }
   };
 
   if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading admin dashboardâ€¦</p></div></div>;
@@ -716,7 +748,7 @@ export default function AdminHome() {
             <div className="space-y-4">
               <GlassCard t={t}>
                 <SLabel t={t}>Add Staff Account</SLabel>
-                <p className={`text-xs mb-4 ${t.textSub}`}>Create fully documented driver, helper, or admin accounts. Passengers still self-register.</p>
+                <p className={`text-xs mb-4 ${t.textSub}`}>Create fully documented driver, helper, or admin accounts. Passengers still self-register, and admin review happens after upload.</p>
                 {uMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>OK: {uMgmtMsg}</div>}
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-2">
@@ -749,12 +781,13 @@ export default function AdminHome() {
                   <SLabel t={t}>Staff Accounts ({userList.filter(u => u.role !== "PASSENGER").length})</SLabel>
                   <div className="flex gap-1">
                     {["ALL", "DRIVER", "HELPER", "ADMIN"].map(r => (
-                      <button key={r} type="button" onClick={() => loadUsers(r === "ALL" ? null : r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                      <button key={r} type="button" onClick={() => setStaffFilter(r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${userRoleFilter === r ? "bg-indigo-600 text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
                         {r}
                       </button>
                     ))}
                   </div>
                 </div>
+                {reviewMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>OK: {reviewMsg}</div>}
                 <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
                   {userList.length === 0 && <p className={`text-sm ${t.textSub}`}>No users loaded.</p>}
                   {userList.map(u => (
@@ -772,9 +805,49 @@ export default function AdminHome() {
                         <Pill color={u.role === "ADMIN" ? "red" : u.role === "DRIVER" ? "sky" : u.role === "HELPER" ? "indigo" : "slate"} isDark={isDark}>{u.role}</Pill>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {u.official_photo_verified ? <Pill color="emerald" isDark={isDark}>Photo OK</Pill> : null}
-                        {u.license_verified ? <Pill color="emerald" isDark={isDark}>License OK</Pill> : null}
+                        {u.official_photo_verified ? <Pill color="emerald" isDark={isDark}>Photo OK</Pill> : u.official_photo_url ? <Pill color="amber" isDark={isDark}>Photo Pending</Pill> : <Pill color="slate" isDark={isDark}>No Photo</Pill>}
+                        {u.role === "DRIVER" ? (u.license_verified ? <Pill color="emerald" isDark={isDark}>License OK</Pill> : u.license_photo_url ? <Pill color="amber" isDark={isDark}>License Pending</Pill> : <Pill color="slate" isDark={isDark}>No License</Pill>) : null}
                         {!u.is_active ? <Pill color="slate" isDark={isDark}>Inactive</Pill> : null}
+                      </div>
+                      {(u.official_photo_url || u.license_photo_url) ? (
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {u.official_photo_url ? <img src={u.official_photo_url} alt={`${u.full_name} official`} className="h-24 w-full rounded-xl object-cover" /> : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>No official photo</div>}
+                          {u.role === "DRIVER" ? (u.license_photo_url ? <img src={u.license_photo_url} alt={`${u.full_name} license`} className="h-24 w-full rounded-xl object-cover" /> : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>No license photo</div>) : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>License not required</div>}
+                        </div>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {u.official_photo_url ? (
+                          <button
+                            type="button"
+                            onClick={() => reviewUser(u, { official_photo_verified: !u.official_photo_verified })}
+                            disabled={reviewBusyId === u.id}
+                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.official_photo_verified ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"} disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            {u.official_photo_verified ? "Revoke Photo" : "Verify Photo"}
+                          </button>
+                        ) : null}
+                        {u.role === "DRIVER" && u.license_photo_url ? (
+                          <button
+                            type="button"
+                            onClick={() => reviewUser(u, { license_verified: !u.license_verified })}
+                            disabled={reviewBusyId === u.id}
+                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.license_verified ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"} disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            {u.license_verified ? "Revoke License" : "Verify License"}
+                          </button>
+                        ) : null}
+                        {user?.id !== u.id ? (
+                          <button
+                            type="button"
+                            onClick={() => reviewUser(u, { is_active: !u.is_active })}
+                            disabled={reviewBusyId === u.id}
+                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.is_active ? "bg-slate-200 text-slate-700 hover:bg-slate-300" : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"} disabled:cursor-not-allowed disabled:opacity-50`}
+                          >
+                            {u.is_active ? "Set Inactive" : "Activate Account"}
+                          </button>
+                        ) : (
+                          <Pill color="slate" isDark={isDark}>Current Admin</Pill>
+                        )}
                       </div>
                     </div>
                   ))}

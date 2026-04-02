@@ -19,6 +19,7 @@ from .otp_delivery import OTPDeliveryError, send_registration_otp
 from .serializers import (
     RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
     AdminCreateUserSerializer, AdminUserListSerializer,
+    AdminUserReviewSerializer,
 )
 
 User = get_user_model()
@@ -361,3 +362,31 @@ class AdminUserListCreateView(APIView):
             "message": f"User '{user.full_name}' created as {user.role}.",
             "user": AdminUserListSerializer(user, context={"request": request}).data,
         }, status=201)
+
+
+class AdminUserReviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
+            return Response({"detail": "Admin only."}, status=403)
+        return None
+
+    def patch(self, request, user_id: int):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        user = User.objects.filter(id=user_id).first()
+        if not user:
+            return Response({"detail": "User not found."}, status=404)
+
+        serializer = AdminUserReviewSerializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(
+            {
+                "message": f"Updated review settings for {user.full_name}.",
+                "user": AdminUserListSerializer(user, context={"request": request}).data,
+            }
+        )
