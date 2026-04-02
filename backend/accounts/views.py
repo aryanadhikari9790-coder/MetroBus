@@ -10,7 +10,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from bookings.models import Booking
-from payments.models import Payment
+from payments.models import PassengerWallet, Payment
+from payments.wallets import FREE_RIDE_REWARD_POINTS
 from transport.models import Route, Stop, Bus, Seat
 from trips.models import Trip
 from .models import PhoneOTP
@@ -124,6 +125,17 @@ class AdminDashboardView(APIView):
             .order_by("-created_at")[:5]
         )
         recent_users = User.objects.order_by("-created_at")[:5]
+        wallet_rows = PassengerWallet.objects.select_related("passenger").order_by("-reward_points", "-balance", "-updated_at")[:5]
+        wallet_totals = PassengerWallet.objects.aggregate(
+            total_balance=Coalesce(Sum("balance"), 0),
+            total_reward_points=Coalesce(Sum("reward_points"), 0),
+            total_lifetime_reward_points=Coalesce(Sum("lifetime_reward_points"), 0),
+            active_passes=Count("id", filter=Q(pass_valid_until__gte=timezone.localdate(), pass_rides_remaining__gt=0)),
+            reward_ready=Count("id", filter=Q(reward_points__gte=FREE_RIDE_REWARD_POINTS)),
+            weekly_passes=Count("id", filter=Q(pass_plan="WEEKLY", pass_valid_until__gte=timezone.localdate(), pass_rides_remaining__gt=0)),
+            monthly_passes=Count("id", filter=Q(pass_plan="MONTHLY", pass_valid_until__gte=timezone.localdate(), pass_rides_remaining__gt=0)),
+            flex_passes=Count("id", filter=Q(pass_plan="FLEX_20", pass_valid_until__gte=timezone.localdate(), pass_rides_remaining__gt=0)),
+        )
 
         live_trip_rows = []
         for trip in live_trips:
@@ -192,6 +204,18 @@ class AdminDashboardView(APIView):
                         "REWARD": payment_methods.get(Payment.Method.REWARD, {"total": 0, "success": 0}),
                     },
                 },
+                "wallets": {
+                    "total_balance": float(wallet_totals["total_balance"]),
+                    "total_reward_points": wallet_totals["total_reward_points"],
+                    "total_lifetime_reward_points": wallet_totals["total_lifetime_reward_points"],
+                    "active_passes": wallet_totals["active_passes"],
+                    "reward_ready": wallet_totals["reward_ready"],
+                    "weekly_passes": wallet_totals["weekly_passes"],
+                    "monthly_passes": wallet_totals["monthly_passes"],
+                    "flex_passes": wallet_totals["flex_passes"],
+                    "reward_threshold": FREE_RIDE_REWARD_POINTS,
+                    "free_rides_redeemed": payment_methods.get(Payment.Method.REWARD, {"success": 0})["success"],
+                },
             },
             "live_trips": live_trip_rows,
             "recent_bookings": [
@@ -231,6 +255,20 @@ class AdminDashboardView(APIView):
                     "created_at": user.created_at,
                 }
                 for user in recent_users
+            ],
+            "reward_leaderboard": [
+                {
+                    "passenger_id": wallet.passenger_id,
+                    "passenger_name": wallet.passenger.full_name,
+                    "phone": wallet.passenger.phone,
+                    "balance": float(wallet.balance),
+                    "reward_points": wallet.reward_points,
+                    "lifetime_reward_points": wallet.lifetime_reward_points,
+                    "pass_plan": wallet.pass_plan,
+                    "pass_rides_remaining": wallet.pass_rides_remaining,
+                    "pass_valid_until": wallet.pass_valid_until,
+                }
+                for wallet in wallet_rows
             ],
         }
         return Response(data)

@@ -146,8 +146,9 @@ export default function AdminHome() {
 
   const handleLogout = () => { clearToken(); navigate("/auth/login"); };
 
-  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ;
+  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ;
   const paymentRows = useMemo(() => Object.entries(payments?.methods || {}).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [payments]);
+  const rewardLeaderboard = dashboard?.reward_leaderboard || [];
   const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
   const selectedScheduleBus = useMemo(() => schedOpts.buses.find(b => String(b.id) === String(sBusId)) || null, [sBusId, schedOpts.buses]);
   const selPts = useMemo(() => selectedStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)), [selectedStops]);
@@ -338,6 +339,12 @@ export default function AdminHome() {
               <StatCard label="Bookings" value={bookings.total ?? 0} sub={`${bookings.confirmed || 0} confirmed`} accent="text-amber-500" t={t} />
               <StatCard label="Revenue" value={fmtMoney(payments.revenue_success ?? 0)} sub={`${payments.success || 0} successful`} t={t} />
             </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard label="Wallet Float" value={fmtMoney(wallets.total_balance ?? 0)} sub="Passenger balance held" accent="text-fuchsia-500" t={t} />
+              <StatCard label="Active Passes" value={wallets.active_passes ?? 0} sub={`${wallets.weekly_passes || 0} weekly Â· ${wallets.monthly_passes || 0} monthly`} accent="text-sky-500" t={t} />
+              <StatCard label="Reward Ready" value={wallets.reward_ready ?? 0} sub={`${wallets.reward_threshold || 100} points unlock a free ride`} accent="text-violet-500" t={t} />
+              <StatCard label="Free Rides Used" value={wallets.free_rides_redeemed ?? 0} sub={`${wallets.total_reward_points || 0} live points across wallets`} accent="text-emerald-500" t={t} />
+            </div>
             <GlassCard t={t}>
               <SLabel t={t}>Payment Method Performance</SLabel>
               <div className="space-y-3">
@@ -356,6 +363,50 @@ export default function AdminHome() {
                 ))}
               </div>
             </GlassCard>
+            <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+              <GlassCard t={t}>
+                <SLabel t={t}>Reward Leaderboard</SLabel>
+                <div className="space-y-3">
+                  {rewardLeaderboard.length === 0 ? <p className={`text-sm ${t.textSub}`}>No passenger wallet activity yet.</p> : rewardLeaderboard.map((row, index) => (
+                    <div key={row.passenger_id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`text-sm font-bold ${t.text}`}>{index + 1}. {row.passenger_name}</p>
+                          <p className={`text-xs mt-0.5 ${t.textSub}`}>{row.phone}</p>
+                          <p className={`text-xs mt-1 ${t.textSub}`}>{row.pass_plan ? `${row.pass_plan} Â· ${row.pass_rides_remaining} rides left` : "No active pass"}</p>
+                        </div>
+                        <Pill color={row.reward_points >= (wallets.reward_threshold || 100) ? "emerald" : "amber"} isDark={isDark}>
+                          {row.reward_points} pts
+                        </Pill>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Wallet {fmtMoney(row.balance)}</div>
+                        <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Lifetime {row.lifetime_reward_points} pts</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+              <GlassCard t={t}>
+                <SLabel t={t}>Pass Mix</SLabel>
+                <div className="space-y-3">
+                  {[{ label: "Weekly Passes", value: wallets.weekly_passes || 0, tone: "sky" }, { label: "Monthly Passes", value: wallets.monthly_passes || 0, tone: "indigo" }, { label: "Flex 20 Passes", value: wallets.flex_passes || 0, tone: "amber" }].map(item => (
+                    <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl border px-4 py-4 border-transparent bg-white/40">
+                      <div>
+                        <p className={`text-sm font-bold ${t.text}`}>{item.label}</p>
+                        <p className={`text-xs mt-1 ${t.textSub}`}>Active now in MetroBus wallets</p>
+                      </div>
+                      <Pill color={item.tone} isDark={isDark}>{item.value}</Pill>
+                    </div>
+                  ))}
+                </div>
+                <div className={`mt-4 rounded-xl border px-4 py-4 text-sm ${rowBg}`}>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Reward Policy</p>
+                  <p className={`mt-2 font-bold ${t.text}`}>{wallets.reward_threshold || 100} points = 1 free ride</p>
+                  <p className={`mt-2 ${t.textSub}`}>Passengers earn reward points from Metro Wallet and Ride Pass payments. Admin can monitor redemption pressure here before it affects route demand.</p>
+                </div>
+              </GlassCard>
+            </div>
           </div>
         )}
 
