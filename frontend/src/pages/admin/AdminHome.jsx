@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
@@ -42,6 +42,14 @@ function MapViewport({ points }) {
   useEffect(() => { if (!points.length) return; if (points.length === 1) { map.setView(points[0], 14); return; } map.fitBounds(points, { padding: [32, 32] }); }, [map, points]);
   return null;
 }
+function StopMapPicker({ onPick }) {
+  useMapEvents({
+    click(event) {
+      onPick?.(event.latlng);
+    },
+  });
+  return null;
+}
 function fmt(v) { if (!v) return "â€”"; try { return new Date(v).toLocaleString(); } catch { return v; } }
 function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
 
@@ -59,10 +67,17 @@ export default function AdminHome() {
   const [loading, setLoading]               = useState(true);
   const [err, setErr]                       = useState("");
   const [builderStops, setBuilderStops]     = useState([]);
+  const [recentStops, setRecentStops]       = useState([]);
   const [recentRoutes, setRecentRoutes]     = useState([]);
   const [routeBusy, setRouteBusy]           = useState(false);
   const [routeMsg, setRouteMsg]             = useState("");
+  const [stopMsg, setStopMsg]               = useState("");
   const [scheduleMsg, setScheduleMsg]       = useState("");
+  const [stopName, setStopName]             = useState("");
+  const [stopLat, setStopLat]               = useState("");
+  const [stopLng, setStopLng]               = useState("");
+  const [stopActive, setStopActive]         = useState(true);
+  const [stopBusy, setStopBusy]             = useState(false);
   const [routeName, setRouteName]           = useState("");
   const [routeCity, setRouteCity]           = useState("Pokhara");
   const [routeActive, setRouteActive]       = useState(true);
@@ -109,7 +124,7 @@ export default function AdminHome() {
   const [uMgmtMsg, setUMgmtMsg]             = useState("");
 
   const loadDB     = async ({ silent = false } = {}) => { if (!silent) setLoading(true); try { const r = await api.get("/api/auth/admin/dashboard/"); setDashboard(r.data); setErr(""); } catch (e) { setErr(e?.response?.data?.detail || "Failed to load dashboard."); } finally { if (!silent) setLoading(false); } };
-  const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentRoutes(r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
+  const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentStops(r.data.recent_stops || []); setRecentRoutes(r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
   const loadSched  = async () => { try { const r = await api.get("/api/trips/admin/schedules/"); setSchedOpts({ routes: r.data.routes || [], buses: r.data.buses || [], drivers: r.data.drivers || [], helpers: r.data.helpers || [], recent_schedules: r.data.recent_schedules || [] }); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load schedules."); } };
   const loadBuses  = async () => { try { const r = await api.get("/api/transport/admin/buses/"); setBusList(r.data.buses || []); } catch { /* silent */ } };
   const loadUsers  = async (role) => { try { const r = await api.get(`/api/auth/admin/users/${role ? `?role=${role}` : ""}`); setUserList(r.data.users || []); } catch { /* silent */ } };
@@ -143,7 +158,32 @@ export default function AdminHome() {
 
   const toggleStop = id => setSelectedStopIds(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
   const moveStop = (i, dir) => setSelectedStopIds(c => { const ti = i + dir; if (ti < 0 || ti >= c.length) return c; const n = [...c]; [n[i], n[ti]] = [n[ti], n[i]]; return n; });
+  const clearStopForm = () => { setStopName(""); setStopLat(""); setStopLng(""); setStopActive(true); };
   const clearRoute  = () => { setRouteName(""); setRouteCity("Pokhara"); setRouteActive(true); setSelectedStopIds([]); setSegmentFares([]); setRouteMsg(""); };
+  const handleMapPick = ({ lat, lng }) => { setStopLat(Number(lat).toFixed(6)); setStopLng(Number(lng).toFixed(6)); };
+
+  const createStop = async () => {
+    if (!stopName.trim()) { setErr("Enter a stop name."); return; }
+    if (stopLat === "" || stopLng === "") { setErr("Tap the map or enter valid stop coordinates."); return; }
+    if (Number.isNaN(Number(stopLat)) || Number.isNaN(Number(stopLng))) { setErr("Stop coordinates must be valid numbers."); return; }
+    setStopBusy(true); setErr(""); setStopMsg("");
+    try {
+      const r = await api.post("/api/transport/admin/stops/", {
+        name: stopName.trim(),
+        lat: Number(stopLat),
+        lng: Number(stopLng),
+        is_active: stopActive,
+      });
+      setStopMsg(r.data.message || "Stop added.");
+      clearStopForm();
+      await Promise.all([loadDB({ silent: true }), loadRoute()]);
+    } catch (e) {
+      const d = e?.response?.data;
+      setErr(d?.name?.[0] || d?.lat?.[0] || d?.lng?.[0] || d?.detail || "Failed to create stop.");
+    } finally {
+      setStopBusy(false);
+    }
+  };
 
   const createRoute = async () => {
     if (!routeName.trim()) { setErr("Enter a route name."); return; } if (selectedStopIds.length < 2) { setErr("Select at least two stops."); return; } if (segmentFares.some(f => f === "" || Number(f) < 0)) { setErr("Fill every segment fare."); return; }
@@ -261,7 +301,7 @@ export default function AdminHome() {
             <Pill color="emerald" isDark={isDark}>{trips.live || 0} live</Pill>
             <Pill color="amber" isDark={isDark}>{payments.pending || 0} pending</Pill>
             <ThemeToggle isDark={isDark} toggle={toggle} />
-            <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); }} className="!py-2 !px-3 text-xs">â†»</Btn>
+            <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); loadSched(); }} className="!py-2 !px-3 text-xs">â†»</Btn>
             <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
           </div>
         </div>
@@ -269,6 +309,7 @@ export default function AdminHome() {
 
       <div className="mx-auto max-w-7xl px-4 py-5">
         {err && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
+        {stopMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {stopMsg}</div>}
         {routeMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>âœ“ {routeMsg}</div>}
         {scheduleMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>âœ“ {scheduleMsg}</div>}
 
@@ -317,6 +358,31 @@ export default function AdminHome() {
           <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
             <div className="space-y-4">
               <GlassCard t={t}>
+                <SLabel t={t}>Add Stop To Main Map</SLabel>
+                <p className={`text-xs mb-4 ${t.textSub}`}>Tap the map on the right to pin a new stop, then save it so the whole MetroBus system can use it.</p>
+                <div className="space-y-3">
+                  <InputField label="Stop Name" value={stopName} onChange={setStopName} placeholder="Bindhyabasini Gate" t={t} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <InputField label="Latitude" value={stopLat} onChange={setStopLat} placeholder="28.233421" t={t} />
+                    <InputField label="Longitude" value={stopLng} onChange={setStopLng} placeholder="83.996812" t={t} />
+                  </div>
+                  <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
+                    <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Pinned Coordinate</p>
+                    <p className={`mt-2 text-sm font-bold ${t.text}`}>{stopLat && stopLng ? `${stopLat}, ${stopLng}` : "Tap anywhere on the map to pin this stop."}</p>
+                  </div>
+                  <div>
+                    <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label>
+                    <button type="button" onClick={() => setStopActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${stopActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
+                      {stopActive ? "Active For Routes" : "Saved As Inactive"}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Btn tone="ghost" onClick={clearStopForm} className="w-full !py-4">Clear</Btn>
+                    <Btn tone="success" onClick={createStop} disabled={stopBusy} className="w-full !py-4">{stopBusy ? "Saving..." : "Add Stop"}</Btn>
+                  </div>
+                </div>
+              </GlassCard>
+              <GlassCard t={t}>
                 <SLabel t={t}>Route Builder</SLabel>
                 <div className="space-y-3">
                   <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" t={t} />
@@ -353,11 +419,12 @@ export default function AdminHome() {
             </div>
             <div className="space-y-4">
               <GlassCard t={t} className="!p-0 overflow-hidden">
-                <div className={`px-5 py-4 border-b ${t.divider}`}><SLabel t={t}>Stop Map â€” Click to add</SLabel><p className={`text-sm font-bold -mt-2 ${t.text}`}>{selectedStopIds.length} stops selected</p></div>
+                <div className={`px-5 py-4 border-b ${t.divider}`}><SLabel t={t}>Stop Map â€” Build Routes + Pin Stops</SLabel><p className={`text-sm font-bold -mt-2 ${t.text}`}>{selectedStopIds.length} stops selected for the route builder</p></div>
                 <div className="h-80">
                   <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom={false} className="h-full w-full">
                     <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={t.mapTile} />
                     <MapViewport points={mapPts} />
+                    <StopMapPicker onPick={handleMapPick} />
                     {dispPts.length > 1 && <Polyline positions={dispPts} pathOptions={{ color: "#818cf8", weight: 4, opacity: 0.9 }} />}
                     {builderStops.map(stop => {
                       const la = Number(stop.lat), lo = Number(stop.lng); if (!isFinite(la) || !isFinite(lo)) return null;
@@ -366,6 +433,22 @@ export default function AdminHome() {
                     })}
                   </MapContainer>
                 </div>
+              </GlassCard>
+              <GlassCard t={t}>
+                <SLabel t={t}>Recent Stops</SLabel>
+                {recentStops.length === 0 ? <p className={`text-sm ${t.textSub}`}>No stops added yet.</p>
+                  : recentStops.map(stop => (
+                    <div key={stop.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-bold ${t.text}`}>{stop.name}</p>
+                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{Number(stop.lat).toFixed(4)}, {Number(stop.lng).toFixed(4)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {stop.is_active ? <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-indigo-500/15 px-3 py-2 text-[11px] font-bold text-indigo-500">{selectedStopIds.includes(stop.id) ? "Remove" : "Use"}</button> : null}
+                        <Pill color={stop.is_active ? "emerald" : "slate"} isDark={isDark}>{stop.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
+                      </div>
+                    </div>
+                  ))}
               </GlassCard>
               <GlassCard t={t}>
                 <SLabel t={t}>Recent Routes</SLabel>

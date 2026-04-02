@@ -19,6 +19,19 @@ class StopSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "lat", "lng", "is_active")
 
 
+class CreateStopSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120)
+    lat = serializers.DecimalField(max_digits=9, decimal_places=6)
+    lng = serializers.DecimalField(max_digits=9, decimal_places=6)
+    is_active = serializers.BooleanField(default=True)
+
+    def validate_name(self, value):
+        name = value.strip()
+        if not name:
+            raise serializers.ValidationError("Stop name is required.")
+        return name
+
+
 class RouteStopSerializer(serializers.ModelSerializer):
     stop = StopSerializer(read_only=True)
 

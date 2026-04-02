@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 
 from .models import Stop, Route, RouteStop, RouteFare, Bus
 from .services import ensure_bus_seats
-from .serializers import StopSerializer, RouteListSerializer, CreateRouteSerializer, BusSerializer
+from .serializers import StopSerializer, CreateStopSerializer, RouteListSerializer, CreateRouteSerializer, BusSerializer
 
 User = get_user_model()
 
@@ -31,6 +31,45 @@ class ActiveStopsView(APIView):
         return Response({"stops": StopSerializer(stops, many=True).data})
 
 
+class AdminStopManageView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
+            return Response({"detail": "You do not have permission to manage stops."}, status=403)
+        return None
+
+    def get(self, request):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        stops = Stop.objects.order_by("-id")[:20]
+        return Response({"stops": StopSerializer(stops, many=True).data})
+
+    def post(self, request):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        serializer = CreateStopSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        name = serializer.validated_data["name"]
+        lat = serializer.validated_data["lat"]
+        lng = serializer.validated_data["lng"]
+        is_active = serializer.validated_data["is_active"]
+
+        stop = Stop.objects.create(name=name, lat=lat, lng=lng, is_active=is_active)
+        return Response(
+            {
+                "message": f"Stop '{stop.name}' added to the MetroBus map.",
+                "stop": StopSerializer(stop).data,
+            },
+            status=201,
+        )
+
+
 class AdminTransportRouteBuilderView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -50,6 +89,7 @@ class AdminTransportRouteBuilderView(APIView):
         return Response(
             {
                 "stops": StopSerializer(stops, many=True).data,
+                "recent_stops": StopSerializer(Stop.objects.order_by("-id")[:10], many=True).data,
                 "recent_routes": RouteListSerializer(routes, many=True).data,
             }
         )
