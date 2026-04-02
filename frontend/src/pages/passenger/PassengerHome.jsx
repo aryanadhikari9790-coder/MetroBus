@@ -53,6 +53,8 @@ export default function PassengerHome() {
   const [rideTab, setRideTab] = useState("upcoming");
   const [profileForm, setProfileForm] = useState({ full_name: "", email: "" });
   const [profileBusy, setProfileBusy] = useState(false);
+  const [walletSummary, setWalletSummary] = useState(null);
+  const [walletBusy, setWalletBusy] = useState(false);
   const [settings, setSettings] = useState({ liveTracking: true, arrivalAlerts: true });
   const [liveLocationOverwrites, setLiveLocationOverwrites] = useState({});
   const [roadPolyline, setRoadPolyline] = useState([]);
@@ -179,6 +181,18 @@ export default function PassengerHome() {
     }
   }, []);
 
+  const loadWalletSummary = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setWalletBusy(true);
+    try {
+      const response = await api.get("/api/payments/wallet/summary/");
+      setWalletSummary(response.data.wallet || null);
+    } catch {
+      // Leave existing wallet summary visible if refresh fails.
+    } finally {
+      if (!silent) setWalletBusy(false);
+    }
+  }, []);
+
   const syncTripSeatMeta = useCallback((tripId, seatsData) => {
     const openSeats = seatsData.filter((seat) => seat.available).length;
     const occupancy = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
@@ -268,10 +282,12 @@ export default function PassengerHome() {
   useEffect(() => {
     loadBase();
     loadBookings();
+    loadWalletSummary();
     const tripRefresh = setInterval(() => loadBase({ silent: true }), activeView === "track" ? 1000 : 5000);
     const bookingRefresh = setInterval(() => loadBookings({ silent: true }), 15000);
-    return () => { clearInterval(tripRefresh); clearInterval(bookingRefresh); };
-  }, [activeView, loadBase, loadBookings]);
+    const walletRefresh = setInterval(() => loadWalletSummary({ silent: true }), 30000);
+    return () => { clearInterval(tripRefresh); clearInterval(bookingRefresh); clearInterval(walletRefresh); };
+  }, [activeView, loadBase, loadBookings, loadWalletSummary]);
 
   useEffect(() => {
     if (!activeBooking?.trip_id) return;
@@ -427,6 +443,7 @@ export default function PassengerHome() {
     try {
       const response = await api.post("/api/payments/create/", { booking_id: lastBookingId, method });
       const { redirect, payment } = response.data;
+      if (response.data.wallet) setWalletSummary(response.data.wallet);
       setLastBookingSummary((current) => (
         current ? { ...current, payment_status: payment?.status || current.payment_status, payment_method: payment?.method || current.payment_method, payment: payment || current.payment } : current
       ));
@@ -435,6 +452,32 @@ export default function PassengerHome() {
       setMsg(`Payment ${payment?.status || "PENDING"}.`); await loadBookings({ silent: true });
     } catch (error) { setErr(error?.response?.data?.detail || "Payment failed."); }
     finally { setPaymentBusy(false); }
+  };
+
+  const topUpWallet = async (amount = 500) => {
+    setWalletBusy(true); setErr(""); setMsg("");
+    try {
+      const response = await api.post("/api/payments/wallet/top-up/", { amount });
+      setWalletSummary(response.data.wallet || null);
+      setMsg(response.data.message || "Wallet topped up.");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Wallet top-up failed.");
+    } finally {
+      setWalletBusy(false);
+    }
+  };
+
+  const buyRidePass = async () => {
+    setWalletBusy(true); setErr(""); setMsg("");
+    try {
+      const response = await api.post("/api/payments/wallet/pass/", { rides_count: 20, validity_days: 30 });
+      setWalletSummary(response.data.wallet || null);
+      setMsg(response.data.message || "Ride pass activated.");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Ride pass activation failed.");
+    } finally {
+      setWalletBusy(false);
+    }
   };
 
   const saveProfile = async () => {
@@ -521,6 +564,7 @@ export default function PassengerHome() {
                   loadingSeats={loadingSeats}
                   lastBookingId={lastBookingId}
                   lastBookingSummary={lastBookingSummary}
+                  walletSummary={walletSummary}
                   pickupStop={pickupStop}
                   dropStop={dropStop}
                 />
@@ -602,7 +646,7 @@ export default function PassengerHome() {
 
         {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? activeBooking ? <ReservationCard booking={activeBooking} onReschedule={() => { setPlannerOpen(true); setActiveView("home"); }} onViewTicket={() => setTicketBookingId(activeBooking.id)} /> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
 
-        {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
+        {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} walletSummary={walletSummary} onTopUp={() => topUpWallet(500)} onBuyPass={buyRidePass} actionBusy={walletBusy} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
       </main>
       <BottomNav activeView={activeView} onChange={setActiveView} />
     </div>

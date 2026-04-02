@@ -687,10 +687,20 @@ export function TicketQrCard({ booking, title = "Ride Ticket", compact = false }
   );
 }
 
-export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle, onBook, onPay, bookingBusy, paymentBusy, loadingSeats, lastBookingId, lastBookingSummary, pickupStop, dropStop }) {
+export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle, onBook, onPay, bookingBusy, paymentBusy, loadingSeats, lastBookingId, lastBookingSummary, walletSummary, pickupStop, dropStop }) {
   const selectedLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
   const openSeatCount = seats.filter((seat) => seat.available).length;
   const total = lastBookingSummary?.fare_total || ((trip?.fare_estimate || 50) * selectedSeatIds.length);
+  const paymentOptions = [
+    { label: "Cash", method: "CASH", note: "Pay onboard", disabled: false },
+    { label: "eSewa", method: "ESEWA", note: "Online payment", disabled: false },
+    { label: "Khalti", method: "KHALTI", note: "Online payment", disabled: false },
+    { label: "Metro Wallet", method: "WALLET", note: walletSummary ? `${fmtMoney(walletSummary.balance)} available` : "Wallet balance unavailable", disabled: walletSummary ? Number(walletSummary.balance) < Number(total) : true },
+    { label: "Ride Pass", method: "PASS", note: walletSummary?.pass_active ? `${walletSummary.pass_rides_remaining} rides remaining` : "No active pass", disabled: !walletSummary?.pass_active },
+  ];
+  if (walletSummary?.reward_free_ride_ready) {
+    paymentOptions.push({ label: "Free Ride", method: "REWARD", note: `${walletSummary.reward_points} reward points ready`, disabled: false });
+  }
   if (!trip) return null;
   return (
     <section className="mt-5 rounded-[34px] bg-[var(--mb-card)] p-5 shadow-[var(--mb-shadow)]">
@@ -705,7 +715,7 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
       </div>
 
       <div className="mt-4 rounded-[24px] bg-[linear-gradient(135deg,#fff7fd,#f5dcff)] px-4 py-3 text-sm font-medium text-[var(--mb-muted)]">
-        Accept a bus first, choose your seats, then confirm the booking to unlock Cash, eSewa, and Khalti payment.
+        Accept a bus first, choose your seats, then confirm the booking to unlock Cash, eSewa, Khalti, Metro Wallet, and Ride Pass payment.
       </div>
 
       <div className="mt-5">
@@ -761,21 +771,35 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
           <div className="rounded-[24px] bg-[linear-gradient(135deg,#fff,#f8e5fb)] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Step 3 • Choose payment</p>
             <p className="mt-2 text-sm text-[var(--mb-muted)]">
-              Booking #{lastBookingId} is ready. Choose how you want to pay when boarding, or pay online now with your Nepali payment gateway.
+              Booking #{lastBookingId} is ready. Choose cash, Nepali gateways, your MetroBus wallet, an active ride pass, or redeem reward points for a free ride.
             </p>
           </div>
+          {walletSummary ? (
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Wallet Balance</p>
+                <p className="mt-2 text-2xl font-black text-[var(--mb-text)]">{fmtMoney(walletSummary.balance)}</p>
+              </div>
+              <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Ride Pass</p>
+                <p className="mt-2 text-2xl font-black text-[var(--mb-text)]">
+                  {walletSummary.pass_active ? `${walletSummary.pass_rides_remaining} rides left` : "Inactive"}
+                </p>
+              </div>
+              <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Reward Points</p>
+                <p className="mt-2 text-2xl font-black text-[var(--mb-text)]">{walletSummary.reward_points}</p>
+              </div>
+            </div>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-3">
-            {[
-              { label: "Cash", method: "CASH", note: "Pay onboard" },
-              { label: "eSewa", method: "ESEWA", note: "Online payment" },
-              { label: "Khalti", method: "KHALTI", note: "Online payment" },
-            ].map((option) => (
+            {paymentOptions.map((option) => (
               <button
                 key={option.method}
                 type="button"
                 onClick={() => onPay(option.method)}
-                disabled={paymentBusy}
-                className="rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-4 text-left text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)] disabled:opacity-60"
+                disabled={paymentBusy || option.disabled}
+                className={`rounded-[24px] border px-4 py-4 text-left text-sm font-black shadow-[var(--mb-shadow)] disabled:opacity-60 ${option.disabled ? "border-[var(--mb-border)] bg-[#f5edf7] text-[var(--mb-muted)]" : "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]"}`}
               >
                 <span className="block text-base">{paymentBusy ? "Processing..." : option.label}</span>
                 <span className="mt-1 block text-xs font-semibold text-[var(--mb-muted)]">{option.note}</span>
@@ -954,42 +978,64 @@ export function ProfileCard({ user, profileForm, setProfileForm, onSave, profile
   );
 }
 
-export function PaymentShowcase({ latestPaidBooking }) {
+export function PaymentShowcase({ latestPaidBooking, walletSummary, onTopUp, onBuyPass, actionBusy }) {
+  const passLabel = walletSummary?.pass_active
+    ? `${walletSummary.pass_rides_remaining} rides left`
+    : walletSummary?.pass_valid_until
+      ? `Expired ${fmtDate(walletSummary.pass_valid_until)}`
+      : "No pass active";
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-3xl font-black text-[var(--mb-text)]">Payment Methods</h3>
-        <button type="button" className="text-lg font-black text-[var(--mb-purple)]">Add New</button>
+        <button type="button" onClick={onTopUp} disabled={actionBusy} className="text-lg font-black text-[var(--mb-purple)] disabled:opacity-60">Top Up +500</button>
       </div>
       <div className="rounded-[36px] bg-[linear-gradient(135deg,#8d12eb,#c243ff)] p-6 text-white shadow-[var(--mb-shadow-strong)]">
         <div className="flex items-center justify-between">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--mb-purple)]">
             <Icon name="wallet" />
           </div>
-          <p className="text-3xl font-black italic">VISA</p>
+          <p className="text-2xl font-black uppercase tracking-[0.2em]">Metro Wallet</p>
         </div>
-        <p className="mt-10 text-4xl font-black tracking-[0.34em]">•••• •••• •••• 4290</p>
+        <p className="mt-8 text-sm font-bold uppercase tracking-[0.24em] text-white/70">Passenger account</p>
+        <p className="mt-2 text-4xl font-black">{walletSummary ? fmtMoney(walletSummary.balance) : "NPR 0"}</p>
         <div className="mt-8 flex items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Card Holder</p>
-            <p className="mt-2 text-2xl font-black uppercase">{(latestPaidBooking?.route_name || "MetroBus Member").slice(0, 16)}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Lifetime Points</p>
+            <p className="mt-2 text-2xl font-black uppercase">{walletSummary?.lifetime_reward_points || 0}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Last Paid</p>
-            <p className="mt-2 text-2xl font-black">{latestPaidBooking ? fmtMoney(latestPaidBooking.fare_total) : "NPR 0"}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Reward Points</p>
+            <p className="mt-2 text-2xl font-black">{walletSummary?.reward_points || 0}</p>
           </div>
         </div>
+        <p className="mt-6 text-sm font-medium text-white/80">
+          Pay rides from your MetroBus wallet and earn reward points toward a free ride.
+        </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-[30px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
           <div className="text-[var(--mb-purple)]"><Icon name="wallet" className="h-7 w-7" /></div>
-          <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">MetroBus Pay</p>
-          <p className="mt-2 text-4xl font-black text-[var(--mb-purple)]">{latestPaidBooking ? fmtMoney(latestPaidBooking.fare_total) : "NPR 124.50"}</p>
+          <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Ride Pass</p>
+          <p className="mt-2 text-4xl font-black text-[var(--mb-purple)]">{passLabel}</p>
+          <p className="mt-3 text-sm font-medium text-[var(--mb-muted)]">
+            {walletSummary?.pass_active
+              ? `Valid until ${fmtDate(walletSummary.pass_valid_until)}`
+              : "Activate a 20 ride pass for regular travel."}
+          </p>
+          <button type="button" onClick={onBuyPass} disabled={actionBusy} className="mt-4 rounded-full bg-white px-4 py-3 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)] disabled:opacity-60">
+            Activate 20 Ride Pass
+          </button>
         </div>
         <div className="rounded-[30px] bg-white p-5 shadow-[var(--mb-shadow)]">
           <div className="text-[var(--mb-purple)]"><Icon name="track" className="h-7 w-7" /></div>
-          <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">UPI / Wallet</p>
-          <p className="mt-2 text-3xl font-black text-[var(--mb-text)]">{paymentHandle(latestPaidBooking)}</p>
+          <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Free Ride Progress</p>
+          <p className="mt-2 text-3xl font-black text-[var(--mb-text)]">{walletSummary?.reward_free_ride_ready ? "Ready to redeem" : `${walletSummary?.reward_points_needed || 100} pts to go`}</p>
+          <p className="mt-3 text-sm font-medium text-[var(--mb-muted)]">
+            {walletSummary?.reward_free_ride_ready
+              ? "Use Reward Ride during checkout on your next booking."
+              : `Last payment: ${paymentHandle(latestPaidBooking)}`}
+          </p>
         </div>
       </div>
     </div>

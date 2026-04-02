@@ -11,6 +11,9 @@ class Payment(models.Model):
         MOCK_ONLINE = "MOCK_ONLINE", "Mock Online"
         ESEWA = "ESEWA", "eSewa"
         KHALTI = "KHALTI", "Khalti"
+        WALLET = "WALLET", "Metro Wallet"
+        PASS = "PASS", "Ride Pass"
+        REWARD = "REWARD", "Reward Ride"
 
     method = models.CharField(max_length=20, choices=Method.choices)
 
@@ -39,3 +42,20 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"Payment {self.id} {self.method} {self.status}"
+
+
+class PassengerWallet(models.Model):
+    passenger = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="wallet")
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    reward_points = models.PositiveIntegerField(default=0)
+    lifetime_reward_points = models.PositiveIntegerField(default=0)
+    pass_rides_remaining = models.PositiveIntegerField(default=0)
+    pass_valid_until = models.DateField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"Wallet for {self.passenger_id}"

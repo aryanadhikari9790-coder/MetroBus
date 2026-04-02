@@ -1,6 +1,9 @@
 from django.urls import path
 from .views import (
     CreatePaymentView,
+    PassengerWalletSummaryView,
+    PassengerWalletTopUpView,
+    PassengerPassPurchaseView,
     VerifyCashPaymentView,
     EsewaSuccessCallback,
     EsewaFailureCallback,
@@ -9,6 +12,9 @@ from .views import (
 
 urlpatterns = [
     path("create/", CreatePaymentView.as_view(), name="payment-create"),
+    path("wallet/summary/", PassengerWalletSummaryView.as_view(), name="wallet-summary"),
+    path("wallet/top-up/", PassengerWalletTopUpView.as_view(), name="wallet-top-up"),
+    path("wallet/pass/", PassengerPassPurchaseView.as_view(), name="wallet-pass"),
     path("cash/verify/<int:booking_id>/", VerifyCashPaymentView.as_view(), name="cash-verify"),
 
     # eSewa callbacks

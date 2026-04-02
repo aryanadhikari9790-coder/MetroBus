@@ -1,5 +1,6 @@
 import os
 from decimal import Decimal
+
 from django.utils import timezone
 from django.shortcuts import redirect
 from rest_framework.views import APIView
@@ -8,15 +9,35 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from bookings.models import Booking
 from bookings.serializers import HelperBookingTicketSerializer
-from .models import Payment
-from .serializers import CreatePaymentSerializer, PaymentSerializer
+from .models import Payment, PassengerWallet
+from .serializers import (
+    CreatePaymentSerializer,
+    PaymentSerializer,
+    PassengerWalletSerializer,
+    WalletTopUpSerializer,
+    WalletPassPurchaseSerializer,
+)
 from .permissions import IsPassenger, IsHelperOrAdmin
 from .gateways import esewa_build_form, esewa_status_check, khalti_initiate, khalti_lookup, new_uuid
+from .wallets import (
+    FREE_RIDE_REWARD_POINTS,
+    calculate_reward_points,
+    pass_expiry_date,
+)
 
 
 def frontend_url(path: str):
     base = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173")
     return f"{base}{path}"
+
+
+def _wallet_for(user):
+    wallet, _ = PassengerWallet.objects.get_or_create(passenger=user)
+    return wallet
+
+
+def _wallet_response_data(wallet):
+    return PassengerWalletSerializer(wallet).data
 
 
 class CreatePaymentView(APIView):
@@ -36,6 +57,7 @@ class CreatePaymentView(APIView):
         if hasattr(booking, "payment"):
             return Response({"detail": "Payment already exists for this booking"}, status=400)
 
+        wallet = _wallet_for(request.user)
         payment = Payment.objects.create(
             booking=booking,
             method=method,
@@ -57,6 +79,99 @@ class CreatePaymentView(APIView):
         # ----- CASH (pending)
         if method == Payment.Method.CASH:
             return Response({"payment": PaymentSerializer(payment).data, "redirect": None}, status=201)
+
+        if method == Payment.Method.WALLET:
+            if wallet.balance < booking.fare_total:
+                payment.delete()
+                return Response(
+                    {
+                        "detail": "Your MetroBus wallet balance is too low for this ride.",
+                        "wallet": _wallet_response_data(wallet),
+                    },
+                    status=400,
+                )
+
+            wallet.balance = Decimal(wallet.balance) - Decimal(booking.fare_total)
+            reward_points = calculate_reward_points(booking.fare_total)
+            wallet.reward_points += reward_points
+            wallet.lifetime_reward_points += reward_points
+            wallet.save(update_fields=["balance", "reward_points", "lifetime_reward_points", "updated_at"])
+
+            payment.status = Payment.Status.SUCCESS
+            payment.reference = f"WALLET-{payment.id}"
+            payment.verified_by = request.user
+            payment.verified_at = timezone.now()
+            payment.save(update_fields=["status", "reference", "verified_by", "verified_at"])
+            return Response(
+                {
+                    "payment": PaymentSerializer(payment).data,
+                    "wallet": _wallet_response_data(wallet),
+                    "redirect": None,
+                },
+                status=201,
+            )
+
+        if method == Payment.Method.PASS:
+            pass_active = bool(wallet.pass_valid_until and wallet.pass_valid_until >= timezone.localdate() and wallet.pass_rides_remaining > 0)
+            if not pass_active:
+                payment.delete()
+                return Response(
+                    {
+                        "detail": "You need an active ride pass before using this payment method.",
+                        "wallet": _wallet_response_data(wallet),
+                    },
+                    status=400,
+                )
+
+            wallet.pass_rides_remaining -= 1
+            reward_points = calculate_reward_points(booking.fare_total)
+            wallet.reward_points += reward_points
+            wallet.lifetime_reward_points += reward_points
+            wallet.save(update_fields=["pass_rides_remaining", "reward_points", "lifetime_reward_points", "updated_at"])
+
+            payment.amount = Decimal("0.00")
+            payment.status = Payment.Status.SUCCESS
+            payment.reference = f"PASS-{payment.id}"
+            payment.verified_by = request.user
+            payment.verified_at = timezone.now()
+            payment.save(update_fields=["amount", "status", "reference", "verified_by", "verified_at"])
+            return Response(
+                {
+                    "payment": PaymentSerializer(payment).data,
+                    "wallet": _wallet_response_data(wallet),
+                    "redirect": None,
+                },
+                status=201,
+            )
+
+        if method == Payment.Method.REWARD:
+            if wallet.reward_points < FREE_RIDE_REWARD_POINTS:
+                payment.delete()
+                return Response(
+                    {
+                        "detail": f"You need {FREE_RIDE_REWARD_POINTS} reward points to redeem a free ride.",
+                        "wallet": _wallet_response_data(wallet),
+                    },
+                    status=400,
+                )
+
+            wallet.reward_points -= FREE_RIDE_REWARD_POINTS
+            wallet.save(update_fields=["reward_points", "updated_at"])
+
+            payment.amount = Decimal("0.00")
+            payment.status = Payment.Status.SUCCESS
+            payment.reference = f"REWARD-{payment.id}"
+            payment.verified_by = request.user
+            payment.verified_at = timezone.now()
+            payment.save(update_fields=["amount", "status", "reference", "verified_by", "verified_at"])
+            return Response(
+                {
+                    "payment": PaymentSerializer(payment).data,
+                    "wallet": _wallet_response_data(wallet),
+                    "redirect": None,
+                },
+                status=201,
+            )
 
         # ----- eSewa (frontend will post a form)
         if method == Payment.Method.ESEWA:
@@ -108,6 +223,52 @@ class CreatePaymentView(APIView):
             )
 
         return Response({"detail": "Unsupported method"}, status=400)
+
+
+class PassengerWalletSummaryView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def get(self, request):
+        return Response({"wallet": _wallet_response_data(_wallet_for(request.user))})
+
+
+class PassengerWalletTopUpView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def post(self, request):
+        serializer = WalletTopUpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        wallet = _wallet_for(request.user)
+        wallet.balance = Decimal(wallet.balance) + serializer.validated_data["amount"]
+        wallet.save(update_fields=["balance", "updated_at"])
+        return Response(
+            {
+                "message": "MetroBus wallet topped up successfully.",
+                "wallet": _wallet_response_data(wallet),
+            },
+            status=201,
+        )
+
+
+class PassengerPassPurchaseView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def post(self, request):
+        serializer = WalletPassPurchaseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        wallet = _wallet_for(request.user)
+        wallet.pass_rides_remaining += serializer.validated_data["rides_count"]
+        wallet.pass_valid_until = pass_expiry_date(serializer.validated_data["validity_days"])
+        wallet.save(update_fields=["pass_rides_remaining", "pass_valid_until", "updated_at"])
+        return Response(
+            {
+                "message": "Ride pass activated successfully.",
+                "wallet": _wallet_response_data(wallet),
+            },
+            status=201,
+        )
 
 
 class VerifyCashPaymentView(APIView):
