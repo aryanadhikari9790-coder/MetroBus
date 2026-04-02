@@ -137,6 +137,8 @@ export default function AdminHome() {
     } catch { /* silent */ }
   };
 
+  const selectedScheduleBus = useMemo(() => schedOpts.buses.find(b => String(b.id) === String(sBusId)) || null, [sBusId, schedOpts.buses]);
+
   useEffect(() => { loadDB(); loadRoute(); loadSched(); loadBuses(); loadUsers(); const id = setInterval(() => loadDB({ silent: true }), 10000); return () => clearInterval(id); }, []);
   useEffect(() => { setSegmentFares(c => Array.from({ length: Math.max(selectedStopIds.length - 1, 0) }, (_, i) => c[i] || "")); }, [selectedStopIds]);
   useEffect(() => {
@@ -159,7 +161,6 @@ export default function AdminHome() {
   const recentBookingFlow = dashboard?.recent_booking_flow || [];
   const rewardLeaderboard = dashboard?.reward_leaderboard || [];
   const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
-  const selectedScheduleBus = useMemo(() => schedOpts.buses.find(b => String(b.id) === String(sBusId)) || null, [sBusId, schedOpts.buses]);
   const selPts = useMemo(() => selectedStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)), [selectedStops]);
   const dispPts = roadPolyline.length > 1 ? roadPolyline : selPts;
   const mapPts  = useMemo(() => dispPts.length > 0 ? dispPts : builderStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)).slice(0, 12), [builderStops, dispPts]);
@@ -794,7 +795,7 @@ export default function AdminHome() {
                     <div key={u.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
-                          {u.official_photo_url ? <img src={u.official_photo_url} alt={u.full_name} className="h-14 w-14 rounded-2xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-sm font-black text-indigo-600">{u.full_name?.slice(0, 2).toUpperCase()}</div>}
+                          {u.official_photo_url ? <img src={u.official_photo_url} alt={u.full_name} className="h-14 w-14 rounded-2xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-sm font-black text-indigo-600">{(u.full_name || "MB").slice(0, 2).toUpperCase()}</div>}
                           <div className="min-w-0">
                             <p className={`text-sm font-bold ${t.text}`}>{u.full_name}</p>
                             <p className={`text-xs mt-0.5 ${t.textSub}`}>{u.phone}{u.email ? ` · ${u.email}` : ""}</p>
