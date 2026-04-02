@@ -259,6 +259,7 @@ export function PlannerCard({
   selectedTripId,
   onSelectTrip,
   onDeclineTrip,
+  onViewOccupancy,
   displayLine = [],
 }) {
   const routeMatches = useMemo(
@@ -348,10 +349,20 @@ export function PlannerCard({
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-2xl bg-[var(--mb-bg-alt)] px-3 py-2">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onViewOccupancy?.(trip);
+                      }}
+                      className="rounded-2xl bg-[var(--mb-bg-alt)] px-3 py-2 text-left transition hover:bg-[#f3e3f8]"
+                    >
                       <p className="font-bold uppercase tracking-[0.16em] text-[var(--mb-muted)]">Occupancy</p>
-                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{trip.occupancy_label || "Live service"}</p>
-                    </div>
+                      <p className="mt-1 text-sm font-black text-[var(--mb-text)]">
+                        {trip.occupancy_percent != null ? `${trip.occupancy_percent}% full` : trip.occupancy_label || "Live service"}
+                      </p>
+                    </button>
                     <div className="rounded-2xl bg-[var(--mb-bg-alt)] px-3 py-2">
                       <p className="font-bold uppercase tracking-[0.16em] text-[var(--mb-muted)]">ETA</p>
                       <p className="mt-1 text-sm font-black text-[var(--mb-text)]">{fmtEta(trip.eta)}</p>
@@ -571,7 +582,7 @@ export function StopFeatureCard({ icon, eyebrow, title, featured = false }) {
   );
 }
 
-export function LiveBusCard({ trip, index, active, onClick, now }) {
+export function LiveBusCard({ trip, index, active, onClick, now, onViewOccupancy }) {
   const tone = statusTone(trip, now);
   return (
     <button type="button" onClick={onClick} className={`flex w-full items-center gap-4 rounded-[34px] border px-5 py-4 text-left shadow-[var(--mb-shadow)] transition ${active ? "border-transparent bg-[linear-gradient(180deg,#fff8fc,#f7dff6)] ring-2 ring-[rgba(141,18,235,0.18)]" : "border-[var(--mb-border)] bg-[var(--mb-card)]"}`}>
@@ -580,7 +591,21 @@ export function LiveBusCard({ trip, index, active, onClick, now }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-xl font-black text-[var(--mb-text)]">{trip.route_name}</p>
-        <p className="mt-1 truncate text-sm text-[var(--mb-muted)]">Gate {trip.from_order || 1} • {trip.occupancy_label || "Live service"}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--mb-muted)]">
+          <span>Gate {trip.from_order || 1}</span>
+          <span>•</span>
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onViewOccupancy?.(trip);
+            }}
+            className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-1 text-xs font-black uppercase tracking-[0.14em] text-[var(--mb-purple)]"
+          >
+            {trip.occupancy_percent != null ? `${trip.occupancy_percent}% full` : trip.occupancy_label || "Live service"}
+          </button>
+        </div>
       </div>
       <div className="text-right">
         <p className="text-[1.85rem] font-black leading-none text-[var(--mb-purple)]">{trip.eta?.minutes ? String(trip.eta.minutes).padStart(2, "0") : "--"}</p>
@@ -602,6 +627,78 @@ export function SeatButton({ seat, selected, onClick }) {
       <div>{seat.seat_no}</div>
       <div className="mt-1 text-[0.58rem] uppercase tracking-[0.24em]">{!seat.available ? "Taken" : selected ? "Selected" : "Open"}</div>
     </button>
+  );
+}
+
+export function OccupancySheet({ trip, seats = [], loading, onClose }) {
+  if (!trip) return null;
+  const openCount = seats.filter((seat) => seat.available).length;
+  const totalSeats = trip.seats_total || seats.length || 0;
+  const takenCount = totalSeats ? Math.max(totalSeats - openCount, 0) : 0;
+  const occupancyPercent = trip.occupancy_percent != null
+    ? trip.occupancy_percent
+    : totalSeats
+      ? Math.round((takenCount / totalSeats) * 100)
+      : 0;
+
+  return (
+    <div className="fixed inset-0 z-[1400] bg-[rgba(49,23,56,0.3)] px-4 py-8 backdrop-blur-sm">
+      <div className="mx-auto flex min-h-full max-w-2xl items-center justify-center">
+        <div className="w-full rounded-[36px] bg-[linear-gradient(180deg,#fffdfd,#fff1f9)] p-5 shadow-[0_36px_90px_rgba(141,18,235,0.24)]">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Live Occupancy</p>
+              <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">{trip.bus_plate || "MetroBus"} • {trip.route_name}</h3>
+              <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">
+                {trip.pickup_stop_name || "Pickup"} to {trip.destination_stop_name || "Destination"}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+              Close
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Occupancy</p>
+              <p className="mt-2 text-3xl font-black text-[var(--mb-purple)]">{occupancyPercent}% full</p>
+            </div>
+            <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Open Seats</p>
+              <p className="mt-2 text-3xl font-black text-[var(--mb-text)]">{openCount}</p>
+            </div>
+            <div className="rounded-[24px] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Taken Seats</p>
+              <p className="mt-2 text-3xl font-black text-[var(--mb-text)]">{takenCount}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[28px] bg-[var(--mb-card)] p-4 shadow-[var(--mb-shadow)]">
+            <div className="mb-3 flex flex-wrap gap-2 text-[0.68rem] font-black uppercase tracking-[0.18em]">
+              <span className="rounded-full bg-white px-3 py-2 text-[var(--mb-purple)]">Open</span>
+              <span className="rounded-full bg-[#f4e3f1] px-3 py-2 text-[#8d6f97]">Occupied</span>
+            </div>
+            {loading ? (
+              <p className="py-6 text-center text-sm font-medium text-[var(--mb-muted)]">Loading occupancy details...</p>
+            ) : seats.length ? (
+              <div className="grid grid-cols-5 gap-3 sm:grid-cols-6">
+                {seats.map((seat) => (
+                  <div
+                    key={seat.seat_id}
+                    className={`rounded-[18px] border px-3 py-3 text-center text-xs font-black ${seat.available ? "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]" : "border-transparent bg-[#f4e3f1] text-[#c0a5c6]"}`}
+                  >
+                    <div>{seat.seat_no}</div>
+                    <div className="mt-1 text-[0.58rem] uppercase tracking-[0.24em]">{seat.available ? "Open" : "Taken"}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm font-medium text-[var(--mb-muted)]">Seat occupancy details are not available for this bus yet.</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

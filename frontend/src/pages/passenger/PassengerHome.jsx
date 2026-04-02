@@ -13,6 +13,7 @@ import {
   LiveBusCard,
   MetricCard,
   NearbyMapCard,
+  OccupancySheet,
   PaymentShowcase,
   PlannerCard,
   ProfileCard,
@@ -47,6 +48,9 @@ export default function PassengerHome() {
   const [acceptedTripId, setAcceptedTripId] = useState("");
   const [seats, setSeats] = useState([]);
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
+  const [occupancyTripId, setOccupancyTripId] = useState("");
+  const [occupancySeats, setOccupancySeats] = useState([]);
+  const [occupancyBusy, setOccupancyBusy] = useState(false);
   const [lastBookingId, setLastBookingId] = useState(null);
   const [lastBookingSummary, setLastBookingSummary] = useState(null);
   const [bookings, setBookings] = useState([]);
@@ -131,6 +135,8 @@ export default function PassengerHome() {
       latest_location: liveTrip.latest_location ?? trip.latest_location ?? null,
       live_override: trip.live_override ?? liveTrip.live_override,
       open_seats: trip.open_seats ?? liveTrip.open_seats,
+      seats_total: trip.seats_total ?? liveTrip.seats_total,
+      occupancy_percent: trip.occupancy_percent ?? liveTrip.occupancy_percent,
       occupancy_label: trip.occupancy_label ?? liveTrip.occupancy_label,
       eta: trip.eta ?? liveTrip.eta,
     };
@@ -167,6 +173,15 @@ export default function PassengerHome() {
       || null
     );
   }, [acceptedTripId, activeBooking?.trip_id, hydrateTrip, liveTripsById, visibleMatchedTrips]);
+  const occupancyTrip = useMemo(() => {
+    const occupancyKey = occupancyTripId ? String(occupancyTripId) : "";
+    return (
+      visibleMatchedTrips.find((trip) => String(trip.id) === occupancyKey)
+      || displayTrips.find((trip) => String(trip.id) === occupancyKey)
+      || (occupancyKey ? hydrateTrip(liveTripsById.get(occupancyKey)) : null)
+      || null
+    );
+  }, [displayTrips, hydrateTrip, liveTripsById, occupancyTripId, visibleMatchedTrips]);
   const routeStops = useMemo(() => (
     selectedTrip ? tripContexts[selectedTrip.id]?.route_stops || [] : []
   ), [selectedTrip, tripContexts]);
@@ -215,7 +230,8 @@ export default function PassengerHome() {
 
   const syncTripSeatMeta = useCallback((tripId, seatsData) => {
     const openSeats = seatsData.filter((seat) => seat.available).length;
-    const occupancy = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
+    const seatTotal = seatsData.length;
+    const occupancy = seatTotal ? Math.round(((seatTotal - openSeats) / seatTotal) * 100) : 0;
     const occupancyLabel = seatsData.length
       ? occupancy >= 80
         ? "High Occupancy"
@@ -225,7 +241,7 @@ export default function PassengerHome() {
       : "Seat map unavailable";
     const apply = (list) => list.map((trip) => (
       String(trip.id) === String(tripId)
-        ? { ...trip, open_seats: openSeats, occupancy_label: occupancyLabel }
+        ? { ...trip, open_seats: openSeats, seats_total: seatTotal, occupancy_percent: occupancy, occupancy_label: occupancyLabel }
         : trip
     ));
     setRouteFeed((current) => apply(current));
@@ -253,13 +269,16 @@ export default function PassengerHome() {
       const first = rows[0];
       const last = rows[rows.length - 1];
       let openSeats = null;
+      let seatTotal = null;
+      let occupancy = null;
       let occupancyLabel = "Live service";
       if (first && last && Number(last.stop_order) > Number(first.stop_order)) {
         try {
           const availability = await api.get(`/api/bookings/trips/${trip.id}/availability/?from=${first.stop_order}&to=${last.stop_order}`);
           const seatsData = availability.data.seats || [];
+          seatTotal = seatsData.length;
           openSeats = seatsData.filter((seat) => seat.available).length;
-          const occupancy = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
+          occupancy = seatsData.length ? Math.round(((seatsData.length - openSeats) / seatsData.length) * 100) : 0;
           occupancyLabel = occupancy >= 80 ? "High Occupancy" : occupancy >= 50 ? "Med Occupancy" : "Low Occupancy";
         } catch {
           // Fall back to live service copy when seat availability is unavailable.
@@ -274,6 +293,8 @@ export default function PassengerHome() {
         destination_stop_name: last?.stop?.name || "Main Terminal",
         pickup_point: first ? toPoint(first.stop?.lat, first.stop?.lng) : null,
         open_seats: openSeats,
+        seats_total: seatTotal,
+        occupancy_percent: occupancy,
         occupancy_label: occupancyLabel,
         eta: estimateEta(toLocPoint(trip.latest_location), first ? toPoint(first.stop?.lat, first.stop?.lng) : null, routePoints, trip.latest_location?.speed),
       };
@@ -385,6 +406,8 @@ export default function PassengerHome() {
           destination_stop_name: dropRow.stop?.name,
           pickup_point: toPoint(pickupRow.stop?.lat, pickupRow.stop?.lng),
           open_seats: openSeats,
+          seats_total: seatsData.length,
+          occupancy_percent: occupancy,
           occupancy_label: occupancy >= 80 ? "High Occupancy" : occupancy >= 50 ? "Med Occupancy" : "Low Occupancy",
           eta: estimateEta(toLocPoint(trip.latest_location), toPoint(pickupRow.stop?.lat, pickupRow.stop?.lng), routePoints, trip.latest_location?.speed),
           fare_estimate: 50,
@@ -470,6 +493,35 @@ export default function PassengerHome() {
     ));
     setSelectedSeatIds([]);
   };
+  const openOccupancyDetails = useCallback(async (tripLike) => {
+    const tripCandidate = typeof tripLike === "object" ? tripLike : (
+      visibleMatchedTrips.find((trip) => String(trip.id) === String(tripLike))
+      || displayTrips.find((trip) => String(trip.id) === String(tripLike))
+      || hydrateTrip(liveTripsById.get(String(tripLike)))
+    );
+    if (!tripCandidate?.id) return;
+    setOccupancyTripId(String(tripCandidate.id));
+    setOccupancyBusy(true);
+    setOccupancySeats([]);
+    try {
+      let fromOrder = tripCandidate.from_order;
+      let toOrder = tripCandidate.to_order;
+      if (!fromOrder || !toOrder || Number(toOrder) <= Number(fromOrder)) {
+        const context = tripContexts[tripCandidate.id] || (await ensureCtx([tripCandidate]))[tripCandidate.id];
+        const rows = context?.route_stops || [];
+        fromOrder = rows[0]?.stop_order || 1;
+        toOrder = rows[rows.length - 1]?.stop_order || 2;
+      }
+      const response = await api.get(`/api/bookings/trips/${tripCandidate.id}/availability/?from=${fromOrder}&to=${toOrder}`);
+      const seatsData = response.data.seats || [];
+      setOccupancySeats(seatsData);
+      syncTripSeatMeta(tripCandidate.id, seatsData);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to load occupancy details.");
+    } finally {
+      setOccupancyBusy(false);
+    }
+  }, [displayTrips, ensureCtx, hydrateTrip, liveTripsById, syncTripSeatMeta, tripContexts, visibleMatchedTrips]);
   const toggleSeat = (seatId) => setSelectedSeatIds((current) => current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId]);
 
   const bookSeats = async () => {
@@ -597,6 +649,7 @@ export default function PassengerHome() {
                   selectedTripId={selectedTripId}
                   onSelectTrip={acceptMatchedTrip}
                   onDeclineTrip={declineMatchedTrip}
+                  onViewOccupancy={openOccupancyDetails}
                   displayLine={displayLine}
                 />
               ) : null}
@@ -669,6 +722,7 @@ export default function PassengerHome() {
                       index={index}
                       active={String(trip.id) === String(selectedTripId)}
                       now={now}
+                      onViewOccupancy={openOccupancyDetails}
                       onClick={() => {
                         setSelectedTripId(String(trip.id));
                         setActiveView(visibleMatchedTrips.length ? "home" : "track");
@@ -700,6 +754,17 @@ export default function PassengerHome() {
 
         {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} walletSummary={walletSummary} onTopUp={() => topUpWallet(500)} onBuyPass={buyRidePass} actionBusy={walletBusy} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
       </main>
+      {occupancyTrip ? (
+        <OccupancySheet
+          trip={occupancyTrip}
+          seats={occupancySeats}
+          loading={occupancyBusy}
+          onClose={() => {
+            setOccupancyTripId("");
+            setOccupancySeats([]);
+          }}
+        />
+      ) : null}
       <BottomNav activeView={activeView} onChange={setActiveView} />
     </div>
   );
