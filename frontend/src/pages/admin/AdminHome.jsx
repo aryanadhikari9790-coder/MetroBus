@@ -146,8 +146,9 @@ export default function AdminHome() {
 
   const handleLogout = () => { clearToken(); navigate("/auth/login"); };
 
-  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ;
+  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const rideOps = overview?.ride_ops || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ;
   const paymentRows = useMemo(() => Object.entries(payments?.methods || {}).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [payments]);
+  const recentBookingFlow = dashboard?.recent_booking_flow || [];
   const rewardLeaderboard = dashboard?.reward_leaderboard || [];
   const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
   const selectedScheduleBus = useMemo(() => schedOpts.buses.find(b => String(b.id) === String(sBusId)) || null, [sBusId, schedOpts.buses]);
@@ -344,6 +345,13 @@ export default function AdminHome() {
               <StatCard label="Active Passes" value={wallets.active_passes ?? 0} sub={`${wallets.weekly_passes || 0} weekly Â· ${wallets.monthly_passes || 0} monthly`} accent="text-sky-500" t={t} />
               <StatCard label="Reward Ready" value={wallets.reward_ready ?? 0} sub={`${wallets.reward_threshold || 100} points unlock a free ride`} accent="text-violet-500" t={t} />
               <StatCard label="Free Rides Used" value={wallets.free_rides_redeemed ?? 0} sub={`${wallets.total_reward_points || 0} live points across wallets`} accent="text-emerald-500" t={t} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              <StatCard label="Await Accept" value={rideOps.awaiting_acceptance ?? 0} sub="Helper has not accepted yet" accent="text-amber-500" t={t} />
+              <StatCard label="Await Payment" value={rideOps.awaiting_payment ?? 0} sub="Accepted but not paid" accent="text-rose-500" t={t} />
+              <StatCard label="Ready To Board" value={rideOps.ready_to_board ?? 0} sub="Paid and waiting" accent="text-sky-500" t={t} />
+              <StatCard label="Onboard" value={rideOps.onboard ?? 0} sub="Passengers riding now" accent="text-emerald-500" t={t} />
+              <StatCard label="Completed Today" value={rideOps.completed_today ?? 0} sub="Seats released today" accent="text-violet-500" t={t} />
             </div>
             <GlassCard t={t}>
               <SLabel t={t}>Payment Method Performance</SLabel>
@@ -579,6 +587,28 @@ export default function AdminHome() {
                   <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.passenger_name}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.seats_count} seats Â· {fmtMoney(b.fare_total)}</div></div>
                 </GlassCard>
               )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No bookings yet.</p></GlassCard>}
+            </div>
+            <div>
+              <SLabel t={t}>Booking Lifecycle</SLabel>
+              {recentBookingFlow.length ? recentBookingFlow.map(flow => (
+                <GlassCard key={flow.id} t={t} className="!p-4 mb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className={`text-sm font-bold ${t.text}`}>Booking #{flow.id} · {flow.passenger_name}</p>
+                      <p className={`text-xs mt-0.5 ${t.textSub}`}>{flow.route_name} Â· {flow.bus_plate}</p>
+                    </div>
+                    <Pill color={flow.completed_at ? "emerald" : flow.checked_in_at ? "sky" : flow.accepted_by_helper_at ? "amber" : "slate"} isDark={isDark}>
+                      {flow.completed_at ? "Completed" : flow.checked_in_at ? "Onboard" : flow.accepted_by_helper_at ? "Accepted" : "Pending"}
+                    </Pill>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Payment: {flow.payment_method || "UNPAID"} Â· {flow.payment_status}</div>
+                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Accepted: {flow.accepted_by_helper_name ? `${flow.accepted_by_helper_name} at ${fmt(flow.accepted_by_helper_at)}` : "Waiting for helper acceptance"}</div>
+                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Boarded: {flow.checked_in_by_name ? `${flow.checked_in_by_name} at ${fmt(flow.checked_in_at)}` : "Not boarded yet"}</div>
+                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Completed: {flow.completed_by_name ? `${flow.completed_by_name} at ${fmt(flow.completed_at)}` : "Ride still active"}</div>
+                  </div>
+                </GlassCard>
+              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No booking lifecycle activity yet.</p></GlassCard>}
             </div>
             <div>
               <SLabel t={t}>Recent Payments</SLabel>

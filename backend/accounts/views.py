@@ -109,6 +109,28 @@ class AdminDashboardView(APIView):
         revenue_success = Payment.objects.filter(status=Payment.Status.SUCCESS).aggregate(
             total=Coalesce(Sum("amount"), 0)
         )["total"]
+        confirmed_bookings = Booking.objects.filter(status=Booking.Status.CONFIRMED)
+        ride_ops = {
+            "awaiting_acceptance": confirmed_bookings.filter(accepted_by_helper_at__isnull=True).count(),
+            "awaiting_payment": confirmed_bookings.filter(
+                accepted_by_helper_at__isnull=False,
+                checked_in_at__isnull=True,
+            ).filter(Q(payment__isnull=True) | ~Q(payment__status=Payment.Status.SUCCESS)).count(),
+            "ready_to_board": confirmed_bookings.filter(
+                accepted_by_helper_at__isnull=False,
+                checked_in_at__isnull=True,
+                payment__status=Payment.Status.SUCCESS,
+            ).count(),
+            "onboard": confirmed_bookings.filter(
+                accepted_by_helper_at__isnull=False,
+                checked_in_at__isnull=False,
+                completed_at__isnull=True,
+            ).count(),
+            "completed_today": Booking.objects.filter(
+                status=Booking.Status.COMPLETED,
+                completed_at__date=timezone.localdate(),
+            ).count(),
+        }
 
         live_trips = (
             Trip.objects.filter(status=Trip.Status.LIVE)
@@ -126,6 +148,19 @@ class AdminDashboardView(APIView):
         )
         recent_users = User.objects.order_by("-created_at")[:5]
         wallet_rows = PassengerWallet.objects.select_related("passenger").order_by("-reward_points", "-balance", "-updated_at")[:5]
+        recent_booking_flow = (
+            Booking.objects.select_related(
+                "trip__route",
+                "trip__bus",
+                "passenger",
+                "payment",
+                "accepted_by_helper",
+                "payment_requested_by",
+                "checked_in_by",
+                "completed_by",
+            )
+            .order_by("-created_at")[:8]
+        )
         wallet_totals = PassengerWallet.objects.aggregate(
             total_balance=Coalesce(Sum("balance"), 0),
             total_reward_points=Coalesce(Sum("reward_points"), 0),
@@ -188,6 +223,7 @@ class AdminDashboardView(APIView):
                     "completed": Booking.objects.filter(status=Booking.Status.COMPLETED).count(),
                     "cancelled": Booking.objects.filter(status=Booking.Status.CANCELLED).count(),
                 },
+                "ride_ops": ride_ops,
                 "payments": {
                     "total": Payment.objects.count(),
                     "success": Payment.objects.filter(status=Payment.Status.SUCCESS).count(),
@@ -255,6 +291,27 @@ class AdminDashboardView(APIView):
                     "created_at": user.created_at,
                 }
                 for user in recent_users
+            ],
+            "recent_booking_flow": [
+                {
+                    "id": booking.id,
+                    "route_name": booking.trip.route.name,
+                    "bus_plate": booking.trip.bus.plate_number,
+                    "passenger_name": booking.passenger.full_name,
+                    "status": booking.status,
+                    "payment_status": booking.payment.status if getattr(booking, "payment", None) else "UNPAID",
+                    "payment_method": booking.payment.method if getattr(booking, "payment", None) else None,
+                    "accepted_by_helper_name": booking.accepted_by_helper.full_name if booking.accepted_by_helper else None,
+                    "payment_requested_by_name": booking.payment_requested_by.full_name if booking.payment_requested_by else None,
+                    "checked_in_by_name": booking.checked_in_by.full_name if booking.checked_in_by else None,
+                    "completed_by_name": booking.completed_by.full_name if booking.completed_by else None,
+                    "accepted_by_helper_at": booking.accepted_by_helper_at,
+                    "payment_requested_at": booking.payment_requested_at,
+                    "checked_in_at": booking.checked_in_at,
+                    "completed_at": booking.completed_at,
+                    "created_at": booking.created_at,
+                }
+                for booking in recent_booking_flow
             ],
             "reward_leaderboard": [
                 {
