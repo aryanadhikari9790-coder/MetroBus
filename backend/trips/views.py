@@ -5,6 +5,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 
 from accounts.models import User
 from bookings.models import Booking
+from bookings.serializers import HelperBookingTicketSerializer
 from transport.models import Route, Bus, RouteStop
 from transport.serializers import RouteStopSerializer
 from .models import Trip, TripSchedule, TripLocation
@@ -170,6 +171,72 @@ def _serialize_trip_passenger_requests(trip, route_stops):
         )
 
     return requests, summary
+
+
+def _serialize_helper_booking_groups(trip):
+    summary = {
+        "awaiting_payment_count": 0,
+        "ready_to_board_count": 0,
+        "onboard_count": 0,
+        "completed_recent_count": 0,
+    }
+    empty_payload = {
+        "summary": summary,
+        "awaiting_payment": [],
+        "ready_to_board": [],
+        "onboard": [],
+        "completed_recent": [],
+    }
+    if not trip:
+        return empty_payload
+
+    trip.route.route_stops_cache = list(trip.route.route_stops.select_related("stop").order_by("stop_order"))
+    bookings = (
+        Booking.objects.filter(trip=trip)
+        .select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by")
+        .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
+        .order_by("from_stop_order", "created_at")
+    )
+
+    awaiting_payment = []
+    ready_to_board = []
+    onboard = []
+    completed_recent = []
+
+    for booking in bookings:
+        serialized = HelperBookingTicketSerializer(booking).data
+        payment = getattr(booking, "payment", None)
+
+        if booking.status == Booking.Status.COMPLETED or booking.completed_at:
+            completed_recent.append(serialized)
+            continue
+
+        if booking.checked_in_at and not booking.completed_at:
+            onboard.append(serialized)
+            continue
+
+        if payment and payment.status == "SUCCESS":
+            ready_to_board.append(serialized)
+            continue
+
+        awaiting_payment.append(serialized)
+
+    summary.update(
+        {
+            "awaiting_payment_count": len(awaiting_payment),
+            "ready_to_board_count": len(ready_to_board),
+            "onboard_count": len(onboard),
+            "completed_recent_count": len(completed_recent),
+        }
+    )
+
+    return {
+        "summary": summary,
+        "awaiting_payment": awaiting_payment[:8],
+        "ready_to_board": ready_to_board[:8],
+        "onboard": onboard[:8],
+        "completed_recent": completed_recent[:5],
+    }
 
 
 def _confirm_trip_start(trip, actor):
@@ -348,6 +415,7 @@ class HelperDashboardView(APIView):
             loc = sync_trip_simulation(active_trip)
             if loc:
                 latest_location = TripLocationSerializer(loc).data
+        helper_bookings = _serialize_helper_booking_groups(active_trip)
 
         return Response(
             {
@@ -355,6 +423,7 @@ class HelperDashboardView(APIView):
                 "pending_trip": TripSerializer(pending_trip).data if pending_trip else None,
                 "latest_location": latest_location,
                 "schedules": TripScheduleSerializer(schedules, many=True).data,
+                "helper_bookings": helper_bookings,
             }
         )
 
