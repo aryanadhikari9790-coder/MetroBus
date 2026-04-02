@@ -192,6 +192,9 @@ export default function DriverHome() {
   const queueRef = useMemo(() => ({ current: [] }), []);
 
   const activeTrip = dashboard?.active_trip ?? null;
+  const pendingTrip = dashboard?.pending_trip ?? null;
+  const currentTrip = activeTrip || pendingTrip;
+  const tripAwaitingStart = Boolean(pendingTrip && !activeTrip);
   const schedules = dashboard?.schedules ?? [];
   const manualOptions = useMemo(
     () => dashboard?.manual_start_options ?? { routes: [], buses: [], helpers: [] },
@@ -226,9 +229,9 @@ export default function DriverHome() {
     return best;
   }, [liveBusPoint, routePolyline]);
 
-  const currentBus = activeTrip?.bus_plate || nextSchedule?.bus_plate || manualOptions.buses.find((bus) => String(bus.id) === busId)?.plate_number || "--";
-  const currentRoute = activeTrip?.route_name || nextSchedule?.route_name || manualOptions.routes.find((route) => String(route.id) === routeId)?.name || "--";
-  const helperName = activeTrip?.helper_name || nextSchedule?.helper_name || manualOptions.helpers.find((helper) => String(helper.id) === helperId)?.full_name || "--";
+  const currentBus = currentTrip?.bus_plate || nextSchedule?.bus_plate || manualOptions.buses.find((bus) => String(bus.id) === busId)?.plate_number || "--";
+  const currentRoute = currentTrip?.route_name || nextSchedule?.route_name || manualOptions.routes.find((route) => String(route.id) === routeId)?.name || "--";
+  const helperName = currentTrip?.helper_name || nextSchedule?.helper_name || manualOptions.helpers.find((helper) => String(helper.id) === helperId)?.full_name || "--";
   const routeOptions = manualOptions.routes.length
     ? manualOptions.routes.map((route) => ({ value: route.id, label: `${route.name} - ${route.city}` }))
     : [{ value: "", label: "No routes available" }];
@@ -241,16 +244,16 @@ export default function DriverHome() {
   const minutesToDeparture = minutesUntil(nextSchedule?.scheduled_start_time);
   const nextStop = routeStops[Math.min(stopProgressIndex + 1, routeStops.length - 1)]?.stop?.name || routeStops[1]?.stop?.name || "--";
   const previousStop = routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || "--";
-  const capacity = Number(manualOptions.buses.find((bus) => bus.id === activeTrip?.bus)?.capacity || assignedBus?.capacity || 40);
-  const occupied = activeTrip ? Math.min(32, capacity) : Math.min(18, capacity);
+  const capacity = Number(manualOptions.buses.find((bus) => bus.id === currentTrip?.bus)?.capacity || assignedBus?.capacity || 40);
+  const occupied = currentTrip ? Math.min(32, capacity) : Math.min(18, capacity);
   const occupancyPct = capacity ? Math.round((occupied / capacity) * 100) : 0;
   const plannedTrips = schedules.length || 6;
-  const homeStatus = activeTrip ? "Trip Live" : "On Track";
-  const todaysEarnings = activeTrip ? 4500 : 2450;
-  const completedTrips = activeTrip ? 8 : 6;
-  const totalPassengers = activeTrip ? 124 : 42;
-  const fuelLevel = activeTrip ? 84 : 85;
-  const predictedPax = activeTrip ? "3-5" : "2-4";
+  const homeStatus = activeTrip ? "Trip Live" : pendingTrip ? "Start Pending" : "On Track";
+  const todaysEarnings = currentTrip ? 4500 : 2450;
+  const completedTrips = currentTrip ? 8 : 6;
+  const totalPassengers = currentTrip ? 124 : 42;
+  const fuelLevel = currentTrip ? 84 : 85;
+  const predictedPax = currentTrip ? "3-5" : "2-4";
   const shiftStartTime = nextSchedule?.scheduled_start_time ? formatTime(nextSchedule.scheduled_start_time) : "08:30 AM";
   const lastShiftDate = new Date().toLocaleDateString([], { weekday: "long", month: "short", day: "numeric" });
   const lastShiftEarnings = 4800;
@@ -285,7 +288,7 @@ export default function DriverHome() {
   ];
   const activeTripStartedLabel = activeTrip?.started_at ? formatTime(activeTrip.started_at) : shiftStartTime;
   const currentStopName = routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || routeStops[0]?.stop?.name || "--";
-  const routeStatusLabel = activeTrip?.deviation_mode ? "Deviation Mode" : "On Route";
+  const routeStatusLabel = currentTrip?.deviation_mode ? "Deviation Mode" : tripAwaitingStart ? "Awaiting Start" : "On Route";
   const gpsStateLabel = autoShare ? "GPS Live" : latestLocation ? "Manual Mode" : "Waiting";
   const stopsRemaining = routeStops.length ? Math.max(routeStops.length - Math.max(stopProgressIndex + 1, 1), 0) : 0;
   const routeProgressPct = routeStops.length > 1 && stopProgressIndex >= 0
@@ -297,6 +300,16 @@ export default function DriverHome() {
   const simulationPoint = simulationPoints[Math.min(simulationIndex, Math.max(simulationPoints.length - 1, 0))] || null;
   const simulationTotalPoints = simulationPointsCount || simulationPoints.length;
   const simulationActionLabel = simulationActive ? "Restart Live" : simulationIndex > 0 ? "Resume Simulation" : "Start Simulation";
+  const pendingStartLabel = pendingTrip?.helper_start_confirmed
+    ? "Helper confirmed. Waiting on driver."
+    : pendingTrip?.driver_start_confirmed
+      ? "Driver confirmed. Waiting on helper."
+      : "Trip is waiting for the first confirmation.";
+  const pendingEndLabel = activeTrip?.helper_end_confirmed
+    ? "Helper has confirmed trip end. Waiting on driver."
+    : activeTrip?.driver_end_confirmed
+      ? "Driver has confirmed trip end. Waiting on helper."
+      : "End confirmation has not been requested yet.";
 
   const loadDashboard = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -326,14 +339,14 @@ export default function DriverHome() {
 
   useEffect(() => { loadDashboard(); loadAssignedBus(); }, []);
   useEffect(() => {
-    if (!activeTrip?.id) return undefined;
+    if (!currentTrip?.id) return undefined;
     const timer = setInterval(() => {
       loadDashboard({ silent: true });
     }, activeTab === "active" || simulationActive ? 1000 : 3000);
     return () => clearInterval(timer);
-  }, [activeTab, activeTrip?.id, simulationActive]);
-  useEffect(() => { if (activeTrip) setActiveTab("active"); }, [activeTrip]);
-  useEffect(() => { setExpandStops(false); }, [activeTrip?.id]);
+  }, [activeTab, currentTrip?.id, simulationActive]);
+  useEffect(() => { if (currentTrip) setActiveTab("active"); }, [currentTrip]);
+  useEffect(() => { setExpandStops(false); }, [currentTrip?.id]);
   useEffect(() => {
     setSimulationActive(false);
     setSimulationIndex(0);
@@ -345,9 +358,9 @@ export default function DriverHome() {
     if (!helperId && manualOptions.helpers.length) setHelperId(String(manualOptions.helpers[0].id));
   }, [manualOptions, routeId, busId, helperId]);
   useEffect(() => {
-    if (!activeTrip?.id) { setRouteStops([]); setRoadPolyline([]); return; }
-    api.get(`/api/trips/${activeTrip.id}/`).then((response) => setRouteStops(response.data.route_stops || [])).catch(() => setRouteStops([]));
-  }, [activeTrip?.id]);
+    if (!currentTrip?.id) { setRouteStops([]); setRoadPolyline([]); return; }
+    api.get(`/api/trips/${currentTrip.id}/`).then((response) => setRouteStops(response.data.route_stops || [])).catch(() => setRouteStops([]));
+  }, [currentTrip?.id]);
   useEffect(() => {
     if (routePolyline.length < 2) { setRoadPolyline([]); return; }
     const controller = new AbortController();
@@ -360,8 +373,8 @@ export default function DriverHome() {
     setErr("");
     setMsg("");
     try {
-      await fn();
-      setMsg(successMsg);
+      const response = await fn();
+      setMsg(response?.data?.message || successMsg);
       await loadDashboard({ silent: true });
     } catch (error) {
       setErr(error?.response?.data?.detail || "Action failed.");
@@ -371,7 +384,7 @@ export default function DriverHome() {
   };
 
   const startScheduledTrip = async (id) => {
-    await runAction(() => api.post("/api/trips/start/", { schedule_id: id, deviation_mode: deviationMode }), "Trip started.");
+    await runAction(() => api.post("/api/trips/start/", { schedule_id: id, deviation_mode: deviationMode }), "Trip start request sent.");
     setActiveTab("active");
   };
 
@@ -380,17 +393,21 @@ export default function DriverHome() {
       setErr("Select route, bus, and helper first.");
       return;
     }
-    await runAction(() => api.post("/api/trips/start/", { route_id: Number(routeId), bus_id: Number(busId), helper_id: Number(helperId), deviation_mode: deviationMode }), "Manual trip started.");
+    await runAction(() => api.post("/api/trips/start/", { route_id: Number(routeId), bus_id: Number(busId), helper_id: Number(helperId), deviation_mode: deviationMode }), "Manual trip start request sent.");
     setActiveTab("active");
   };
 
   const endTrip = async () => {
     if (!activeTrip) return;
-    await runAction(() => api.post(`/api/trips/${activeTrip.id}/end/`), "Trip ended.");
+    await runAction(() => api.post(`/api/trips/${activeTrip.id}/end/`), "Trip end confirmation sent.");
     setAutoShare(false);
     setLocationStatus("");
     setRouteStops([]);
-    setActiveTab("history");
+    if (!activeTrip?.helper_end_confirmed) {
+      setActiveTab("active");
+    } else {
+      setActiveTab("history");
+    }
   };
 
   const postLocation = useCallback(async (payload) => {
@@ -557,7 +574,7 @@ export default function DriverHome() {
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--drv-shadow)]"><span className="text-xs font-black uppercase tracking-[0.2em] text-[var(--drv-purple)]">MB</span></div>
           </div>
           <div className="flex items-center gap-2">
-            <Pill tone={activeTrip ? "live" : "idle"}>{activeTrip ? "Trip Live" : "Standby"}</Pill>
+            <Pill tone={activeTrip ? "live" : pendingTrip ? "warn" : "idle"}>{activeTrip ? "Trip Live" : pendingTrip ? "Start Pending" : "Standby"}</Pill>
             <button type="button" onClick={() => loadDashboard()} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name="refresh" /></button>
             {activeTab !== "home" ? <button type="button" onClick={toggle} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)]"><Icon name={isDark ? "sun" : "moon"} /></button> : null}
             <button type="button" onClick={handleLogout} className="grid h-11 w-11 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-plum)] shadow-[var(--drv-shadow)]"><Icon name="logout" /></button>
@@ -571,9 +588,9 @@ export default function DriverHome() {
 
         <section className="relative overflow-hidden rounded-[2.6rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--drv-shadow-strong)]">
           <div className="absolute inset-y-0 right-0 w-32 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
-          <p className="text-[0.7rem] font-black uppercase tracking-[0.28em] text-white/70">{activeTrip ? "Route In Progress" : "Shift Dashboard"}</p>
-          <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "ROUTE\nLIVE" : "READY TO\nSTART"}</h1>
-          <p className="mt-4 text-base font-medium text-white/84">{activeTrip ? `${currentRoute} is active now. Keep GPS sharing on and watch the next stop.` : `Shift starts at ${shiftStartTime} - Current City: Pokhara.`}</p>
+          <p className="text-[0.7rem] font-black uppercase tracking-[0.28em] text-white/70">{activeTrip ? "Route In Progress" : pendingTrip ? "Trip Confirmation" : "Shift Dashboard"}</p>
+          <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "ROUTE\nLIVE" : pendingTrip ? "WAITING\nTO GO" : "READY TO\nSTART"}</h1>
+          <p className="mt-4 text-base font-medium text-white/84">{activeTrip ? `${currentRoute} is active now. Keep GPS sharing on and watch the next stop.` : pendingTrip ? `${currentRoute} is almost ready. ${pendingStartLabel}` : `Shift starts at ${shiftStartTime} - Current City: Pokhara.`}</p>
           <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
             <div className="flex items-center gap-4">
               <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
@@ -614,14 +631,14 @@ export default function DriverHome() {
               <ActionButton tone="primary" onClick={() => (nextSchedule ? startScheduledTrip(nextSchedule.id) : startManualTrip())} disabled={busy || (!nextSchedule && (!routeId || !busId || !helperId))} className="mt-5 w-full !py-5 !text-base"><Icon name="play" />{busy ? "Starting Trip" : "Start Trip"}</ActionButton>
             </Panel>
 
-            <div className="mt-6"><div className="mb-3 flex items-center justify-between"><h2 className="text-3xl font-black">Upcoming Schedules</h2><Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>{minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Today"}</Pill></div><div className="space-y-3">{schedules.length === 0 ? <Panel><p className="text-sm text-[var(--drv-muted)]">No planned schedules right now.</p></Panel> : schedules.slice(0, 4).map((schedule, index) => <button key={schedule.id} type="button" onClick={() => startScheduledTrip(schedule.id)} disabled={busy || Boolean(activeTrip)} className={`flex w-full items-center gap-4 rounded-[1.8rem] border px-4 py-4 text-left shadow-[var(--drv-shadow)] transition ${index === 0 ? "border-transparent bg-[var(--drv-soft)]" : "border-[var(--drv-border)] bg-white/72"}`}><div className="min-w-[4.8rem] rounded-[1.4rem] bg-white/70 px-3 py-3 text-center"><p className="text-2xl font-black leading-none text-[var(--drv-purple)]">{formatTime(schedule.scheduled_start_time)}</p></div><div className="min-w-0 flex-1"><p className="truncate text-lg font-black">{schedule.route_name}</p><p className="mt-1 text-sm text-[var(--drv-muted)]">{schedule.bus_plate} - {schedule.helper_name || "Helper pending"}</p></div>{index === 0 ? <span className="rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white">Active</span> : null}</button>)}</div></div>
+            <div className="mt-6"><div className="mb-3 flex items-center justify-between"><h2 className="text-3xl font-black">Upcoming Schedules</h2><Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>{minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Today"}</Pill></div><div className="space-y-3">{schedules.length === 0 ? <Panel><p className="text-sm text-[var(--drv-muted)]">No planned schedules right now.</p></Panel> : schedules.slice(0, 4).map((schedule, index) => <button key={schedule.id} type="button" onClick={() => startScheduledTrip(schedule.id)} disabled={busy || Boolean(currentTrip)} className={`flex w-full items-center gap-4 rounded-[1.8rem] border px-4 py-4 text-left shadow-[var(--drv-shadow)] transition ${index === 0 ? "border-transparent bg-[var(--drv-soft)]" : "border-[var(--drv-border)] bg-white/72"}`}><div className="min-w-[4.8rem] rounded-[1.4rem] bg-white/70 px-3 py-3 text-center"><p className="text-2xl font-black leading-none text-[var(--drv-purple)]">{formatTime(schedule.scheduled_start_time)}</p></div><div className="min-w-0 flex-1"><p className="truncate text-lg font-black">{schedule.route_name}</p><p className="mt-1 text-sm text-[var(--drv-muted)]">{schedule.bus_plate} - {schedule.helper_name || "Helper pending"}</p></div>{index === 0 ? <span className="rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white">Active</span> : null}</button>)}</div></div>
 
             <Panel className="mt-5 bg-[rgba(250,227,252,0.86)]"><div className="flex items-start gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--drv-purple)]"><Icon name="alert" /></div><div><SectionLabel>Traffic Alert</SectionLabel><p className="text-lg font-black">Heavy congestion reported near Mahendrapul.</p><p className="mt-2 text-sm leading-6 text-[var(--drv-muted)]">Consider switching to deviation mode if your next departure starts before the scheduled corridor clears.</p></div></div></Panel>
           </>
         ) : null}
 
         {activeTab === "active" ? (
-          !activeTrip ? (
+          !currentTrip ? (
             <div className="mt-5 space-y-5 pb-32">
               <Panel>
                 <SectionLabel>Active Trip</SectionLabel>
@@ -708,6 +725,79 @@ export default function DriverHome() {
                 </div>
               </Panel>
             </div>
+          ) : tripAwaitingStart ? (
+            <div className="mt-5 space-y-5 pb-32">
+              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-5 text-white shadow-[var(--drv-shadow-strong)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Trip Confirmation</p>
+                    <h2 className="mt-3 text-4xl font-black leading-[1.02]">{currentRoute}</h2>
+                    <p className="mt-3 text-sm font-semibold text-white/80">{currentBus} - Helper {helperName}</p>
+                  </div>
+                  <span className="inline-flex items-center rounded-full bg-white/14 px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[0_10px_22px_rgba(71,39,81,0.18)]">
+                    Start Pending
+                  </span>
+                </div>
+
+                <div className="mt-5 rounded-[1.7rem] bg-white/12 p-4 backdrop-blur-sm">
+                  <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-white/72">Confirmation Status</p>
+                  <p className="mt-2 text-xl font-black">{pendingStartLabel}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className={`rounded-full px-3 py-2 text-[0.68rem] font-black uppercase tracking-[0.14em] ${pendingTrip?.driver_start_confirmed ? "bg-emerald-500/18 text-white" : "bg-white/12 text-white/82"}`}>
+                      Driver {pendingTrip?.driver_start_confirmed ? "Confirmed" : "Pending"}
+                    </span>
+                    <span className={`rounded-full px-3 py-2 text-[0.68rem] font-black uppercase tracking-[0.14em] ${pendingTrip?.helper_start_confirmed ? "bg-emerald-500/18 text-white" : "bg-white/12 text-white/82"}`}>
+                      Helper {pendingTrip?.helper_start_confirmed ? "Confirmed" : "Pending"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <Panel>
+                <SectionLabel>What Happens Next</SectionLabel>
+                <h3 className="mt-2 text-3xl font-black">Trip is waiting on staff confirmation</h3>
+                <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
+                  The trip will become officially LIVE only after both you and the assigned helper confirm the start. GPS sharing and the route simulator stay locked until then.
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
+                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Assigned Helper</p>
+                    <p className="mt-2 text-lg font-black">{helperName}</p>
+                  </div>
+                  <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
+                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Deviation Mode</p>
+                    <p className="mt-2 text-lg font-black">{currentTrip?.deviation_mode ? "Enabled" : "Off"}</p>
+                  </div>
+                </div>
+                {!pendingTrip?.driver_start_confirmed && pendingTrip?.schedule_id ? (
+                  <ActionButton tone="primary" onClick={() => startScheduledTrip(pendingTrip.schedule_id)} disabled={busy} className="mt-5 w-full !py-4">
+                    <Icon name="play" className="h-4 w-4" />
+                    {busy ? "Confirming Trip" : "Confirm Trip Start"}
+                  </ActionButton>
+                ) : null}
+              </Panel>
+
+              <Panel className="bg-white/80">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <SectionLabel>GPS Management</SectionLabel>
+                    <p className="mt-2 text-2xl font-black">Locked until both confirm</p>
+                  </div>
+                  <Pill tone="warn">Pending</Pill>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
+                  As soon as the helper confirms from their MetroBus Helper screen, this trip will switch to LIVE here and unlock GPS Management, route progress, and the simulator.
+                </p>
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <button type="button" disabled className="rounded-full border border-[var(--drv-border)] bg-[var(--drv-soft)] px-5 py-4 text-sm font-black uppercase tracking-[0.14em] text-[var(--drv-muted)] opacity-70">
+                    GPS Management Locked
+                  </button>
+                  <button type="button" disabled className="rounded-full border border-[var(--drv-border)] bg-[var(--drv-soft)] px-5 py-4 text-sm font-black uppercase tracking-[0.14em] text-[var(--drv-muted)] opacity-70">
+                    Route Simulator Locked
+                  </button>
+                </div>
+              </Panel>
+            </div>
           ) : (
             <div className="mt-5 space-y-5 pb-40">
               <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-5 text-white shadow-[var(--drv-shadow-strong)]">
@@ -765,6 +855,19 @@ export default function DriverHome() {
                   </div>
                 </div>
               </div>
+
+              {activeTrip?.waiting_for_end_confirmation ? (
+                <Panel className="bg-[rgba(255,244,248,0.9)]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <SectionLabel>End Confirmation</SectionLabel>
+                      <p className="mt-2 text-2xl font-black">Trip end is waiting on the other staff member</p>
+                      <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">{pendingEndLabel}</p>
+                    </div>
+                    <Pill tone="warn">Ending</Pill>
+                  </div>
+                </Panel>
+              ) : null}
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
@@ -1165,8 +1268,8 @@ export default function DriverHome() {
 
         {activeTab === "active" && activeTrip ? (
           <div className="fixed bottom-[6.6rem] left-1/2 z-30 flex w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 gap-3">
-            <ActionButton tone="danger" onClick={endTrip} disabled={busy} className="flex-1 !py-4">
-              {busy ? "Ending Trip" : "End Trip"}
+            <ActionButton tone="danger" onClick={endTrip} disabled={busy || activeTrip?.driver_end_confirmed} className="flex-1 !py-4">
+              {busy ? "Sending..." : activeTrip?.helper_end_confirmed ? "Confirm End Trip" : activeTrip?.driver_end_confirmed ? "End Requested" : "Request End Trip"}
             </ActionButton>
             <ActionButton tone="danger" className="min-w-[8.2rem] !bg-[linear-gradient(135deg,#8a0f2f,#c11449)] !py-4">
               <Icon name="alert" />

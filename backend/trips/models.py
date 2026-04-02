@@ -42,6 +42,11 @@ class Trip(models.Model):
 
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOT_STARTED)
 
+    driver_start_confirmed_at = models.DateTimeField(null=True, blank=True)
+    helper_start_confirmed_at = models.DateTimeField(null=True, blank=True)
+    driver_end_confirmed_at = models.DateTimeField(null=True, blank=True)
+    helper_end_confirmed_at = models.DateTimeField(null=True, blank=True)
+
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 
@@ -54,6 +59,48 @@ class Trip(models.Model):
 
     def __str__(self):
         return f"{self.route.name} ({self.status})"
+
+    @property
+    def driver_start_confirmed(self):
+        return bool(self.driver_start_confirmed_at)
+
+    @property
+    def helper_start_confirmed(self):
+        return bool(self.helper_start_confirmed_at)
+
+    @property
+    def driver_end_confirmed(self):
+        return bool(self.driver_end_confirmed_at)
+
+    @property
+    def helper_end_confirmed(self):
+        return bool(self.helper_end_confirmed_at)
+
+    @property
+    def waiting_for_start_confirmation(self):
+        return self.status == self.Status.NOT_STARTED and not (self.driver_start_confirmed and self.helper_start_confirmed)
+
+    @property
+    def waiting_for_end_confirmation(self):
+        has_any_end_confirmation = self.driver_end_confirmed or self.helper_end_confirmed
+        return self.status == self.Status.LIVE and has_any_end_confirmation and not (self.driver_end_confirmed and self.helper_end_confirmed)
+
+    def missing_start_confirmations(self):
+        pending = []
+        if not self.driver_start_confirmed:
+            pending.append("driver")
+        if not self.helper_start_confirmed:
+            pending.append("helper")
+        return pending
+
+    def missing_end_confirmations(self):
+        pending = []
+        if not self.driver_end_confirmed:
+            pending.append("driver")
+        if not self.helper_end_confirmed:
+            pending.append("helper")
+        return pending
+
 class TripLocation(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="locations")
     lat = models.DecimalField(max_digits=9, decimal_places=6)

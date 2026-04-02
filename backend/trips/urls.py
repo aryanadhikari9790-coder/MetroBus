@@ -2,6 +2,7 @@ from django.urls import path
 from .views import (
     LiveTripsView,
     DriverDashboardView,
+    HelperDashboardView,
     AdminTripScheduleBuilderView,
     StartTripView,
     EndTripView,
@@ -17,6 +18,7 @@ from .views import (
 urlpatterns = [
     path("live/", LiveTripsView.as_view(), name="trips-live"),
     path("driver/dashboard/", DriverDashboardView.as_view(), name="driver-dashboard"),
+    path("helper/dashboard/", HelperDashboardView.as_view(), name="helper-dashboard"),
     path("admin/schedules/", AdminTripScheduleBuilderView.as_view(), name="admin-trip-schedules"),
     path("start/", StartTripView.as_view(), name="trips-start"),
     path("<int:trip_id>/", TripDetailView.as_view(), name="trip-detail"),

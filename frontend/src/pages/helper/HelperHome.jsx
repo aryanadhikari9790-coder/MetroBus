@@ -176,7 +176,7 @@ export default function HelperHome() {
   const { isDark } = useTheme();
   const theme = useMemo(() => (isDark ? DARK_THEME : LIGHT_THEME), [isDark]);
 
-  const [trips, setTrips] = useState([]);
+  const [dashboard, setDashboard] = useState(null);
   const [tripId, setTripId] = useState("");
   const [routeStops, setRouteStops] = useState([]);
   const [latestLocation, setLatestLocation] = useState(null);
@@ -195,7 +195,14 @@ export default function HelperHome() {
   const [err, setErr] = useState("");
   const [activeTab, setActiveTab] = useState("trip");
 
-  const selectedTrip = useMemo(() => trips.find((trip) => String(trip.id) === String(tripId)) || null, [trips, tripId]);
+  const activeTrip = dashboard?.active_trip ?? null;
+  const pendingTrip = dashboard?.pending_trip ?? null;
+  const schedules = dashboard?.schedules ?? [];
+  const trips = useMemo(() => (activeTrip ? [activeTrip] : []), [activeTrip]);
+  const selectedTrip = useMemo(() => trips.find((trip) => String(trip.id) === String(tripId)) || activeTrip || null, [trips, tripId, activeTrip]);
+  const currentTrip = selectedTrip || pendingTrip || null;
+  const tripAwaitingStart = Boolean(pendingTrip && !activeTrip);
+  const contextTripId = activeTrip?.id || pendingTrip?.id || "";
   const availableSeats = seats.filter((seat) => seat.available);
   const occupiedCount = seats.length - availableSeats.length;
   const selectedCount = selectedSeatIds.length;
@@ -232,34 +239,48 @@ export default function HelperHome() {
     return bestIndex;
   }, [livePoint, mapPolyline]);
   const upcomingStop = routeStops[Math.min(currentStopIndex + 1, routeStops.length - 1)] || null;
-  const routeTitle = selectedTrip?.route_name || "Route 42A";
+  const nextSchedule = schedules[0] ?? null;
+  const routeTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A";
   const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
-  const routeCondition = livePoint ? "Live movement on route" : "Waiting for GPS ping";
+  const routeCondition = livePoint ? "Live movement on route" : tripAwaitingStart ? "Waiting for both start confirmations" : "Waiting for GPS ping";
   const verifyPreview = verifiedPayment || { method: "Cash", status: "Pending", amount: 450 };
-  const helperTripHeroTitle = selectedTrip?.route_name || "Route 42A: Downtown Express";
+  const helperTripHeroTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A: Downtown Express";
   const vehicleCapacity = assignedBus?.capacity || seats.length || 32;
   const occupancyPercent = vehicleCapacity ? Math.round((occupiedCount / vehicleCapacity) * 100) : 56;
   const helperDashboardMarked = selectedCount || 2;
-  const tripStarted = formatTime(selectedTrip?.started_at) || "08:30 AM";
-  const assignedDriverName = selectedTrip?.driver_name || "Robert Fox";
-  const driverBadgeId = selectedTrip?.id ? `ID-MB-${selectedTrip.id}` : "ID-MB-782";
-  const helperHeaderStatus = selectedTrip ? "Trip Live" : trips.length ? `${trips.length} Live` : "Standby";
+  const tripStarted = formatTime(activeTrip?.started_at || nextSchedule?.scheduled_start_time) || "08:30 AM";
+  const assignedDriverName = currentTrip?.driver_name || nextSchedule?.driver_name || "Robert Fox";
+  const driverBadgeId = currentTrip?.id ? `ID-MB-${currentTrip.id}` : "ID-MB-782";
+  const helperHeaderStatus = activeTrip ? "Trip Live" : pendingTrip ? "Start Pending" : schedules.length ? "Standby" : "Standby";
+  const pendingStartLabel = pendingTrip?.driver_start_confirmed
+    ? "Driver confirmed. Your helper confirmation will make this trip LIVE."
+    : pendingTrip?.helper_start_confirmed
+      ? "You already confirmed. Waiting for the driver."
+      : "This trip is waiting for both staff confirmations.";
+  const pendingEndLabel = activeTrip?.driver_end_confirmed
+    ? "Driver confirmed the trip end. Your confirmation will complete it."
+    : activeTrip?.helper_end_confirmed
+      ? "You already confirmed the trip end. Waiting for the driver."
+      : "No end request has been sent yet.";
 
-  const loadTrips = useCallback(async ({ silent = false } = {}) => {
+  const loadDashboard = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingTrips(true);
     try {
-      const response = await api.get("/api/trips/live/");
-      setTrips(response.data);
+      const response = await api.get("/api/trips/helper/dashboard/");
+      setDashboard(response.data);
+      setLatestLocation(response.data.latest_location || null);
       setErr("");
       setTripId((current) => {
-        if (!current && response.data.length > 0) return String(response.data[0].id);
-        if (current && !response.data.some((trip) => String(trip.id) === String(current))) {
-          return response.data[0] ? String(response.data[0].id) : "";
+        const liveTripId = response.data.active_trip?.id ? String(response.data.active_trip.id) : "";
+        if (!liveTripId) return "";
+        if (!current) return liveTripId;
+        if (current !== liveTripId) {
+          return liveTripId;
         }
         return current;
       });
     } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to load live trips.");
+      setErr(error?.response?.data?.detail || "Unable to load helper dashboard.");
     } finally {
       if (!silent) setLoadingTrips(false);
     }
@@ -317,18 +338,18 @@ export default function HelperHome() {
   }, []);
 
   useEffect(() => {
-    loadTrips();
+    loadDashboard();
     loadAssignedBus();
-    const intervalId = setInterval(() => loadTrips({ silent: true }), 20000);
+    const intervalId = setInterval(() => loadDashboard({ silent: true }), 3000);
     return () => clearInterval(intervalId);
-  }, [loadTrips, loadAssignedBus]);
+  }, [loadDashboard, loadAssignedBus]);
 
   useEffect(() => {
-    loadTripContext(tripId);
-    if (!tripId) return undefined;
-    const intervalId = setInterval(() => loadTripContext(tripId), 15000);
+    loadTripContext(contextTripId);
+    if (!contextTripId) return undefined;
+    const intervalId = setInterval(() => loadTripContext(contextTripId), 15000);
     return () => clearInterval(intervalId);
-  }, [tripId, loadTripContext]);
+  }, [contextTripId, loadTripContext]);
 
   useEffect(() => {
     if (routeStops.length < 2) {
@@ -379,6 +400,59 @@ export default function HelperHome() {
     }
   };
 
+  const runTripAction = async (requestFn, fallbackMessage) => {
+    setErr("");
+    setMsg("");
+    try {
+      const response = await requestFn();
+      setMsg(response?.data?.message || fallbackMessage);
+      await loadDashboard({ silent: true });
+      return response;
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Trip action failed.");
+      return null;
+    }
+  };
+
+  const requestScheduledStart = async (scheduleId) => {
+    const response = await runTripAction(
+      () => api.post("/api/trips/start/", { schedule_id: scheduleId }),
+      "Trip start confirmation sent.",
+    );
+    if (response?.data?.trip?.status === "LIVE") {
+      setTripId(String(response.data.trip.id));
+      setActiveTab("boarding");
+    } else {
+      setActiveTab("trip");
+    }
+  };
+
+  const confirmPendingStart = async () => {
+    if (!pendingTrip?.schedule_id) {
+      setErr("There is no pending scheduled trip to confirm.");
+      return;
+    }
+    const response = await runTripAction(
+      () => api.post("/api/trips/start/", { schedule_id: pendingTrip.schedule_id }),
+      "Trip start confirmation sent.",
+    );
+    if (response?.data?.trip?.status === "LIVE") {
+      setTripId(String(response.data.trip.id));
+      setActiveTab("boarding");
+    }
+  };
+
+  const requestTripEnd = async () => {
+    if (!activeTrip?.id) {
+      setErr("There is no LIVE trip to end right now.");
+      return;
+    }
+    await runTripAction(
+      () => api.post(`/api/trips/${activeTrip.id}/end/`),
+      "Trip end confirmation sent.",
+    );
+  };
+
   const verifyCash = async () => {
     if (!verifyBookingId.trim()) {
       setErr("Enter a booking ID.");
@@ -420,7 +494,7 @@ export default function HelperHome() {
       <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[var(--hlp-header)] px-4 py-4 backdrop-blur-xl">
         <div className={`${APP_SHELL_CLASS} flex items-center justify-between gap-3`}>
           <div className="flex items-center gap-3">
-            <HeaderButton onClick={() => loadTrips()}>
+            <HeaderButton onClick={() => loadDashboard()}>
               <Icon name="refresh" />
             </HeaderButton>
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--hlp-shadow)]">
@@ -432,7 +506,7 @@ export default function HelperHome() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Chip tone={selectedTrip ? "live" : "soft"} className="px-3 py-2">
+            <Chip tone={activeTrip ? "live" : pendingTrip ? "warn" : "soft"} className="px-3 py-2">
               {helperHeaderStatus}
             </Chip>
             <HeaderButton onClick={handleLogout}>
@@ -450,17 +524,17 @@ export default function HelperHome() {
           <section className="relative overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
             <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
             <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
-            <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{selectedTrip ? "LIVE\nSUPPORT" : "READY ON\nSHIFT"}</h1>
+            <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "LIVE\nSUPPORT" : pendingTrip ? "START\nPENDING" : "READY ON\nSHIFT"}</h1>
             <p className="mt-4 text-base font-medium text-white/84">
-              {selectedTrip ? `${selectedTrip.route_name} is ready for boarding, payment checks, and route support.` : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
+              {activeTrip ? `${activeTrip.route_name} is ready for boarding, payment checks, and route support.` : pendingTrip ? pendingStartLabel : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
             </p>
             <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
               <div className="flex items-center gap-4">
                 <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
                 <div>
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/74">Assigned Bus</p>
-                  <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || selectedTrip?.bus_plate || "--"}</p>
-                  <p className="mt-1 text-sm text-white/78">{assignedBus?.capacity || "--"} seats - Driver: {selectedTrip?.driver_name || assignedBus?.driver_name || "--"}</p>
+                  <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || currentTrip?.bus_plate || nextSchedule?.bus_plate || "--"}</p>
+                  <p className="mt-1 text-sm text-white/78">{assignedBus?.capacity || "--"} seats - Driver: {currentTrip?.driver_name || nextSchedule?.driver_name || assignedBus?.driver_name || "--"}</p>
                 </div>
               </div>
             </div>
@@ -481,15 +555,15 @@ export default function HelperHome() {
               </div>
 
             <div className="max-w-[15rem]">
-              <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setVerifiedPayment(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: "No live trips available" }]} />
+              <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setVerifiedPayment(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: tripAwaitingStart ? "Trip is waiting for driver/helper confirmation" : "No live trips available" }]} disabled={!trips.length} />
             </div>
 
             <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]">
-              <Chip tone="dark" className="bg-white/18">Active Trip</Chip>
+              <Chip tone="dark" className="bg-white/18">{activeTrip ? "Active Trip" : pendingTrip ? "Start Pending" : "Shift Ready"}</Chip>
               <h3 className="mt-6 text-[3rem] font-black leading-[0.92]">{helperTripHeroTitle}</h3>
               <div className="mt-6 flex flex-wrap gap-3">
-                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">Started {tripStarted}</span>
-                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">On Time</span>
+                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? `Started ${tripStarted}` : nextSchedule ? `Scheduled ${formatTime(nextSchedule.scheduled_start_time)}` : "Waiting for trip"}</span>
+                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? "On Time" : pendingTrip ? "Confirm Start" : "Standby"}</span>
               </div>
               <div className="mt-6 rounded-[1.8rem] border border-white/18 bg-white/10 p-4">
                 <div className="flex items-center gap-4">
@@ -501,7 +575,46 @@ export default function HelperHome() {
                   </div>
                 </div>
               </div>
+              <div className="mt-5 space-y-3">
+                {tripAwaitingStart ? (
+                  pendingTrip?.helper_start_confirmed ? (
+                    <div className="rounded-[1.6rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
+                      {pendingStartLabel}
+                    </div>
+                  ) : (
+                    <PrimaryButton tone="primary" onClick={confirmPendingStart} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
+                      Confirm Trip Start
+                      <Icon name="shield" className="h-5 w-5" />
+                    </PrimaryButton>
+                  )
+                ) : null}
+                {!currentTrip && nextSchedule ? (
+                  <PrimaryButton tone="primary" onClick={() => requestScheduledStart(nextSchedule.id)} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
+                    Start Scheduled Trip
+                    <Icon name="bus" className="h-5 w-5" />
+                  </PrimaryButton>
+                ) : null}
+                {activeTrip ? (
+                  <PrimaryButton tone={activeTrip.helper_end_confirmed ? "ghost" : "danger"} onClick={requestTripEnd} disabled={activeTrip.helper_end_confirmed} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
+                    {activeTrip.driver_end_confirmed ? "Confirm End Trip" : activeTrip.helper_end_confirmed ? "End Requested" : "Request End Trip"}
+                    <Icon name="alert" className="h-5 w-5" />
+                  </PrimaryButton>
+                ) : null}
+              </div>
             </SurfaceCard>
+
+            {activeTrip?.waiting_for_end_confirmation ? (
+              <SurfaceCard className="bg-[rgba(255,244,248,0.92)]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <SectionLabel>End Confirmation</SectionLabel>
+                    <h3 className="mt-2 text-2xl font-black">Trip end is waiting on the other staff member</h3>
+                    <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">{pendingEndLabel}</p>
+                  </div>
+                  <Chip tone="warn">Ending</Chip>
+                </div>
+              </SurfaceCard>
+            ) : null}
 
             <div className="grid grid-cols-2 gap-4">
               <SurfaceCard className="bg-[rgba(247,224,249,0.84)]">
@@ -529,7 +642,7 @@ export default function HelperHome() {
                   <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)]"><Icon name="bus" /></div>
                   <div>
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Vehicle</p>
-                    <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || selectedTrip?.bus_plate || "BA 2 PA 4567"}</p>
+                    <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || currentTrip?.bus_plate || "BA 2 PA 4567"}</p>
                     <p className="mt-1 text-sm text-[var(--hlp-muted)]">Fleet Number: 88-X</p>
                   </div>
                 </div>
@@ -556,6 +669,15 @@ export default function HelperHome() {
 
         {activeTab === "boarding" ? (
           <div className="mt-5 space-y-5">
+            {!activeTrip ? (
+              <SurfaceCard className="bg-[rgba(255,250,255,0.92)]">
+                <SectionLabel>Boarding Locked</SectionLabel>
+                <p className="mt-2 text-2xl font-black">{tripAwaitingStart ? "Waiting for both trip confirmations" : "No LIVE trip yet"}</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">
+                  {tripAwaitingStart ? pendingStartLabel : "Seat marking and offline boarding unlock as soon as the assigned trip becomes LIVE."}
+                </p>
+              </SurfaceCard>
+            ) : null}
             <div className="flex gap-2 overflow-x-auto pb-1">
               {terminalChips.map((chip, index) => (
                 <button key={`${chip.label}-${index}`} type="button" onClick={() => chip.value && setFromOrder(chip.value)} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
@@ -663,6 +785,15 @@ export default function HelperHome() {
                 <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeDestination}</p>
               </div>
             </div>
+            {!activeTrip && tripAwaitingStart ? (
+              <SurfaceCard className="bg-[rgba(255,250,255,0.92)]">
+                <SectionLabel>Route Status</SectionLabel>
+                <p className="mt-2 text-2xl font-black">Trip is not LIVE yet</p>
+                <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">
+                  {pendingStartLabel}
+                </p>
+              </SurfaceCard>
+            ) : null}
             <SurfaceCard>
               <div className="space-y-0">
                 {routeStops.length === 0 ? <p className="py-2 text-sm text-[var(--hlp-muted)]">No route stops loaded for this trip yet.</p> : routeStops.map((stop, index) => {
@@ -682,7 +813,7 @@ export default function HelperHome() {
                             <p className={`text-2xl font-black ${isCurrent ? "text-[var(--hlp-purple)]" : ""}`}>{stop.stop?.name || "--"}</p>
                             <p className="mt-1 text-[0.74rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">{isCurrent ? "Current stop" : isFinal ? "Final destination" : "Upcoming stop"}</p>
                           </div>
-                          <p className="text-lg font-black text-[var(--hlp-text)]">{index === currentStopIndex ? formatTime(latestLocation?.recorded_at || selectedTrip?.started_at) : `${9 + index}:${index === 0 ? "10" : `${index}5`}`}</p>
+                          <p className="text-lg font-black text-[var(--hlp-text)]">{index === currentStopIndex ? formatTime(latestLocation?.recorded_at || activeTrip?.started_at || nextSchedule?.scheduled_start_time) : `${9 + index}:${index === 0 ? "10" : `${index}5`}`}</p>
                         </div>
                         {isCurrent ? <div className="mt-3 rounded-[1.4rem] border border-[rgba(140,18,235,0.25)] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium text-[var(--hlp-plum)]">Boarding support is active here. Next movement is toward {upcomingStop?.stop?.name || "the next stop"}.</div> : null}
                       </div>
@@ -699,7 +830,7 @@ export default function HelperHome() {
               <p className="mt-6 text-sm font-medium text-white/76">Registered user</p>
               <p className="mt-1 text-3xl font-black">Morning Commute</p>
               <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/18 pt-4 text-sm font-semibold text-white/86">
-                <span>Valid until {formatTime(selectedTrip?.started_at)}</span>
+                <span>Valid until {formatTime(activeTrip?.started_at || nextSchedule?.scheduled_start_time)}</span>
                 <span className="text-lg font-black">{">"}</span>
               </div>
             </SurfaceCard>

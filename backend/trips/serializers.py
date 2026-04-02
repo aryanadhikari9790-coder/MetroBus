@@ -32,11 +32,27 @@ class TripSerializer(serializers.ModelSerializer):
     bus_plate = serializers.CharField(source="bus.plate_number", read_only=True)
     helper_name = serializers.CharField(source="helper.full_name", read_only=True)
     driver_name = serializers.CharField(source="driver.full_name", read_only=True)
+    schedule_id = serializers.IntegerField(source="schedule.id", read_only=True, allow_null=True)
+    driver_start_confirmed = serializers.BooleanField(read_only=True)
+    helper_start_confirmed = serializers.BooleanField(read_only=True)
+    driver_end_confirmed = serializers.BooleanField(read_only=True)
+    helper_end_confirmed = serializers.BooleanField(read_only=True)
+    waiting_for_start_confirmation = serializers.BooleanField(read_only=True)
+    waiting_for_end_confirmation = serializers.BooleanField(read_only=True)
+    missing_start_confirmations = serializers.SerializerMethodField()
+    missing_end_confirmations = serializers.SerializerMethodField()
+
+    def get_missing_start_confirmations(self, obj):
+        return obj.missing_start_confirmations()
+
+    def get_missing_end_confirmations(self, obj):
+        return obj.missing_end_confirmations()
 
     class Meta:
         model = Trip
         fields = (
             "id",
+            "schedule_id",
             "route",
             "route_name",
             "bus",
@@ -46,6 +62,14 @@ class TripSerializer(serializers.ModelSerializer):
             "helper",
             "helper_name",
             "status",
+            "driver_start_confirmed",
+            "helper_start_confirmed",
+            "driver_end_confirmed",
+            "helper_end_confirmed",
+            "waiting_for_start_confirmation",
+            "waiting_for_end_confirmation",
+            "missing_start_confirmations",
+            "missing_end_confirmations",
             "started_at",
             "ended_at",
             "deviation_mode",
