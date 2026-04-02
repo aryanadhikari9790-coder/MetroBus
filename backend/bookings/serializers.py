@@ -48,6 +48,7 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     ticket_payload = serializers.CharField(read_only=True)
     ticket_qr_svg = serializers.SerializerMethodField()
     payment_requested_by_name = serializers.CharField(source="payment_requested_by.full_name", read_only=True)
+    accepted_by_helper_name = serializers.CharField(source="accepted_by_helper.full_name", read_only=True)
     needs_payment_selection = serializers.SerializerMethodField()
     payment_pending_verification = serializers.SerializerMethodField()
 
@@ -72,6 +73,8 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
             "discount_applied_amount",
             "payment_requested_at",
             "payment_requested_by_name",
+            "accepted_by_helper_at",
+            "accepted_by_helper_name",
             "payment_status",
             "payment_method",
             "payment",
@@ -148,6 +151,7 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
     started_at = serializers.DateTimeField(source="trip.started_at", read_only=True)
     ended_at = serializers.DateTimeField(source="trip.ended_at", read_only=True)
     payment_requested_by_name = serializers.CharField(source="payment_requested_by.full_name", read_only=True)
+    accepted_by_helper_name = serializers.CharField(source="accepted_by_helper.full_name", read_only=True)
     needs_payment_selection = serializers.SerializerMethodField()
     payment_pending_verification = serializers.SerializerMethodField()
 
@@ -169,6 +173,8 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
             "trip_status",
             "payment_requested_at",
             "payment_requested_by_name",
+            "accepted_by_helper_at",
+            "accepted_by_helper_name",
             "payment_status",
             "payment_method",
             "payment",
@@ -263,11 +269,13 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     destination_stop_name = serializers.SerializerMethodField()
     seat_labels = serializers.SerializerMethodField()
     ticket_payload = serializers.CharField(read_only=True)
+    can_accept = serializers.SerializerMethodField()
     can_verify_cash = serializers.SerializerMethodField()
     can_board = serializers.SerializerMethodField()
     can_complete = serializers.SerializerMethodField()
     can_request_payment = serializers.SerializerMethodField()
     payment_requested_by_name = serializers.CharField(source="payment_requested_by.full_name", read_only=True)
+    accepted_by_helper_name = serializers.CharField(source="accepted_by_helper.full_name", read_only=True)
 
     class Meta:
         model = Booking
@@ -286,7 +294,10 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
             "fare_total",
             "payment_requested_at",
             "payment_requested_by_name",
+            "accepted_by_helper_at",
+            "accepted_by_helper_name",
             "payment",
+            "can_accept",
             "checked_in_at",
             "completed_at",
             "can_request_payment",
@@ -307,14 +318,22 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     def get_seat_labels(self, obj):
         return [seat.seat.seat_no for seat in obj.booking_seats.all()]
 
+    def get_can_accept(self, obj):
+        return bool(
+            obj.status == Booking.Status.CONFIRMED
+            and not obj.completed_at
+            and not obj.accepted_by_helper_at
+        )
+
     def get_can_verify_cash(self, obj):
         payment = getattr(obj, "payment", None)
-        return bool(payment and payment.method == "CASH" and payment.status == "PENDING")
+        return bool(obj.accepted_by_helper_at and payment and payment.method == "CASH" and payment.status == "PENDING")
 
     def get_can_board(self, obj):
         payment = getattr(obj, "payment", None)
         return bool(
             obj.status == Booking.Status.CONFIRMED
+            and obj.accepted_by_helper_at
             and not obj.checked_in_at
             and payment
             and payment.status == "SUCCESS"
@@ -323,6 +342,7 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     def get_can_complete(self, obj):
         return bool(
             obj.status == Booking.Status.CONFIRMED
+            and obj.accepted_by_helper_at
             and obj.checked_in_at
             and not obj.completed_at
         )
@@ -331,6 +351,7 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
         payment = getattr(obj, "payment", None)
         return bool(
             obj.status == Booking.Status.CONFIRMED
+            and obj.accepted_by_helper_at
             and not obj.completed_at
             and (
                 not payment

@@ -34,6 +34,14 @@ class Booking(models.Model):
         blank=True,
         related_name="payment_requests_sent",
     )
+    accepted_by_helper_at = models.DateTimeField(null=True, blank=True)
+    accepted_by_helper = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="accepted_bookings",
+    )
     checked_in_at = models.DateTimeField(null=True, blank=True)
     checked_in_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

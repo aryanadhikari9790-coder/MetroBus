@@ -175,6 +175,7 @@ def _serialize_trip_passenger_requests(trip, route_stops):
 
 def _serialize_helper_booking_groups(trip):
     summary = {
+        "needs_acceptance_count": 0,
         "awaiting_payment_count": 0,
         "ready_to_board_count": 0,
         "onboard_count": 0,
@@ -182,6 +183,7 @@ def _serialize_helper_booking_groups(trip):
     }
     empty_payload = {
         "summary": summary,
+        "needs_acceptance": [],
         "awaiting_payment": [],
         "ready_to_board": [],
         "onboard": [],
@@ -198,6 +200,7 @@ def _serialize_helper_booking_groups(trip):
         .order_by("from_stop_order", "created_at")
     )
 
+    needs_acceptance = []
     awaiting_payment = []
     ready_to_board = []
     onboard = []
@@ -209,6 +212,10 @@ def _serialize_helper_booking_groups(trip):
 
         if booking.status == Booking.Status.COMPLETED or booking.completed_at:
             completed_recent.append(serialized)
+            continue
+
+        if not booking.accepted_by_helper_at:
+            needs_acceptance.append(serialized)
             continue
 
         if booking.checked_in_at and not booking.completed_at:
@@ -223,6 +230,7 @@ def _serialize_helper_booking_groups(trip):
 
     summary.update(
         {
+            "needs_acceptance_count": len(needs_acceptance),
             "awaiting_payment_count": len(awaiting_payment),
             "ready_to_board_count": len(ready_to_board),
             "onboard_count": len(onboard),
@@ -232,6 +240,7 @@ def _serialize_helper_booking_groups(trip):
 
     return {
         "summary": summary,
+        "needs_acceptance": needs_acceptance[:8],
         "awaiting_payment": awaiting_payment[:8],
         "ready_to_board": ready_to_board[:8],
         "onboard": onboard[:8],

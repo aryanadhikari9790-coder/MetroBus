@@ -289,6 +289,8 @@ class VerifyCashPaymentView(APIView):
 
         if payment.method != Payment.Method.CASH:
             return Response({"detail": "Only CASH payments can be verified here"}, status=400)
+        if getattr(request.user, "role", None) == "HELPER" and not booking.accepted_by_helper_at:
+            return Response({"detail": "Accept the passenger ride details before verifying cash."}, status=400)
 
         payment.status = Payment.Status.SUCCESS
         payment.verified_by = request.user
@@ -296,7 +298,7 @@ class VerifyCashPaymentView(APIView):
         payment.save(update_fields=["status", "verified_by", "verified_at"])
 
         booking = (
-            Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment")
+            Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by", "accepted_by_helper")
             .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
             .filter(id=booking.id)
             .first()

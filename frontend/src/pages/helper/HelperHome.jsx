@@ -268,6 +268,7 @@ export default function HelperHome() {
     : activeTrip?.helper_end_confirmed
       ? "You already confirmed the trip end. Waiting for the driver."
       : "No end request has been sent yet.";
+  const needsAcceptanceBookings = helperBookingGroups.needs_acceptance ?? [];
   const awaitingPaymentBookings = helperBookingGroups.awaiting_payment ?? [];
   const readyToBoardBookings = helperBookingGroups.ready_to_board ?? [];
   const onboardBookings = helperBookingGroups.onboard ?? [];
@@ -519,6 +520,27 @@ export default function HelperHome() {
       setMsg(response.data.message || "Payment request sent to the passenger.");
     } catch (error) {
       setErr(error?.response?.data?.detail || "Unable to request payment.");
+    } finally {
+      setVerifyBusy(false);
+    }
+  };
+
+  const acceptPassengerRide = async (bookingOverride) => {
+    const booking = bookingOverride || ticketLookup;
+    if (!booking?.id) {
+      setErr("Load a ticket before accepting the passenger ride.");
+      return;
+    }
+    setVerifyBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/bookings/${booking.id}/accept/`);
+      setTicketLookup(response.data.booking);
+      setMsg(response.data.message || "Passenger ride accepted.");
+      await loadDashboard({ silent: true });
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to accept the passenger ride.");
     } finally {
       setVerifyBusy(false);
     }
@@ -957,6 +979,9 @@ export default function HelperHome() {
                   <p><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
                   <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
                   <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Ticket:</span> {ticketLookup.ticket_code}</p>
+                  {ticketLookup.accepted_by_helper_at ? (
+                    <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Accepted:</span> {ticketLookup.accepted_by_helper_name || "Helper"} at {formatTime(ticketLookup.accepted_by_helper_at)}</p>
+                  ) : null}
                   {ticketLookup.payment_requested_at ? (
                     <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Payment Request:</span> Sent {formatTime(ticketLookup.payment_requested_at)}</p>
                   ) : null}
@@ -965,6 +990,10 @@ export default function HelperHome() {
             </SurfaceCard>
 
             <div className="grid gap-3 sm:grid-cols-2">
+              <PrimaryButton tone="ghost" onClick={acceptPassengerRide} disabled={verifyBusy || !ticketLookup?.can_accept} className="w-full !py-5 !text-base">
+                Accept Ride
+                <Icon name="shield" />
+              </PrimaryButton>
               <PrimaryButton tone="primary" onClick={requestPassengerPayment} disabled={verifyBusy || !ticketLookup?.can_request_payment} className="w-full !py-5 !text-base">
                 Request Payment
                 <Icon name="money" />
@@ -982,7 +1011,7 @@ export default function HelperHome() {
                 <Icon name="map" />
               </PrimaryButton>
             </div>
-            {(onboardBookings.length || readyToBoardBookings.length || awaitingPaymentBookings.length) ? (
+            {(needsAcceptanceBookings.length || onboardBookings.length || readyToBoardBookings.length || awaitingPaymentBookings.length) ? (
               <SurfaceCard className="rounded-[2.4rem]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -991,12 +1020,26 @@ export default function HelperHome() {
                     <p className="mt-2 text-sm leading-6 text-[var(--hlp-muted)]">Use these live cards to open tickets faster, confirm boarding, and finish rides when passengers get off.</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Chip tone="warn">{helperBookingSummary.needs_acceptance_count || 0} need acceptance</Chip>
                     <Chip tone="warn">{helperBookingSummary.awaiting_payment_count || 0} waiting payment</Chip>
                     <Chip tone="soft">{helperBookingSummary.ready_to_board_count || 0} ready to board</Chip>
                     <Chip tone="live">{helperBookingSummary.onboard_count || 0} onboard</Chip>
                   </div>
                 </div>
-                <div className="mt-5 grid gap-5 lg:grid-cols-3">
+                <div className="mt-5 grid gap-5 lg:grid-cols-2">
+                  <div className="space-y-3">
+                    <SectionLabel>Needs Acceptance</SectionLabel>
+                    {needsAcceptanceBookings.length ? needsAcceptanceBookings.slice(0, 3).map((booking) => (
+                      <div key={`accept-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
+                        <p className="text-lg font-black">{booking.passenger_name}</p>
+                        <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} • {booking.pickup_stop_name}</p>
+                        <div className="mt-4 flex gap-2">
+                          <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
+                          <PrimaryButton tone="primary" onClick={() => acceptPassengerRide(booking)} disabled={verifyBusy || !booking.can_accept} className="!flex-1 !px-4 !py-3 !text-sm">Accept Ride</PrimaryButton>
+                        </div>
+                      </div>
+                    )) : <div className="rounded-[1.6rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">All scanned passengers are already accepted.</div>}
+                  </div>
                   <div className="space-y-3">
                     <SectionLabel>Awaiting Payment</SectionLabel>
                     {awaitingPaymentBookings.length ? awaitingPaymentBookings.slice(0, 3).map((booking) => (
@@ -1022,7 +1065,7 @@ export default function HelperHome() {
                       </div>
                     )) : <div className="rounded-[1.6rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No paid passengers are waiting to board.</div>}
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-3 lg:col-span-2">
                     <SectionLabel>Onboard Passengers</SectionLabel>
                     {onboardBookings.length ? onboardBookings.slice(0, 4).map((booking) => (
                       <div key={`onboard-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
@@ -1061,7 +1104,7 @@ export default function HelperHome() {
                 </div>
               </SurfaceCard>
             ) : null}
-            <p className="text-center text-sm text-[var(--hlp-muted)]">Scan the QR, request passenger payment if needed, confirm cash when collected, then mark the rider boarded. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
+            <p className="text-center text-sm text-[var(--hlp-muted)]">Scan the QR, accept the passenger ride details, request or verify payment, then mark the rider boarded. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
             <div className="h-48 rounded-[2.6rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(244,232,247,0.42))] shadow-[var(--hlp-shadow)]" />
           </div>
         ) : null}

@@ -23,7 +23,7 @@ from .tickets import parse_ticket_reference
 
 def _booking_queryset():
     return (
-        Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by")
+        Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by", "accepted_by_helper")
         .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
     )
 
@@ -205,6 +205,36 @@ class HelperBookingLookupView(APIView):
         return Response({"booking": HelperBookingTicketSerializer(booking).data})
 
 
+class HelperAcceptBookingView(APIView):
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request, booking_id: int):
+        booking = _booking_queryset().filter(id=booking_id).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=404)
+        if not _can_manage_booking(request.user, booking):
+            return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
+        if booking.status == Booking.Status.COMPLETED:
+            return Response(
+                {"message": "This ride is already completed.", "booking": HelperBookingTicketSerializer(booking).data},
+                status=200,
+            )
+        if booking.accepted_by_helper_at:
+            return Response(
+                {"message": "Ride details already accepted by the helper.", "booking": HelperBookingTicketSerializer(booking).data},
+                status=200,
+            )
+
+        booking.accepted_by_helper_at = timezone.now()
+        booking.accepted_by_helper = request.user
+        booking.save(update_fields=["accepted_by_helper_at", "accepted_by_helper"])
+        booking = _booking_queryset().filter(id=booking.id).first()
+        return Response(
+            {"message": "Passenger ride accepted. You can now request payment or board the passenger when ready.", "booking": HelperBookingTicketSerializer(booking).data},
+            status=200,
+        )
+
+
 class HelperBoardBookingView(APIView):
     permission_classes = [IsAuthenticated, IsHelper]
 
@@ -219,6 +249,8 @@ class HelperBoardBookingView(APIView):
                 {"message": "This ride is already completed.", "booking": HelperBookingTicketSerializer(booking).data},
                 status=200,
             )
+        if not booking.accepted_by_helper_at:
+            return Response({"detail": "Accept the passenger ride details before boarding."}, status=400)
 
         payment = getattr(booking, "payment", None)
         if not payment:
@@ -249,6 +281,8 @@ class HelperRequestBookingPaymentView(APIView):
             return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
         if booking.status == Booking.Status.COMPLETED:
             return Response({"detail": "This ride is already completed."}, status=400)
+        if not booking.accepted_by_helper_at:
+            return Response({"detail": "Accept the passenger ride details before requesting payment."}, status=400)
 
         payment = getattr(booking, "payment", None)
         if payment and payment.status == "SUCCESS":
@@ -288,6 +322,8 @@ class HelperCompleteBookingView(APIView):
                 {"message": "Ride already completed and seat already released.", "booking": HelperBookingTicketSerializer(booking).data},
                 status=200,
             )
+        if not booking.accepted_by_helper_at:
+            return Response({"detail": "Accept the passenger ride details before completing the ride."}, status=400)
         if not booking.checked_in_at:
             return Response({"detail": "Passenger must be boarded before completing the ride."}, status=400)
 
