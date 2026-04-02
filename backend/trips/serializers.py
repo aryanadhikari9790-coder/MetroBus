@@ -85,9 +85,12 @@ class DriverStartOptionRouteSerializer(serializers.ModelSerializer):
 
 
 class DriverStartOptionBusSerializer(serializers.ModelSerializer):
+    driver_name = serializers.CharField(source="driver.full_name", read_only=True)
+    helper_name = serializers.CharField(source="helper.full_name", read_only=True)
+
     class Meta:
         model = Bus
-        fields = ("id", "plate_number", "capacity")
+        fields = ("id", "display_name", "plate_number", "capacity", "driver", "driver_name", "helper", "helper_name")
 
 
 class DriverStartOptionHelperSerializer(serializers.ModelSerializer):

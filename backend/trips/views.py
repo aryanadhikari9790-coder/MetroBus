@@ -408,6 +408,27 @@ class AdminTripScheduleBuilderView(APIView):
 
         if TripSchedule.objects.filter(
             bus=bus,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        ).exists():
+            return Response({"detail": "This bus already has a planned trip at that start time."}, status=400)
+
+        if TripSchedule.objects.filter(
+            driver=driver,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        ).exists():
+            return Response({"detail": "This driver already has a planned trip at that start time."}, status=400)
+
+        if TripSchedule.objects.filter(
+            helper=helper,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        ).exists():
+            return Response({"detail": "This helper already has a planned trip at that start time."}, status=400)
+
+        if TripSchedule.objects.filter(
+            bus=bus,
             driver=driver,
             helper=helper,
             scheduled_start_time=scheduled_start_time,

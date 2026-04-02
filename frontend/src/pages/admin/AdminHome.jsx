@@ -138,12 +138,18 @@ export default function AdminHome() {
     if (!sHelperId && schedOpts.helpers.length) setSHelperId(String(schedOpts.helpers[0].id));
     if (!sStartTime) { const d = new Date(Date.now() + 15 * 60000); setSStartTime(new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)); }
   }, [sBusId, sDriverId, sHelperId, sRouteId, sStartTime, schedOpts]);
+  useEffect(() => {
+    if (!selectedScheduleBus) return;
+    if (selectedScheduleBus.driver) setSDriverId(String(selectedScheduleBus.driver));
+    if (selectedScheduleBus.helper) setSHelperId(String(selectedScheduleBus.helper));
+  }, [selectedScheduleBus]);
 
   const handleLogout = () => { clearToken(); navigate("/auth/login"); };
 
   const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ;
   const paymentRows = useMemo(() => Object.entries(payments?.methods || {}).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [payments]);
   const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
+  const selectedScheduleBus = useMemo(() => schedOpts.buses.find(b => String(b.id) === String(sBusId)) || null, [sBusId, schedOpts.buses]);
   const selPts = useMemo(() => selectedStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)), [selectedStops]);
   const dispPts = roadPolyline.length > 1 ? roadPolyline : selPts;
   const mapPts  = useMemo(() => dispPts.length > 0 ? dispPts : builderStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)).slice(0, 12), [builderStops, dispPts]);
@@ -472,12 +478,20 @@ export default function AdminHome() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <SelectField label="Route" value={sRouteId} onChange={setSRouteId} t={t} options={schedOpts.routes.map(r => ({ value: r.id, label: r.name }))} />
-                  <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.plate_number} (${b.capacity})` }))} />
+                  <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} · ${b.plate_number}` }))} />
                   <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} t={t} options={schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))} />
                   <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} t={t} options={schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))} />
                 </div>
+                {selectedScheduleBus ? (
+                  <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
+                    <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Assigned Bus Snapshot</p>
+                    <p className={`mt-2 text-sm font-bold ${t.text}`}>{selectedScheduleBus.display_name || selectedScheduleBus.plate_number}</p>
+                    <p className={`mt-1 ${t.textSub}`}>{selectedScheduleBus.plate_number} · {selectedScheduleBus.capacity} seats</p>
+                    <p className={`mt-2 ${t.textSub}`}>Driver: {selectedScheduleBus.driver_name || "Not assigned"} · Helper: {selectedScheduleBus.helper_name || "Not assigned"}</p>
+                  </div>
+                ) : null}
                 <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} t={t} />
-                <div className={`rounded-xl border px-4 py-3 text-xs ${isDark ? "border-white/5 bg-white/5 text-slate-400" : "border-slate-200 bg-slate-50 text-slate-500"}`}>Schedules appear on the driver's dashboard so they can start assigned trips without manual setup.</div>
+                <div className={`rounded-xl border px-4 py-3 text-xs ${isDark ? "border-white/5 bg-white/5 text-slate-400" : "border-slate-200 bg-slate-50 text-slate-500"}`}>Schedules appear on the driver and helper dashboards so they can start assigned trips without manual setup. MetroBus now also blocks same-time conflicts for the same bus, driver, or helper.</div>
                 <Btn tone="primary" onClick={createSchedule} disabled={scheduleBusy} className="w-full !py-4">{scheduleBusy ? "Creatingâ€¦" : "Create Trip Schedule"}</Btn>
               </div>
             </GlassCard>
