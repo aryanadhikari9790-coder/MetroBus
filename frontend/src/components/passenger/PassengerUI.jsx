@@ -85,6 +85,8 @@ export function Icon({ name, className = "h-5 w-5" }) {
       return <svg {...common}><path d="M15 17 20 12 15 7" /><path d="M20 12H9" /><path d="M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" /></svg>;
     case "briefcase":
       return <svg {...common}><rect x="4" y="7" width="16" height="11" rx="2.5" /><path d="M9 7V5.7A1.7 1.7 0 0 1 10.7 4h2.6A1.7 1.7 0 0 1 15 5.7V7" /></svg>;
+    case "school":
+      return <svg {...common}><path d="M3 9 12 4l9 5-9 5-9-5Z" /><path d="M6 11.5V16c0 .9 2.7 2 6 2s6-1.1 6-2v-4.5" /><path d="M21 9v6" /></svg>;
     case "dumbbell":
       return <svg {...common}><path d="M4 9v6" /><path d="M7 8v8" /><path d="M17 8v8" /><path d="M20 9v6" /><path d="M7 12h10" /></svg>;
     case "pin":

@@ -24,6 +24,7 @@ export default function Register() {
   const [isCorporateEmployee, setIsCorporateEmployee] = useState(false);
   const [homeLocation, setHomeLocation] = useState({ label: "", lat: null, lng: null });
   const [officeLocation, setOfficeLocation] = useState({ label: "", lat: null, lng: null });
+  const [schoolLocation, setSchoolLocation] = useState({ label: "", lat: null, lng: null });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
@@ -67,6 +68,9 @@ export default function Register() {
         office_location_label: isCorporateEmployee ? officeLocation.label : "",
         office_lat: isCorporateEmployee ? officeLocation.lat : null,
         office_lng: isCorporateEmployee ? officeLocation.lng : null,
+        school_location_label: schoolLocation.label || "",
+        school_lat: schoolLocation.lat,
+        school_lng: schoolLocation.lng,
       });
       setOk("Passenger account created. Please log in with your phone number and password.");
       setTimeout(() => nav("/auth/login"), 900);
@@ -77,6 +81,7 @@ export default function Register() {
           data?.phone?.[0] ||
           data?.email?.[0] ||
           data?.office_location_label?.[0] ||
+          data?.school_location_label?.[0] ||
           data?.detail ||
           "Registration failed. Please review the form and try again."
       );
@@ -108,6 +113,7 @@ export default function Register() {
                   <li>Nepal mobile number in +977 or 98XXXXXXXX format.</li>
                   <li>Home location pinned by search or by tapping the map.</li>
                   <li>Office location too, if you travel as a corporate employee.</li>
+                  <li>Optional school location for daily student travel shortcuts.</li>
                 </ul>
               </div>
 
@@ -262,6 +268,19 @@ export default function Register() {
                       />
                     </div>
                   ) : null}
+                </section>
+
+                <section>
+                  <p className={`text-xs font-bold uppercase tracking-[0.25em] ${t.label}`}>3. Optional school location</p>
+                  <div className="mt-3">
+                    <LocationPicker
+                      label="School / college location"
+                      value={schoolLocation}
+                      onChange={setSchoolLocation}
+                      isDark={isDark}
+                      helperText="Add your school or college if you want a saved study route on the passenger dashboard."
+                    />
+                  </div>
                 </section>
 
                 <button

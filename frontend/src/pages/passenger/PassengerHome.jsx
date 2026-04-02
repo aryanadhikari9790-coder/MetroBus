@@ -120,6 +120,16 @@ export default function PassengerHome() {
       return !best || distance < best.distance ? { stop, distance } : best;
     }, null)?.stop || null;
   }, [stops, user?.office_lat, user?.office_lng]);
+  const schoolStopMatch = useMemo(() => {
+    const schoolPoint = toPoint(user?.school_lat, user?.school_lng);
+    if (!schoolPoint || !stops.length) return null;
+    return stops.reduce((best, stop) => {
+      const stopPoint = toPoint(stop.lat, stop.lng);
+      if (!stopPoint) return best;
+      const distance = distKm(schoolPoint, stopPoint);
+      return !best || distance < best.distance ? { stop, distance } : best;
+    }, null)?.stop || null;
+  }, [stops, user?.school_lat, user?.school_lng]);
   const liveTripsById = useMemo(() => {
     const index = new Map();
     routeFeed.forEach((trip) => {
@@ -478,7 +488,22 @@ export default function PassengerHome() {
       setMsg(`Destination set to ${officeStopMatch.name}, the nearest stop to your saved office.`);
       return;
     }
-    if (type === "gym") setDropStopId(String(stops[2]?.id || stops[1]?.id || ""));
+    if (type === "school") {
+      if (!schoolStopMatch) {
+        setErr("Your saved school location is not available yet. Please add it during registration or choose a destination on the map.");
+        return;
+      }
+      if (!pickupStopId) {
+        if (homeStopMatch && String(homeStopMatch.id) !== String(schoolStopMatch.id)) setPickupStopId(String(homeStopMatch.id));
+        else if (officeStopMatch && String(officeStopMatch.id) !== String(schoolStopMatch.id)) setPickupStopId(String(officeStopMatch.id));
+        else {
+          const fallbackStop = stops.find((stop) => String(stop.id) !== String(schoolStopMatch.id));
+          if (fallbackStop) setPickupStopId(String(fallbackStop.id));
+        }
+      }
+      setDropStopId(String(schoolStopMatch.id));
+      setMsg(`Destination set to ${schoolStopMatch.name}, the nearest stop to your saved school.`);
+    }
   };
   const acceptMatchedTrip = (tripId) => {
     setSelectedTripId(String(tripId));
@@ -714,7 +739,7 @@ export default function PassengerHome() {
               <div className="flex gap-4 overflow-x-auto pb-2">
                 <QuickRouteCard icon="home" label="Home" caption={homeStopMatch?.name || user?.home_location_label || "Saved pickup"} onClick={() => applyQuickRoute("home")} />
                 <QuickRouteCard icon="briefcase" label="Work" caption={officeStopMatch?.name || user?.office_location_label || "Office route"} onClick={() => applyQuickRoute("work")} />
-                <QuickRouteCard icon="dumbbell" label="Gym" caption={stops[2]?.name || "Popular route"} onClick={() => applyQuickRoute("gym")} />
+                <QuickRouteCard icon="school" label="School" caption={schoolStopMatch?.name || user?.school_location_label || "Add school route"} onClick={() => applyQuickRoute("school")} />
               </div>
             </section>
 

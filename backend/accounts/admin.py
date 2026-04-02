@@ -27,6 +27,9 @@ class UserAdmin(DjangoUserAdmin):
                     "office_location_label",
                     "office_lat",
                     "office_lng",
+                    "school_location_label",
+                    "school_lat",
+                    "school_lng",
                 )
             },
         ),

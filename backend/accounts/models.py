@@ -55,6 +55,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     office_location_label = models.CharField(max_length=255, blank=True, default="")
     office_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     office_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    school_location_label = models.CharField(max_length=255, blank=True, default="")
+    school_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    school_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.PASSENGER)
 

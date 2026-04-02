@@ -106,6 +106,9 @@ class RegisterSerializer(serializers.ModelSerializer):
     office_location_label = serializers.CharField(max_length=255, required=False, allow_blank=True)
     office_lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
     office_lng = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
+    school_location_label = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    school_lat = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
+    school_lng = serializers.DecimalField(max_digits=9, decimal_places=6, required=False, allow_null=True)
 
     class Meta:
         model = User
@@ -124,6 +127,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             "office_location_label",
             "office_lat",
             "office_lng",
+            "school_location_label",
+            "school_lat",
+            "school_lng",
         )
 
     def validate_phone(self, value):
@@ -162,6 +168,17 @@ class RegisterSerializer(serializers.ModelSerializer):
             attrs["office_location_label"] = ""
             attrs["office_lat"] = None
             attrs["office_lng"] = None
+
+        school_fields = ("school_location_label", "school_lat", "school_lng")
+        school_values = [attrs.get(field) for field in school_fields]
+        if any(value not in ("", None) for value in school_values) and any(value in ("", None) for value in school_values):
+            raise serializers.ValidationError(
+                {"school_location_label": "School location needs a label and map point together."}
+            )
+        if all(value in ("", None) for value in school_values):
+            attrs["school_location_label"] = ""
+            attrs["school_lat"] = None
+            attrs["school_lng"] = None
 
         otp = (
             PhoneOTP.objects.filter(
@@ -207,6 +224,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             office_location_label=validated_data.get("office_location_label", ""),
             office_lat=validated_data.get("office_lat"),
             office_lng=validated_data.get("office_lng"),
+            school_location_label=validated_data.get("school_location_label", ""),
+            school_lat=validated_data.get("school_lat"),
+            school_lng=validated_data.get("school_lng"),
         )
         otp.consume()
         return user
@@ -246,6 +266,9 @@ class MeSerializer(serializers.ModelSerializer):
             "office_location_label",
             "office_lat",
             "office_lng",
+            "school_location_label",
+            "school_lat",
+            "school_lng",
             "created_at",
         )
 
