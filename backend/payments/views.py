@@ -27,9 +27,26 @@ from .wallets import (
 )
 
 
-def frontend_url(path: str):
-    base = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173")
-    return f"{base}{path}"
+def frontend_base_url(request=None):
+    if request is not None:
+        origin = (request.headers.get("Origin") or "").strip()
+        if origin:
+            return origin.rstrip("/")
+
+    configured = os.getenv("FRONTEND_URL", "").strip()
+    if configured:
+        return configured.rstrip("/")
+
+    if request is not None:
+        scheme = "https" if request.is_secure() else "http"
+        host = request.get_host().split(":")[0]
+        return f"{scheme}://{host}:5173"
+
+    return "http://127.0.0.1:5173"
+
+
+def frontend_url(path: str, request=None):
+    return f"{frontend_base_url(request)}{path}"
 
 
 def _wallet_for(user):
@@ -197,7 +214,7 @@ class CreatePaymentView(APIView):
             amount_paisa = int(Decimal(payment.amount) * 100)
 
             return_url = request.build_absolute_uri(f"/api/payments/khalti/return/{payment.id}/")
-            website_url = os.getenv("FRONTEND_URL", "http://127.0.0.1:5173")
+            website_url = frontend_base_url(request)
 
             customer = {
                 "name": getattr(request.user, "full_name", "Passenger"),
@@ -321,7 +338,7 @@ class EsewaSuccessCallback(APIView):
     def get(self, request, payment_id: int):
         payment = Payment.objects.filter(id=payment_id, method=Payment.Method.ESEWA).select_related("booking").first()
         if not payment:
-            return redirect(frontend_url("/payment/result?status=failed&reason=payment_not_found"))
+            return redirect(frontend_url("/payment/result?status=failed&reason=payment_not_found", request))
 
         txn_uuid = payment.reference
         try:
@@ -334,11 +351,11 @@ class EsewaSuccessCallback(APIView):
             payment.status = Payment.Status.SUCCESS
             payment.verified_at = timezone.now()
             payment.save(update_fields=["status", "verified_at"])
-            return redirect(frontend_url(f"/payment/result?status=success&method=esewa&booking={payment.booking.id}"))
+            return redirect(frontend_url(f"/payment/result?status=success&method=esewa&booking={payment.booking.id}", request))
 
         payment.status = Payment.Status.PENDING
         payment.save(update_fields=["status"])
-        return redirect(frontend_url(f"/payment/result?status=pending&method=esewa&booking={payment.booking.id}"))
+        return redirect(frontend_url(f"/payment/result?status=pending&method=esewa&booking={payment.booking.id}", request))
 
 
 class EsewaFailureCallback(APIView):
@@ -347,11 +364,11 @@ class EsewaFailureCallback(APIView):
     def get(self, request, payment_id: int):
         payment = Payment.objects.filter(id=payment_id, method=Payment.Method.ESEWA).select_related("booking").first()
         if not payment:
-            return redirect(frontend_url("/payment/result?status=failed&reason=payment_not_found"))
+            return redirect(frontend_url("/payment/result?status=failed&reason=payment_not_found", request))
 
         payment.status = Payment.Status.FAILED
         payment.save(update_fields=["status"])
-        return redirect(frontend_url(f"/payment/result?status=failed&method=esewa&booking={payment.booking.id}"))
+        return redirect(frontend_url(f"/payment/result?status=failed&method=esewa&booking={payment.booking.id}", request))
 
 
 # =========================
@@ -363,7 +380,7 @@ class KhaltiReturnCallback(APIView):
     def get(self, request, payment_id: int):
         payment = Payment.objects.filter(id=payment_id, method=Payment.Method.KHALTI).select_related("booking").first()
         if not payment:
-            return redirect(frontend_url("/payment/result?status=failed&reason=payment_not_found"))
+            return redirect(frontend_url("/payment/result?status=failed&reason=payment_not_found", request))
 
         pidx = request.GET.get("pidx") or payment.reference
         try:
@@ -377,15 +394,15 @@ class KhaltiReturnCallback(APIView):
             payment.reference = pidx
             payment.verified_at = timezone.now()
             payment.save(update_fields=["status", "reference", "verified_at"])
-            return redirect(frontend_url(f"/payment/result?status=success&method=khalti&booking={payment.booking.id}"))
+            return redirect(frontend_url(f"/payment/result?status=success&method=khalti&booking={payment.booking.id}", request))
 
         if status_val in ["Initiated", "Pending"]:
             payment.status = Payment.Status.PENDING
             payment.reference = pidx
             payment.save(update_fields=["status", "reference"])
-            return redirect(frontend_url(f"/payment/result?status=pending&method=khalti&booking={payment.booking.id}"))
+            return redirect(frontend_url(f"/payment/result?status=pending&method=khalti&booking={payment.booking.id}", request))
 
         payment.status = Payment.Status.FAILED
         payment.reference = pidx
         payment.save(update_fields=["status", "reference"])
-        return redirect(frontend_url(f"/payment/result?status=failed&method=khalti&booking={payment.booking.id}"))
+        return redirect(frontend_url(f"/payment/result?status=failed&method=khalti&booking={payment.booking.id}", request))
