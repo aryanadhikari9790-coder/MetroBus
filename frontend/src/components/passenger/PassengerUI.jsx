@@ -942,8 +942,8 @@ export function PaymentRequestCard({ booking, walletSummary, paymentBusy, onPay 
           <h3 className="mt-2 text-2xl font-black text-[var(--mb-text)]">Booking #{booking.id} is ready for payment</h3>
           <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">
             {booking.payment_requested_by_name
-              ? `${booking.payment_requested_by_name} scanned your ticket and is waiting for your payment choice.`
-              : "Your helper scanned the ticket and is waiting for your payment choice."}
+              ? `${booking.payment_requested_by_name} scanned or loaded your ticket and is waiting for your payment choice.`
+              : "Your helper scanned or loaded the ticket and is waiting for your payment choice."}
           </p>
         </div>
         <div className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">

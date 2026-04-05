@@ -281,11 +281,18 @@ class HelperRequestBookingPaymentView(APIView):
             return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
         if booking.status == Booking.Status.COMPLETED:
             return Response({"detail": "This ride is already completed."}, status=400)
+
+        accepted_during_request = False
         if not booking.accepted_by_helper_at:
-            return Response({"detail": "Accept the passenger ride details before requesting payment."}, status=400)
+            booking.accepted_by_helper_at = timezone.now()
+            booking.accepted_by_helper = request.user
+            accepted_during_request = True
 
         payment = getattr(booking, "payment", None)
         if payment and payment.status == "SUCCESS":
+            if accepted_during_request:
+                booking.save(update_fields=["accepted_by_helper_at", "accepted_by_helper"])
+                booking = _booking_queryset().filter(id=booking.id).first()
             return Response(
                 {
                     "message": "This booking is already paid.",
@@ -296,12 +303,19 @@ class HelperRequestBookingPaymentView(APIView):
 
         booking.payment_requested_at = timezone.now()
         booking.payment_requested_by = request.user
-        booking.save(update_fields=["payment_requested_at", "payment_requested_by"])
+        update_fields = ["payment_requested_at", "payment_requested_by"]
+        if accepted_during_request:
+            update_fields.extend(["accepted_by_helper_at", "accepted_by_helper"])
+        booking.save(update_fields=update_fields)
         booking = _booking_queryset().filter(id=booking.id).first()
+
+        message = "Payment request sent to the passenger. Ask them to choose a payment option in MetroBus."
+        if accepted_during_request:
+            message = "Ride accepted and payment request sent to the passenger. Ask them to choose a payment option in MetroBus."
 
         return Response(
             {
-                "message": "Payment request sent to the passenger. Ask them to choose a payment option in MetroBus.",
+                "message": message,
                 "booking": HelperBookingTicketSerializer(booking).data,
             },
             status=200,

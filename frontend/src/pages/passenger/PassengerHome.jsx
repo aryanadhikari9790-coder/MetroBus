@@ -977,7 +977,7 @@ export default function PassengerHome() {
                   <div className="rounded-[30px] bg-white p-5 shadow-[var(--mb-shadow)]">
                     <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Next</p>
                     <p className="mt-2 text-base font-medium text-[var(--mb-muted)]">
-                      Keep this QR ready. When the helper scans it, MetroBus will ask you for cash, eSewa, Khalti, wallet, pass, or reward payment on the same booking.
+                      Keep this QR ready. When the helper scans or loads your ticket and requests payment, MetroBus will open cash, eSewa, Khalti, wallet, pass, or reward payment on this same booking.
                     </p>
                   </div>
                 )}

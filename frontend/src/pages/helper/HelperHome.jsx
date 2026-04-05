@@ -525,6 +525,8 @@ export default function HelperHome() {
     }
   };
 
+  const helperPaymentActionLabel = ticketLookup?.can_accept ? "Accept & Request Payment" : "Request Payment";
+
   const acceptPassengerRide = async (bookingOverride) => {
     const booking = bookingOverride || ticketLookup;
     if (!booking?.id) {
@@ -995,7 +997,7 @@ export default function HelperHome() {
                 <Icon name="shield" />
               </PrimaryButton>
               <PrimaryButton tone="primary" onClick={requestPassengerPayment} disabled={verifyBusy || !ticketLookup?.can_request_payment} className="w-full !py-5 !text-base">
-                Request Payment
+                {helperPaymentActionLabel}
                 <Icon name="money" />
               </PrimaryButton>
               <PrimaryButton tone="danger" onClick={verifyCash} disabled={verifyBusy || !ticketLookup?.can_verify_cash} className="w-full !py-5 !text-base">
