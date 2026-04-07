@@ -201,7 +201,6 @@ export default function PassengerHome() {
     if (points.length < 2) stops.forEach((stop) => { const point = toPoint(stop.lat, stop.lng); if (point) points.push(point); });
     return points;
   }, [displayLine, stops]);
-  const nearbyStops = useMemo(() => [pickupStop, dropStop, ...stops].filter(Boolean).filter((stop, index, array) => array.findIndex((item) => item.id === stop.id) === index).slice(0, 2), [dropStop, pickupStop, stops]);
   const quickRouteOptions = useMemo(() => ([
     { id: "home", label: "Home", caption: homeStopMatch?.name || user?.home_location_label || "Saved home", ready: Boolean(homeStopMatch) },
     { id: "work", label: "Work", caption: officeStopMatch?.name || user?.office_location_label || "Saved office", ready: Boolean(officeStopMatch) },
@@ -216,24 +215,24 @@ export default function PassengerHome() {
   ]);
   const homeStageMeta = useMemo(() => ({
     planner: {
-      eyebrow: "Step 1 of 4",
-      title: "Choose pickup and drop",
-      description: "Start with your route only. Search or tap the map, then MetroBus will load the live buses for that segment.",
+      eyebrow: "Journey Planner",
+      title: "Where to next?",
+      description: "Plan your journey across the city.",
     },
     matches: {
-      eyebrow: "Step 2 of 4",
-      title: "Select a live bus",
+      eyebrow: "Available Buses",
+      title: "Available Buses",
       description: visibleMatchedTrips.length
         ? `${visibleMatchedTrips.length} live bus${visibleMatchedTrips.length !== 1 ? "es" : ""} match your route right now.`
         : "No live buses are available for this route right now.",
     },
     seats: {
-      eyebrow: "Step 3 of 4",
-      title: "Choose your seat",
+      eyebrow: "Seat Selection",
+      title: "Select Seats",
       description: "Select the seats you want for this trip, then confirm the booking on the same screen.",
     },
     ticket: {
-      eyebrow: "Step 4 of 4",
+      eyebrow: "Ride Ticket",
       title: "Your ride QR is ready",
       description: "Show this QR to the helper when the bus arrives. Payment and boarding updates will continue from this same booking flow.",
     },
@@ -737,9 +736,9 @@ export default function PassengerHome() {
   if (loading) return <div style={PASSENGER_THEME} className="min-h-screen bg-[var(--mb-bg)] px-6 py-20 text-center text-xl font-semibold text-[var(--mb-muted)]">Loading your MetroBus dashboard...</div>;
 
   return (
-    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),#fff1f8)] text-[var(--mb-text)]">
+    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),#f6f1ff)] text-[var(--mb-text)]">
       <HeaderBar user={user} activeView={activeView} onLogout={handleLogout} />
-      <main className="mx-auto max-w-5xl px-5 pb-44 pt-28 md:px-6 md:pt-32">
+      <main className="mx-auto max-w-[28rem] px-4 pb-36 pt-24">
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
         {paymentActionBooking ? (
@@ -864,80 +863,85 @@ export default function PassengerHome() {
                   onDeclineTrip={declineMatchedTrip}
                   onViewOccupancy={openOccupancyDetails}
                   displayLine={displayLine}
+                  showSubmit={false}
                 />
+                <button
+                  type="button"
+                  onClick={findRoutes}
+                  disabled={findingRoutes}
+                  className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-6 py-5 text-[1.1rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60"
+                >
+                  <span>{findingRoutes ? "Finding Buses..." : "Find Buses"}</span>
+                  <span className="text-xl">→</span>
+                </button>
               </div>
             ) : null}
 
             {homeStage === "matches" ? (
               <div className="space-y-4">
-                <NearbyMapCard
-                  stops={routeStops.length ? routeStops.map((item) => item.stop).filter(Boolean) : nearbyStops}
-                  displayLine={displayLine}
-                  selectedTrip={selectedTrip}
-                  matchedTrips={visibleMatchedTrips}
-                  selectedTripId={selectedTripId}
-                  onSelectTrip={acceptMatchedTrip}
-                />
+                <div className="rounded-[2rem] bg-[var(--mb-card-strong)] px-5 py-5 shadow-[var(--mb-shadow)]">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--mb-purple)]">Pickup</p>
+                        <p className="mt-1 text-[1.4rem] font-black leading-tight text-[var(--mb-text)]">{pickupStop?.name || "Choose pickup"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--mb-muted)]">Drop-off</p>
+                        <p className="mt-1 text-[1.4rem] font-black leading-tight text-[var(--mb-text)]">{dropStop?.name || "Choose destination"}</p>
+                      </div>
+                    </div>
+                    <button type="button" onClick={goBackHomeStage} className="grid h-14 w-14 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+                      <Icon name="edit" className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+                <h2 className="text-[2rem] font-black tracking-[-0.04em] text-[var(--mb-text)]">Nearby Results</h2>
                 <div className="space-y-3">
                   {visibleMatchedTrips.map((trip, index) => {
-                    const active = String(selectedTripId) === String(trip.id);
                     const canAccept = trip.open_seats == null || trip.open_seats > 0;
+                    const occupancyPercent = trip.occupancy_percent ?? 0;
+                    const occupancyTone = occupancyPercent >= 80 ? "bg-[#f16060]" : occupancyPercent >= 50 ? "bg-[#f0b400]" : "bg-[#22c55e]";
                     return (
-                      <div
-                        key={trip.id}
-                        className={`rounded-[30px] border p-4 shadow-[var(--mb-shadow)] transition ${
-                          active
-                            ? "border-transparent bg-[linear-gradient(180deg,#fff7fd,#f7ddfb)] ring-2 ring-[rgba(141,18,235,0.16)]"
-                            : "border-[var(--mb-border)] bg-white"
-                        }`}
-                      >
+                      <div key={trip.id} className="rounded-[2rem] bg-white p-5 shadow-[var(--mb-shadow)]">
                         <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Bus Match</p>
-                            <p className="mt-1 truncate text-2xl font-black text-[var(--mb-text)]">{trip.bus_plate || `Bus ${index + 1}`}</p>
-                            <p className="mt-1 truncate text-sm font-medium text-[var(--mb-muted)]">{trip.route_name}</p>
+                          <div>
+                            <p className="text-[2rem] font-black leading-tight text-[var(--mb-purple)]">{trip.bus_plate || `Bus ${index + 1}`}</p>
+                            <p className="mt-2 text-[1.05rem] font-medium text-[var(--mb-text)]">{trip.route_name}</p>
                           </div>
-                          <span className={`rounded-full px-3 py-1.5 text-[0.68rem] font-black uppercase tracking-[0.18em] ${active ? "bg-[var(--mb-purple)] text-white" : "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]"}`}>
-                            {active ? "Selected" : "Live"}
-                          </span>
-                        </div>
-                        <div className="mt-4 grid grid-cols-2 gap-3">
-                          <button
-                            type="button"
-                            onClick={() => openOccupancyDetails(trip)}
-                            className="rounded-[22px] bg-[var(--mb-bg-alt)] px-3 py-3 text-left"
-                          >
-                            <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-muted)]">Occupancy</p>
-                            <p className="mt-1 text-base font-black text-[var(--mb-text)]">
-                              {trip.occupancy_percent != null ? `${trip.occupancy_percent}% full` : trip.occupancy_label || "Live service"}
-                            </p>
-                          </button>
-                          <div className="rounded-[22px] bg-[var(--mb-bg-alt)] px-3 py-3">
-                            <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-muted)]">ETA</p>
-                            <p className="mt-1 text-base font-black text-[var(--mb-text)]">{trip.eta ? `${Math.max(1, Math.round(trip.eta))} min` : "Live"}</p>
-                          </div>
-                          <div className="rounded-[22px] bg-[var(--mb-bg-alt)] px-3 py-3">
-                            <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-muted)]">Fare</p>
-                            <p className="mt-1 text-base font-black text-[var(--mb-text)]">NPR {Number(trip.fare_estimate || 0).toLocaleString()}</p>
-                          </div>
-                          <div className="rounded-[22px] bg-[var(--mb-bg-alt)] px-3 py-3">
-                            <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--mb-muted)]">Open Seats</p>
-                            <p className="mt-1 text-base font-black text-[var(--mb-text)]">{trip.open_seats ?? 0}</p>
+                          <div className="text-right">
+                            <p className="text-[2rem] font-black text-[var(--mb-text)]">Rs. {Number(trip.fare_estimate || 0).toLocaleString()}</p>
+                            <p className="mt-2 text-sm font-black text-[var(--mb-purple)]">ETA: {trip.eta?.minutes ? `${Math.max(1, Math.round(trip.eta.minutes))} min` : "Live"}</p>
                           </div>
                         </div>
-                        <div className="mt-4 grid grid-cols-2 gap-3">
+                        <div className="mt-5 rounded-full bg-[var(--mb-bg-alt)] px-4 py-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex min-w-0 items-center gap-3">
+                              <Icon name="profile" className="h-5 w-5 text-[var(--mb-success)]" />
+                              <p className="text-[1.05rem] font-medium text-[var(--mb-text)]">{occupancyPercent}% Full</p>
+                              <div className="h-3 w-24 overflow-hidden rounded-full bg-[#d8d0ea]">
+                                <div className={`h-full rounded-full ${occupancyTone}`} style={{ width: `${Math.max(8, occupancyPercent)}%` }} />
+                              </div>
+                            </div>
+                            <button type="button" onClick={() => openOccupancyDetails(trip)} className="shrink-0 text-sm font-black text-[var(--mb-purple)]">
+                              Occupancy Details
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-2 gap-3">
                           <button
                             type="button"
                             disabled={!canAccept}
                             onClick={() => acceptMatchedTrip(trip.id)}
-                            className={`rounded-full px-4 py-3 text-sm font-black text-white ${canAccept ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] shadow-[var(--mb-shadow-strong)]" : "bg-[#dcc8e5] text-[#876f92]"}`}
+                            className={`rounded-full px-5 py-4 text-[1.05rem] font-black ${canAccept ? "bg-[linear-gradient(135deg,#680dff,#991dff)] text-white shadow-[var(--mb-shadow-strong)]" : "bg-[#d8cee8] text-[#86759c]"}`}
                           >
-                            {canAccept ? "Accept Bus" : "Bus Full"}
+                            {canAccept ? "Accept" : "Full"}
                           </button>
                           <button
                             type="button"
                             onClick={() => declineMatchedTrip(trip.id)}
-                            className="rounded-full border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-black text-[var(--mb-text)]"
+                            className="rounded-full border border-[var(--mb-border)] bg-white px-5 py-4 text-[1.05rem] font-black text-[var(--mb-text)]"
                           >
                             Decline
                           </button>
@@ -1002,7 +1006,19 @@ export default function PassengerHome() {
           </section>
         ) : null}
 
-        {activeView === "track" ? <section className="space-y-5">{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}<TrackMap trip={selectedTrip} displayLine={displayLine} now={now} /><DriverCard trip={selectedTrip} /><div className="grid gap-4 sm:grid-cols-2"><MetricCard icon="seat" label="Seats" value={`${selectedTrip?.open_seats ?? 12} Free`} /><MetricCard icon="snow" label="Climate" value="22°C Fixed" /></div><div className="grid gap-4 sm:grid-cols-[1.4fr_0.8fr]"><button type="button" onClick={shareTrip} className="inline-flex items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-5 text-2xl font-black text-white shadow-[var(--mb-shadow-strong)]"><Icon name="share" className="h-7 w-7" />Share Trip</button><button type="button" onClick={() => { window.location.href = "tel:100"; }} className="inline-flex items-center justify-center gap-3 rounded-full bg-[var(--mb-danger)] px-6 py-5 text-2xl font-black text-white"><Icon name="alert" className="h-7 w-7" />SOS</button></div></section> : null}
+        {activeView === "track" ? (
+          <section className="space-y-5">
+            {paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}
+            <TrackMap trip={selectedTrip} displayLine={displayLine} now={now} />
+            <DriverCard
+              trip={selectedTrip}
+              onShare={shareTrip}
+              onSos={() => {
+                window.location.href = "tel:100";
+              }}
+            />
+          </section>
+        ) : null}
 
         {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <ReservationCard booking={activeBooking} onReschedule={() => { setHomeStage("planner"); setActiveView("home"); }} onViewTicket={() => setTicketBookingId(activeBooking.id)} /> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
 

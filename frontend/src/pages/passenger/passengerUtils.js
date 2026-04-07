@@ -2,22 +2,22 @@ import { useEffect, useState } from "react";
 import { divIcon } from "leaflet";
 
 export const PASSENGER_THEME = {
-  "--mb-bg": "#fff8fc",
-  "--mb-bg-alt": "#fceefa",
-  "--mb-card": "rgba(255,245,251,0.96)",
-  "--mb-card-strong": "#f7d7f3",
-  "--mb-card-soft": "#fdeaf7",
-  "--mb-text": "#2f1738",
-  "--mb-muted": "#7d6887",
-  "--mb-purple": "#8d12eb",
-  "--mb-purple-2": "#b641ff",
+  "--mb-bg": "#f8f6ff",
+  "--mb-bg-alt": "#f2ecff",
+  "--mb-card": "rgba(255,255,255,0.96)",
+  "--mb-card-strong": "#f5f1ff",
+  "--mb-card-soft": "#f4efff",
+  "--mb-text": "#1d1722",
+  "--mb-muted": "#7a738b",
+  "--mb-purple": "#5f19e6",
+  "--mb-purple-2": "#8d2fff",
   "--mb-magenta": "#ff4fd8",
-  "--mb-border": "rgba(152, 67, 190, 0.12)",
+  "--mb-border": "rgba(95, 25, 230, 0.1)",
   "--mb-success": "#16a34a",
   "--mb-danger": "#c1002b",
-  "--mb-shadow": "0 24px 60px rgba(152, 31, 180, 0.12)",
-  "--mb-shadow-strong": "0 26px 56px rgba(141, 18, 235, 0.22)",
-  "--mb-nav": "rgba(255, 253, 255, 0.92)",
+  "--mb-shadow": "0 22px 48px rgba(93, 39, 180, 0.11)",
+  "--mb-shadow-strong": "0 24px 44px rgba(104, 16, 255, 0.2)",
+  "--mb-nav": "rgba(251, 249, 255, 0.94)",
 };
 
 export function useSplash() {
