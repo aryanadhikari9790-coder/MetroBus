@@ -16,16 +16,27 @@ import {
 
 export function SplashScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#fffdfd,#fff7fc_54%,#f8e4f7)] px-6">
-      <div className="text-center">
-        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-[3rem] bg-white shadow-[0_32px_90px_rgba(141,18,235,0.18)]">
-          <MetroBusMark className="h-28 w-28" />
+    <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#f8f7ff,#f5f2ff_42%,#f7f3ff)] px-6">
+      <div className="w-full max-w-[23rem] text-center">
+        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full bg-white shadow-[0_28px_60px_rgba(111,40,255,0.14)]">
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-[linear-gradient(135deg,#6810ff,#8f28ff)] text-white shadow-[0_18px_34px_rgba(104,16,255,0.24)]">
+            <MetroBusMark className="h-10 w-10" />
+          </div>
         </div>
         <div className="mt-8">
           <MetroBusWordmark />
         </div>
         <p className="mt-3 text-sm font-semibold uppercase tracking-[0.28em] text-[var(--mb-muted)]">
-          Smart transit for Pokhara
+          Premium Mobility
+        </p>
+        <div className="mx-auto mt-24 h-1.5 w-16 overflow-hidden rounded-full bg-[#d7d3e8]">
+          <div className="h-full w-7 rounded-full bg-[var(--mb-purple)]" />
+        </div>
+        <p className="mx-auto mt-20 max-w-[17rem] text-[2rem] font-black leading-tight tracking-[-0.03em] text-[var(--mb-text)]">
+          The serene way to navigate your city.
+        </p>
+        <p className="mt-9 text-xs font-semibold uppercase tracking-[0.3em] text-[#bbb4ca]">
+          Powered by Metro Dynamics
         </p>
       </div>
     </div>
@@ -60,8 +71,9 @@ export function MetroBusMark({ className = "h-12 w-12" }) {
 
 export function MetroBusWordmark({ compact = false }) {
   return (
-    <div className={`font-black italic tracking-[-0.04em] text-[var(--mb-purple)] ${compact ? "text-[1.45rem]" : "text-[2.7rem]"}`}>
-      metro<span className="text-[var(--mb-purple-2)]">Bus</span>
+    <div className={`font-black tracking-[-0.05em] ${compact ? "text-[1.45rem]" : "text-[3rem]"}`}>
+      <span className="text-[#17131d]">Metro</span>
+      <span className="text-[var(--mb-purple)]">Bus</span>
     </div>
   );
 }
@@ -71,6 +83,10 @@ export function Icon({ name, className = "h-5 w-5" }) {
   switch (name) {
     case "bell":
       return <svg {...common}><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5" /><path d="M10 17a2 2 0 0 0 4 0" /></svg>;
+    case "menu":
+      return <svg {...common}><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></svg>;
+    case "arrow-left":
+      return <svg {...common}><path d="m15 6-6 6 6 6" /><path d="M9 12h11" /></svg>;
     case "search":
       return <svg {...common}><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>;
     case "home":
@@ -109,6 +125,10 @@ export function Icon({ name, className = "h-5 w-5" }) {
       return <svg {...common}><path d="M12 3 5 6.3v5.4c0 4.1 2.8 7.9 7 9.3 4.2-1.4 7-5.2 7-9.3V6.3L12 3Z" /></svg>;
     case "help":
       return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M9.5 9.3a2.7 2.7 0 0 1 5 .9c0 1.8-2 2.2-2.5 3.5" /><path d="M12 17h.01" /></svg>;
+    case "info":
+      return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 10v6" /><path d="M12 7h.01" /></svg>;
+    case "lock":
+      return <svg {...common}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8.5A4 4 0 0 1 12 4.5a4 4 0 0 1 4 4V11" /></svg>;
     case "plus":
       return <svg {...common}><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
     case "qr":

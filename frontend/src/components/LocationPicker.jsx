@@ -17,9 +17,7 @@ function MapFocus({ position }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!position) {
-      return;
-    }
+    if (!position) return;
     map.setView(position, 15, { animate: true });
   }, [map, position]);
 
@@ -27,10 +25,7 @@ function MapFocus({ position }) {
 }
 
 function normalizeLocation(value) {
-  if (!value) {
-    return { label: "", lat: null, lng: null };
-  }
-
+  if (!value) return { label: "", lat: null, lng: null };
   return {
     label: value.label || "",
     lat: value.lat ?? null,
@@ -42,7 +37,6 @@ export default function LocationPicker({
   label,
   value,
   onChange,
-  isDark,
   required = false,
   helperText = "",
 }) {
@@ -63,7 +57,7 @@ export default function LocationPicker({
       current.lat != null && current.lng != null
         ? [Number(current.lat), Number(current.lng)]
         : POKHARA_CENTER,
-    [current.lat, current.lng]
+    [current.lat, current.lng],
   );
 
   const searchPlaces = async () => {
@@ -85,18 +79,16 @@ export default function LocationPicker({
       url.searchParams.set("limit", "5");
       url.searchParams.set("q", `${trimmed}, Pokhara, Nepal`);
 
-      const res = await fetch(url.toString(), {
+      const response = await fetch(url.toString(), {
         headers: { "Accept-Language": "en" },
       });
-      if (!res.ok) {
-        throw new Error("search_failed");
-      }
+      if (!response.ok) throw new Error("search_failed");
 
-      const data = await res.json();
+      const data = await response.json();
       setResults(data);
-      setInfo(data.length ? "" : "No matching places found. Try a nearby landmark or tap directly on the map.");
+      setInfo(data.length ? "" : "No matching places found. Try a nearby landmark or tap the map directly.");
     } catch {
-      setError("Place search is unavailable right now. You can still select the point directly on the map.");
+      setError("Place search is unavailable right now. You can still pin the location on the map.");
     } finally {
       setSearching(false);
     }
@@ -112,14 +104,12 @@ export default function LocationPicker({
       url.searchParams.set("lat", String(lat));
       url.searchParams.set("lon", String(lng));
 
-      const res = await fetch(url.toString(), {
+      const response = await fetch(url.toString(), {
         headers: { "Accept-Language": "en" },
       });
-      if (!res.ok) {
-        throw new Error("reverse_failed");
-      }
+      if (!response.ok) throw new Error("reverse_failed");
 
-      const data = await res.json();
+      const data = await response.json();
       onChange({
         label: data.display_name || `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`,
         lat: Number(lat).toFixed(6),
@@ -151,105 +141,103 @@ export default function LocationPicker({
   };
 
   return (
-    <section className={`rounded-[28px] border p-4 ${isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className={`text-sm font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>
-            {label} {required ? <span className="text-rose-400">*</span> : null}
-          </p>
-          {helperText ? (
-            <p className={`mt-1 text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{helperText}</p>
+    <section className="overflow-hidden rounded-[2rem] bg-[#f7f4fb]">
+      <div className="px-4 pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-[#241828]">
+              {label} {required ? <span className="text-rose-500">*</span> : null}
+            </p>
+            {helperText ? <p className="mt-1 text-xs leading-5 text-[#6d6581]">{helperText}</p> : null}
+          </div>
+          {current.lat != null && current.lng != null ? (
+            <span className="rounded-full bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#5a17e8]">
+              Pinned
+            </span>
           ) : null}
         </div>
-        {current.lat != null && current.lng != null ? (
-          <span className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] ${isDark ? "bg-emerald-500/15 text-emerald-300" : "bg-emerald-100 text-emerald-700"}`}>
-            Pin Ready
-          </span>
-        ) : null}
-      </div>
 
-      <div className="mt-4 flex flex-col gap-3 lg:flex-row">
-        <div className="lg:w-[340px] lg:flex-none">
-          <div className="flex gap-2">
-            <input
-              className={`flex-1 rounded-2xl border px-4 py-3 text-sm outline-none transition ${isDark ? "border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-indigo-400" : "border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400 focus:border-indigo-400"}`}
-              placeholder="Search place name in Pokhara"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  searchPlaces();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={searchPlaces}
-              disabled={searching}
-              className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${isDark ? "bg-indigo-500 text-white hover:bg-indigo-400 disabled:bg-indigo-500/60" : "bg-indigo-600 text-white hover:bg-indigo-500 disabled:bg-indigo-300"}`}
-            >
-              {searching ? "Searching..." : "Search"}
-            </button>
-          </div>
+        <div className="mt-4 flex gap-2">
+          <input
+            className="min-w-0 flex-1 rounded-full bg-white px-4 py-3 text-sm font-medium text-[#241828] outline-none placeholder:text-[#aea5bf]"
+            placeholder={`Search ${label.toLowerCase()}`}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                searchPlaces();
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={searchPlaces}
+            disabled={searching}
+            className="rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-4 py-3 text-sm font-black text-white shadow-[0_14px_24px_rgba(104,13,255,0.18)] disabled:opacity-60"
+          >
+            {searching ? "..." : "Search"}
+          </button>
+        </div>
 
+        {results.length ? (
           <div className="mt-3 space-y-2">
             {results.map((result) => (
               <button
                 key={result.place_id}
                 type="button"
                 onClick={() => applyResult(result)}
-                className={`w-full rounded-2xl border px-4 py-3 text-left transition ${isDark ? "border-white/10 bg-[#111827] text-slate-200 hover:border-white/20" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300"}`}
+                className="w-full rounded-[1.25rem] bg-white px-4 py-3 text-left text-sm font-medium text-[#3c354a] shadow-[0_10px_18px_rgba(67,49,117,0.06)]"
               >
-                <p className="text-sm font-medium">{result.display_name}</p>
+                {result.display_name}
               </button>
             ))}
-            {!results.length && current.label ? (
-              <div className={`rounded-2xl border px-4 py-3 text-sm ${isDark ? "border-white/10 bg-[#111827] text-slate-300" : "border-slate-200 bg-slate-50 text-slate-600"}`}>
-                <p className="font-medium">{current.label}</p>
-                <p className="mt-1 text-xs">
-                  {current.lat}, {current.lng}
-                </p>
-              </div>
-            ) : null}
           </div>
+        ) : null}
 
-          {error ? <p className="mt-3 text-xs text-rose-400">{error}</p> : null}
-          {info ? <p className={`mt-3 text-xs ${isDark ? "text-sky-300" : "text-sky-700"}`}>{info}</p> : null}
-        </div>
+        {!results.length && current.label ? (
+          <div className="mt-3 rounded-[1.25rem] bg-white px-4 py-3 text-sm shadow-[0_10px_18px_rgba(67,49,117,0.06)]">
+            <p className="font-semibold text-[#241828]">{current.label}</p>
+            <p className="mt-1 text-xs text-[#6d6581]">
+              {current.lat}, {current.lng}
+            </p>
+          </div>
+        ) : null}
 
-        <div className="min-h-[280px] flex-1 overflow-hidden rounded-[24px] border border-black/5">
-          <MapContainer center={markerPosition} zoom={13} scrollWheelZoom className="h-[320px] w-full">
-            <TileLayer
-              attribution="&copy; OpenStreetMap contributors"
-              url={
-                isDark
-                  ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                  : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              }
+        {error ? <p className="mt-3 text-xs font-medium text-red-600">{error}</p> : null}
+        {info ? <p className="mt-3 text-xs font-medium text-[#4f21d1]">{info}</p> : null}
+      </div>
+
+      <div className="relative mt-4 overflow-hidden rounded-[1.8rem]">
+        <MapContainer center={markerPosition} zoom={13} scrollWheelZoom className="h-[250px] w-full">
+          <TileLayer
+            attribution="&copy; OpenStreetMap contributors"
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          />
+          <MapFocus position={markerPosition} />
+          <MapClickCapture onPick={({ lat, lng }) => reverseLookup(lat, lng)} />
+          {current.lat != null && current.lng != null ? (
+            <CircleMarker
+              center={[Number(current.lat), Number(current.lng)]}
+              radius={10}
+              pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#6c12ff", fillOpacity: 1 }}
             />
-            <MapFocus position={markerPosition} />
-            <MapClickCapture onPick={({ lat, lng }) => reverseLookup(lat, lng)} />
-            {current.lat != null && current.lng != null ? (
-              <CircleMarker
-                center={[Number(current.lat), Number(current.lng)]}
-                radius={10}
-                pathOptions={{ color: "#2563eb", fillColor: "#60a5fa", fillOpacity: 0.9 }}
-              />
-            ) : (
-              <CircleMarker
-                center={POKHARA_CENTER}
-                radius={8}
-                pathOptions={{ color: "#475569", fillColor: "#94a3b8", fillOpacity: 0.55 }}
-              />
-            )}
-          </MapContainer>
+          ) : (
+            <CircleMarker
+              center={POKHARA_CENTER}
+              radius={8}
+              pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#b89eff", fillOpacity: 0.85 }}
+            />
+          )}
+        </MapContainer>
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(16,8,40,0.1),rgba(16,8,40,0.24))]" />
+        <div className="absolute bottom-4 left-4 rounded-full bg-white/92 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#5a17e8] shadow-[0_10px_22px_rgba(17,9,40,0.18)]">
+          Tap map to pin
         </div>
       </div>
 
-      <p className={`mt-3 text-xs ${isDark ? "text-slate-500" : "text-slate-500"}`}>
-        Search a place name or tap directly on the map to pin the exact location.
-        {resolving ? " Resolving address..." : ""}
+      <p className="px-4 pb-4 pt-3 text-xs text-[#6f6883]">
+        Search a place name or tap directly on the map to pin the exact location.{resolving ? " Resolving address..." : ""}
       </p>
     </section>
   );

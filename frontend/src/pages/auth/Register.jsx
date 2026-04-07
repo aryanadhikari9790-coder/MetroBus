@@ -1,14 +1,35 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import LocationPicker from "../../components/LocationPicker";
-import { useTheme } from "../../ThemeContext";
-import { themeTokens } from "../../lib/theme";
+import { Icon, MetroBusWordmark } from "../../components/passenger/PassengerUI";
+
+function OtpSlots({ value, onChange }) {
+  const digits = value.padEnd(4, " ").slice(0, 4).split("");
+
+  return (
+    <div className="flex items-center gap-3">
+      {digits.map((digit, index) => (
+        <input
+          key={index}
+          value={digit.trim()}
+          inputMode="numeric"
+          maxLength={1}
+          className="h-14 w-14 rounded-[1.2rem] border border-[#dad3ec] bg-white text-center text-xl font-black text-[#26172f] outline-none transition focus:border-[#6f18f8] focus:ring-2 focus:ring-[#e8d9ff]"
+          onChange={(event) => {
+            const nextDigit = event.target.value.replace(/\D/g, "").slice(-1);
+            const next = value.padEnd(4, " ").slice(0, 4).split("");
+            next[index] = nextDigit || " ";
+            onChange(next.join("").trim());
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function Register() {
-  const nav = useNavigate();
-  const { isDark } = useTheme();
-  const t = themeTokens(isDark);
+  const navigate = useNavigate();
 
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
@@ -19,6 +40,7 @@ export default function Register() {
   const [otpRequested, setOtpRequested] = useState(false);
   const [otpNote, setOtpNote] = useState("");
   const [devOtp, setDevOtp] = useState("");
+  const [otpReady, setOtpReady] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isCorporateEmployee, setIsCorporateEmployee] = useState(false);
@@ -29,6 +51,11 @@ export default function Register() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
+  const fullName = useMemo(
+    () => [firstName, middleName, lastName].map((part) => part.trim()).filter(Boolean).join(" "),
+    [firstName, lastName, middleName],
+  );
+
   const requestOtp = async () => {
     setErr("");
     setOk("");
@@ -36,16 +63,27 @@ export default function Register() {
     setDevOtp("");
     setOtpBusy(true);
     try {
-      const res = await api.post("/api/auth/otp/request/", { phone });
+      const response = await api.post("/api/auth/otp/request/", { phone });
       setOtpRequested(true);
-      setOtpNote(res.data?.detail || res.data?.message || "OTP sent.");
-      setDevOtp(res.data?.dev_code || "");
+      setOtpNote(response.data?.detail || response.data?.message || "OTP sent.");
+      setDevOtp(response.data?.dev_code || "");
     } catch (error) {
       const detail = error?.response?.data?.phone?.[0] || error?.response?.data?.detail;
       setErr(detail || "Unable to send OTP right now.");
     } finally {
       setOtpBusy(false);
     }
+  };
+
+  const verifyOtpLocally = () => {
+    if (otpCode.length !== 4) {
+      setErr("Enter the 4-digit OTP before continuing.");
+      setOtpReady(false);
+      return;
+    }
+    setErr("");
+    setOtpReady(true);
+    setOtpNote("OTP captured. MetroBus will confirm it when you register.");
   };
 
   const onRegister = async () => {
@@ -73,17 +111,17 @@ export default function Register() {
         school_lng: schoolLocation.lng,
       });
       setOk("Passenger account created. Please log in with your phone number and password.");
-      setTimeout(() => nav("/auth/login"), 900);
+      setTimeout(() => navigate("/auth/login"), 900);
     } catch (error) {
       const data = error?.response?.data || {};
       setErr(
-        data?.otp_code?.[0] ||
-          data?.phone?.[0] ||
-          data?.email?.[0] ||
-          data?.office_location_label?.[0] ||
-          data?.school_location_label?.[0] ||
-          data?.detail ||
-          "Registration failed. Please review the form and try again."
+        data?.otp_code?.[0]
+          || data?.phone?.[0]
+          || data?.email?.[0]
+          || data?.office_location_label?.[0]
+          || data?.school_location_label?.[0]
+          || data?.detail
+          || "Registration failed. Please review the form and try again.",
       );
     } finally {
       setBusy(false);
@@ -91,210 +129,237 @@ export default function Register() {
   };
 
   return (
-    <div className={`min-h-screen ${t.page}`}>
-      <div className="relative overflow-hidden">
-        <div className={`absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.22),transparent_34%)] ${isDark ? "opacity-100" : "opacity-80"}`} />
+    <div className="min-h-screen bg-[linear-gradient(180deg,#fbf9ff,#f6f2ff_46%,#f8f2fb)] text-[#241828]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(170,97,255,0.1),transparent_38%),radial-gradient(circle_at_bottom,rgba(124,49,245,0.08),transparent_34%)]" />
 
-        <div className="relative mx-auto flex min-h-screen max-w-7xl flex-col px-5 py-8 lg:px-8 lg:py-10">
-          <div className="grid gap-6 lg:grid-cols-[1.05fr_1.3fr]">
-            <section className={`rounded-[32px] border p-6 lg:p-8 ${t.card}`}>
-              <p className={`text-xs font-bold uppercase tracking-[0.35em] ${t.label}`}>MetroBus Pokhara</p>
-              <h1 className={`mt-4 text-3xl font-black leading-tight ${t.text}`}>
-                Passenger registration with verified Nepal mobile numbers.
-              </h1>
-              <p className={`mt-4 text-sm leading-6 ${t.textSub}`}>
-                This page is for passengers only. Drivers, helpers, and admins are created by the MetroBus admin team.
-              </p>
+      <div className="relative mx-auto max-w-[29rem] px-4 py-6">
+        <header className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Link
+              to="/auth/login"
+              className="grid h-11 w-11 place-items-center rounded-full bg-white text-[#4f21d1] shadow-[0_14px_30px_rgba(95,59,171,0.12)]"
+            >
+              <Icon name="arrow-left" className="h-5 w-5" />
+            </Link>
+            <div>
+              <MetroBusWordmark compact />
+              <p className="mt-1 text-xs font-medium text-[#6e6780]">Passenger onboarding</p>
+            </div>
+          </div>
+          <div className="pt-1 text-right text-xs leading-4 text-[#5b5569]">
+            <p>Already have an account?</p>
+            <Link className="mt-1 block text-sm font-black text-[#4f21d1]" to="/auth/login">
+              Log In
+            </Link>
+          </div>
+        </header>
 
-              <div className={`mt-6 rounded-[28px] border p-5 ${isDark ? "border-sky-400/20 bg-sky-500/10" : "border-sky-200 bg-sky-50"}`}>
-                <p className={`text-sm font-semibold ${t.text}`}>What you will need</p>
-                <ul className={`mt-3 space-y-2 text-sm ${t.textSub}`}>
-                  <li>Full name split into first, middle, and last name.</li>
-                  <li>Nepal mobile number in +977 or 98XXXXXXXX format.</li>
-                  <li>Home location pinned by search or by tapping the map.</li>
-                  <li>Office location too, if you travel as a corporate employee.</li>
-                  <li>Optional school location for daily student travel shortcuts.</li>
-                </ul>
-              </div>
+        <div className="mt-8">
+          <h1 className="text-[2.5rem] font-black leading-[0.94] tracking-[-0.04em] text-[#121019]">
+            Create Passenger Profile
+          </h1>
+          <p className="mt-3 text-[1.05rem] leading-8 text-[#4f475f]">
+            Join the future of premium urban mobility in Pokhara.
+          </p>
+        </div>
 
-              <div className={`mt-6 rounded-[28px] border p-5 ${isDark ? "border-white/10 bg-white/5" : "border-slate-200 bg-white/80"}`}>
-                <p className={`text-sm font-semibold ${t.text}`}>Account policy</p>
-                <p className={`mt-2 text-sm leading-6 ${t.textSub}`}>
-                  Staff accounts do not register here. If you are a driver, helper, or admin, please contact the operations admin for account creation.
-                </p>
-                <Link
-                  className={`mt-4 inline-flex rounded-2xl px-4 py-3 text-sm font-semibold transition ${isDark ? "bg-white/10 text-white hover:bg-white/15" : "bg-slate-900 text-white hover:bg-slate-800"}`}
-                  to="/auth/login"
-                >
-                  Go to login
-                </Link>
-              </div>
-            </section>
+        {err ? (
+          <div className="mt-5 rounded-[1.75rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            {err}
+          </div>
+        ) : null}
+        {ok ? (
+          <div className="mt-5 rounded-[1.75rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            {ok}
+          </div>
+        ) : null}
 
-            <section className={`rounded-[32px] border p-6 lg:p-8 ${t.card}`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className={`text-xs font-bold uppercase tracking-[0.35em] ${t.label}`}>Passenger Sign Up</p>
-                  <h2 className={`mt-3 text-2xl font-black ${t.text}`}>Create your MetroBus account</h2>
-                </div>
-                <Link className={`text-sm font-semibold ${isDark ? "text-sky-300" : "text-sky-700"}`} to="/auth/login">
-                  Already have an account?
-                </Link>
-              </div>
+        <section className="mt-6 rounded-[2.5rem] bg-white/96 px-5 py-6 shadow-[0_28px_60px_rgba(123,53,190,0.12)]">
+          <div className="space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[#241828]">Full Name</span>
+              <input
+                className="w-full rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                placeholder="John Doe"
+                value={fullName}
+                onChange={(event) => {
+                  const parts = event.target.value.split(" ");
+                  setFirstName(parts[0] || "");
+                  setMiddleName(parts.length > 2 ? parts.slice(1, -1).join(" ") : "");
+                  setLastName(parts.length > 1 ? parts.at(-1) || "" : "");
+                }}
+              />
+            </label>
 
-              {err ? <div className={`mt-5 rounded-3xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div> : null}
-              {ok ? <div className={`mt-5 rounded-3xl border px-4 py-3 text-sm ${t.okBanner}`}>{ok}</div> : null}
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[#241828]">Email Address</span>
+              <input
+                className="w-full rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                placeholder="john@example.com"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </label>
 
-              <div className="mt-6 space-y-6">
-                <section>
-                  <p className={`text-xs font-bold uppercase tracking-[0.25em] ${t.label}`}>1. Personal details</p>
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-3">
-                    <input
-                      className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                      placeholder="First name"
-                      value={firstName}
-                      onChange={(event) => setFirstName(event.target.value)}
-                    />
-                    <input
-                      className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                      placeholder="Middle name (optional)"
-                      value={middleName}
-                      onChange={(event) => setMiddleName(event.target.value)}
-                    />
-                    <input
-                      className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                      placeholder="Last name"
-                      value={lastName}
-                      onChange={(event) => setLastName(event.target.value)}
-                    />
-                  </div>
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-[1.2fr_1fr]">
-                    <input
-                      className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                      placeholder="Phone number (+977 98XXXXXXXX)"
-                      value={phone}
-                      onChange={(event) => setPhone(event.target.value)}
-                    />
-
-                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
-                      <input
-                        className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                        placeholder="4-digit OTP"
-                        value={otpCode}
-                        onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                        inputMode="numeric"
-                        maxLength={4}
-                      />
-                      <button
-                        type="button"
-                        onClick={requestOtp}
-                        disabled={otpBusy}
-                        className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${isDark ? "bg-sky-500 text-slate-950 hover:bg-sky-400 disabled:bg-sky-500/60" : "bg-sky-600 text-white hover:bg-sky-500 disabled:bg-sky-300"}`}
-                      >
-                        {otpBusy ? "Sending..." : otpRequested ? "Resend OTP" : "Send OTP"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {otpNote ? (
-                    <p className={`mt-3 text-xs ${isDark ? "text-sky-300" : "text-sky-700"}`}>{otpNote}</p>
-                  ) : null}
-                  {devOtp ? (
-                    <p className={`mt-1 text-xs ${isDark ? "text-amber-300" : "text-amber-700"}`}>
-                      Dev OTP: <span className="font-mono font-bold">{devOtp}</span>
-                    </p>
-                  ) : null}
-
-                  <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <input
-                      className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                      placeholder="Email address"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                    />
-                    <input
-                      className={`rounded-2xl border px-4 py-3 text-sm outline-none transition ${t.input}`}
-                      placeholder="Password"
-                      type="password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                    />
-                  </div>
-                </section>
-
-                <section>
-                  <p className={`text-xs font-bold uppercase tracking-[0.25em] ${t.label}`}>2. Home location</p>
-                  <div className="mt-3">
-                    <LocationPicker
-                      label="Home location"
-                      value={homeLocation}
-                      onChange={setHomeLocation}
-                      isDark={isDark}
-                      required
-                      helperText="Search your home area or tap your exact pickup neighborhood on the map."
-                    />
-                  </div>
-                </section>
-
-                <section>
-                  <div className={`rounded-[28px] border p-5 ${isDark ? "border-white/10 bg-[#10192b]" : "border-slate-200 bg-slate-50"}`}>
-                    <label className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={isCorporateEmployee}
-                        onChange={(event) => setIsCorporateEmployee(event.target.checked)}
-                        className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
-                      />
-                      <span>
-                        <span className={`block text-sm font-semibold ${t.text}`}>I am a corporate employee</span>
-                        <span className={`mt-1 block text-sm ${t.textSub}`}>
-                          Turn this on if your travel is linked to a fixed office location so we can capture that destination too.
-                        </span>
-                      </span>
-                    </label>
-                  </div>
-
-                  {isCorporateEmployee ? (
-                    <div className="mt-3">
-                      <LocationPicker
-                        label="Office location"
-                        value={officeLocation}
-                        onChange={setOfficeLocation}
-                        isDark={isDark}
-                        required
-                        helperText="Search your office or pin the exact building directly on the map."
-                      />
-                    </div>
-                  ) : null}
-                </section>
-
-                <section>
-                  <p className={`text-xs font-bold uppercase tracking-[0.25em] ${t.label}`}>3. Optional school location</p>
-                  <div className="mt-3">
-                    <LocationPicker
-                      label="School / college location"
-                      value={schoolLocation}
-                      onChange={setSchoolLocation}
-                      isDark={isDark}
-                      helperText="Add your school or college if you want a saved study route on the passenger dashboard."
-                    />
-                  </div>
-                </section>
-
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[#241828]">Phone Number</span>
+              <div className="grid grid-cols-[1fr_auto] gap-3">
+                <input
+                  className="rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                  placeholder="+977 98XXXXXXXX"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                />
                 <button
                   type="button"
-                  className={`w-full rounded-[24px] px-5 py-4 text-sm font-bold transition ${isDark ? "bg-white text-slate-950 hover:bg-slate-100 disabled:bg-slate-500" : "bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-400"}`}
-                  onClick={onRegister}
-                  disabled={busy}
+                  onClick={requestOtp}
+                  disabled={otpBusy}
+                  className="rounded-full border-2 border-[#5021d8] px-5 py-4 text-sm font-black text-[#5021d8] transition hover:bg-[#f5f0ff] disabled:opacity-60"
                 >
-                  {busy ? "Creating passenger account..." : "Create passenger account"}
+                  {otpBusy ? "Sending..." : otpRequested ? "Resend OTP" : "Send OTP"}
                 </button>
               </div>
-            </section>
+            </label>
+
+            <div className="rounded-[1.9rem] border border-[#ded6ef] bg-[#f7f2ff] px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-black text-[#4721d1]">Verify Mobile</p>
+                  <p className="mt-1 text-sm leading-6 text-[#625b73]">
+                    Enter the 4-digit code sent to your device.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={verifyOtpLocally}
+                  className="rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-4 py-3 text-sm font-black text-white shadow-[0_14px_30px_rgba(104,13,255,0.2)]"
+                >
+                  Verify OTP
+                </button>
+              </div>
+              <div className="mt-4">
+                <OtpSlots
+                  value={otpCode}
+                  onChange={(next) => {
+                    setOtpCode(next.replace(/\D/g, "").slice(0, 4));
+                    if (otpReady) setOtpReady(false);
+                  }}
+                />
+              </div>
+              {otpNote ? <p className="mt-3 text-xs font-medium text-[#4f21d1]">{otpNote}</p> : null}
+              {devOtp ? (
+                <p className="mt-1 text-xs font-medium text-[#85640c]">
+                  Dev OTP: <span className="font-mono font-black">{devOtp}</span>
+                </p>
+              ) : null}
+              {otpReady ? <p className="mt-2 text-xs font-semibold text-emerald-700">OTP ready for registration.</p> : null}
+            </div>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[#241828]">Security Password</span>
+              <input
+                className="w-full rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                placeholder="Create a secure password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </label>
+
+            <label className="flex items-start gap-4 rounded-[1.6rem] bg-[#f7f4fb] px-4 py-4">
+              <input
+                type="checkbox"
+                checked={isCorporateEmployee}
+                onChange={(event) => setIsCorporateEmployee(event.target.checked)}
+                className="mt-1 h-5 w-5 rounded border-[#d5cced] text-[#5c18eb] focus:ring-[#8e4eff]"
+              />
+              <span>
+                <span className="block text-lg font-bold text-[#241828]">Corporate Account</span>
+                <span className="mt-1 block text-sm leading-6 text-[#635d73]">
+                  Link with your company for business trip reimbursements.
+                </span>
+              </span>
+            </label>
           </div>
-        </div>
+        </section>
+
+        <section className="mt-6 rounded-[2.5rem] bg-white/96 px-5 py-6 shadow-[0_28px_60px_rgba(123,53,190,0.12)]">
+          <div>
+            <h2 className="text-[1.7rem] font-black text-[#1c1723]">Frequent Destinations</h2>
+            <p className="mt-1 text-sm leading-6 text-[#635c73]">Pin your home, work, and study stops for faster bookings.</p>
+          </div>
+
+          <div className="mt-5 space-y-4">
+            <LocationPicker
+              label="Home location"
+              value={homeLocation}
+              onChange={setHomeLocation}
+              isDark={false}
+              required
+              helperText="Search or tap the map to pin your usual pickup area."
+            />
+
+            {isCorporateEmployee ? (
+              <LocationPicker
+                label="Work location"
+                value={officeLocation}
+                onChange={setOfficeLocation}
+                isDark={false}
+                required
+                helperText="Add your office if this account is used for company travel."
+              />
+            ) : null}
+
+            <LocationPicker
+              label="School / College location"
+              value={schoolLocation}
+              onChange={setSchoolLocation}
+              isDark={false}
+              helperText="Optional. Add a study route if you use MetroBus for school travel."
+            />
+          </div>
+
+          <div className="mt-5 rounded-[1.6rem] bg-[#f8f6fd] px-4 py-4">
+            <div className="flex gap-3">
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[rgba(104,13,255,0.12)] text-[#5d17eb]">
+                <Icon name="shield" className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-base font-black text-[#241828]">Secure & Verified</p>
+                <p className="mt-1 text-sm leading-6 text-[#635d73]">
+                  Your data is encrypted with enterprise-grade standards.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="mt-6 rounded-[2.5rem] bg-white/96 px-5 py-6 shadow-[0_28px_60px_rgba(123,53,190,0.12)]">
+          <p className="text-center text-sm leading-6 text-[#6b647a]">
+            By clicking Register, you agree to our <button type="button" className="font-bold text-[#4f21d1]">Terms of Service</button> and{" "}
+            <button type="button" className="font-bold text-[#4f21d1]">Privacy Policy</button>.
+          </p>
+
+          <button
+            type="button"
+            onClick={onRegister}
+            disabled={busy}
+            className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-6 py-5 text-[1.05rem] font-black text-white shadow-[0_22px_40px_rgba(113,23,255,0.24)] transition hover:translate-y-[-1px] disabled:opacity-60"
+          >
+            <span>{busy ? "Registering..." : "Register"}</span>
+            <span className="text-xl">→</span>
+          </button>
+        </section>
+
+        <footer className="pb-6 pt-10 text-center">
+          <p className="text-xl font-black text-[#baaff0]">MetroBus</p>
+          <div className="mt-6 grid grid-cols-2 gap-3 text-sm text-[#4f475f]">
+            <button type="button">Safety Center</button>
+            <button type="button">Accessibility</button>
+            <button type="button">Partner Program</button>
+            <button type="button">Contact Support</button>
+          </div>
+        </footer>
       </div>
     </div>
   );
