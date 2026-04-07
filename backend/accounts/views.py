@@ -2,6 +2,7 @@ import random
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.db.models.deletion import ProtectedError
 from django.db.models import Count, Sum, Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -20,6 +21,7 @@ from .serializers import (
     RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
     AdminCreateUserSerializer, AdminUserListSerializer,
     AdminUserReviewSerializer,
+    AdminUpdateUserSerializer,
 )
 
 User = get_user_model()
@@ -390,3 +392,59 @@ class AdminUserReviewView(APIView):
                 "user": AdminUserListSerializer(user, context={"request": request}).data,
             }
         )
+
+
+class AdminUserDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
+            return Response({"detail": "Admin only."}, status=403)
+        return None
+
+    def _get_user(self, user_id: int):
+        return User.objects.filter(id=user_id).first()
+
+    def patch(self, request, user_id: int):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        user = self._get_user(user_id)
+        if not user:
+            return Response({"detail": "User not found."}, status=404)
+
+        serializer = AdminUpdateUserSerializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        updated_user = serializer.save()
+
+        return Response(
+            {
+                "message": f"Updated {updated_user.full_name}.",
+                "user": AdminUserListSerializer(updated_user, context={"request": request}).data,
+            }
+        )
+
+    def delete(self, request, user_id: int):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        user = self._get_user(user_id)
+        if not user:
+            return Response({"detail": "User not found."}, status=404)
+        if user.id == request.user.id:
+            return Response({"detail": "You cannot delete your own admin account from this screen."}, status=400)
+
+        full_name = user.full_name
+        try:
+            user.delete()
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": "This staff account is linked to trips or schedules. Deactivate it or reassign it before deleting."
+                },
+                status=409,
+            )
+
+        return Response({"message": f"Deleted {full_name}."}, status=200)

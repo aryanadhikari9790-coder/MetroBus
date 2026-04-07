@@ -106,6 +106,8 @@ export default function AdminHome() {
   const [busSeatPhoto, setBusSeatPhoto]     = useState(null);
   const [busMgmtBusy, setBusMgmtBusy]       = useState(false);
   const [busMgmtMsg, setBusMgmtMsg]         = useState("");
+  const [editingBusId, setEditingBusId]     = useState(null);
+  const [busDeleteBusyId, setBusDeleteBusyId] = useState(null);
   const [assignBusId, setAssignBusId]       = useState("");
   const [assignDriverId, setAssignDriverId] = useState("");
   const [assignHelperId, setAssignHelperId] = useState("");
@@ -122,6 +124,8 @@ export default function AdminHome() {
   const [uRole, setURole]                   = useState("DRIVER");
   const [uMgmtBusy, setUMgmtBusy]           = useState(false);
   const [uMgmtMsg, setUMgmtMsg]             = useState("");
+  const [editingUserId, setEditingUserId]   = useState(null);
+  const [userDeleteBusyId, setUserDeleteBusyId] = useState(null);
   const [userRoleFilter, setUserRoleFilter] = useState("ALL");
   const [reviewBusyId, setReviewBusyId]     = useState(null);
   const [reviewMsg, setReviewMsg]           = useState("");
@@ -136,6 +140,7 @@ export default function AdminHome() {
       setUserList(r.data.users || []);
     } catch { /* silent */ }
   };
+  const reloadFilteredUsers = async () => loadUsers(userRoleFilter === "ALL" ? null : userRoleFilter);
 
   const selectedScheduleBus = useMemo(() => schedOpts.buses.find(b => String(b.id) === String(sBusId)) || null, [sBusId, schedOpts.buses]);
 
@@ -177,6 +182,33 @@ export default function AdminHome() {
   const moveStop = (i, dir) => setSelectedStopIds(c => { const ti = i + dir; if (ti < 0 || ti >= c.length) return c; const n = [...c]; [n[i], n[ti]] = [n[ti], n[i]]; return n; });
   const clearStopForm = () => { setStopName(""); setStopLat(""); setStopLng(""); setStopActive(true); };
   const clearRoute  = () => { setRouteName(""); setRouteCity("Pokhara"); setRouteActive(true); setSelectedStopIds([]); setSegmentFares([]); setRouteMsg(""); };
+  const resetBusForm = () => {
+    setEditingBusId(null);
+    setBusName("");
+    setBusPlate("");
+    setBusYear("");
+    setBusCondition("NORMAL");
+    setBusRows("9");
+    setBusCols("4");
+    setBusActive(true);
+    setBusExteriorPhoto(null);
+    setBusInteriorPhoto(null);
+    setBusSeatPhoto(null);
+    setBusMgmtMsg("");
+  };
+  const resetUserForm = () => {
+    setEditingUserId(null);
+    setUName("");
+    setUPhone("");
+    setUEmail("");
+    setUAddress("");
+    setUPass("");
+    setUOfficialPhoto(null);
+    setULicenseNumber("");
+    setULicensePhoto(null);
+    setURole("DRIVER");
+    setUMgmtMsg("");
+  };
   const handleMapPick = ({ lat, lng }) => { setStopLat(Number(lat).toFixed(6)); setStopLng(Number(lng).toFixed(6)); };
 
   const createStop = async () => {
@@ -216,7 +248,7 @@ export default function AdminHome() {
     catch (e) { setErr(e?.response?.data?.detail || "Failed to create schedule."); } finally { setScheduleBusy(false); }
   };
 
-  const createBus = async () => {
+  const saveBus = async () => {
     if (!busPlate.trim()) { setErr("Enter a plate number."); return; }
     if (!busName.trim()) { setErr("Enter a bus name for identification."); return; }
     if (!busCapacityPreview || busCapacityPreview > 200) { setErr("Seat layout must resolve to 1-200 seats."); return; }
@@ -234,21 +266,52 @@ export default function AdminHome() {
       if (busExteriorPhoto) formData.append("exterior_photo", busExteriorPhoto);
       if (busInteriorPhoto) formData.append("interior_photo", busInteriorPhoto);
       if (busSeatPhoto) formData.append("seat_photo", busSeatPhoto);
-      const r = await api.post("/api/transport/admin/buses/", formData);
-      setBusMgmtMsg(r.data.message || "Bus created.");
-      setBusName("");
-      setBusPlate("");
-      setBusYear("");
-      setBusCondition("NORMAL");
-      setBusRows("9");
-      setBusCols("4");
-      setBusActive(true);
-      setBusExteriorPhoto(null);
-      setBusInteriorPhoto(null);
-      setBusSeatPhoto(null);
-      await loadBuses();
+      const r = editingBusId
+        ? await api.patch(`/api/transport/admin/buses/${editingBusId}/`, formData)
+        : await api.post("/api/transport/admin/buses/", formData);
+      setBusMgmtMsg(r.data.message || (editingBusId ? "Bus updated." : "Bus created."));
+      resetBusForm();
+      await Promise.all([loadBuses(), loadSched(), loadDB({ silent: true })]);
     }
-    catch (e) { setErr(e?.response?.data?.detail || "Failed to create bus."); } finally { setBusMgmtBusy(false); }
+    catch (e) { setErr(e?.response?.data?.detail || `Failed to ${editingBusId ? "update" : "create"} bus.`); } finally { setBusMgmtBusy(false); }
+  };
+
+  const startEditingBus = (bus) => {
+    setErr("");
+    setBusMgmtMsg("");
+    setEditingBusId(bus.id);
+    setBusName(bus.display_name || "");
+    setBusPlate(bus.plate_number || "");
+    setBusYear(bus.model_year ? String(bus.model_year) : "");
+    setBusCondition(bus.condition || "NORMAL");
+    setBusRows(String(bus.layout_rows || 9));
+    setBusCols(String(bus.layout_columns || 4));
+    setBusActive(Boolean(bus.is_active));
+    setBusExteriorPhoto(null);
+    setBusInteriorPhoto(null);
+    setBusSeatPhoto(null);
+  };
+
+  const deleteBus = async (bus) => {
+    if (!window.confirm(`Delete bus ${bus.display_name || bus.plate_number}? This cannot be undone.`)) return;
+    setBusDeleteBusyId(bus.id);
+    setErr("");
+    setBusMgmtMsg("");
+    try {
+      const r = await api.delete(`/api/transport/admin/buses/${bus.id}/`);
+      setBusMgmtMsg(r.data.message || "Bus deleted.");
+      if (editingBusId === bus.id) resetBusForm();
+      if (assignBusId === String(bus.id)) {
+        setAssignBusId("");
+        setAssignDriverId("");
+        setAssignHelperId("");
+      }
+      await Promise.all([loadBuses(), loadSched(), loadDB({ silent: true })]);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to delete bus.");
+    } finally {
+      setBusDeleteBusyId(null);
+    }
   };
 
   const assignStaffToBus = async () => {
@@ -269,37 +332,65 @@ export default function AdminHome() {
     }
   };
 
-  const createUser = async () => {
-    if (!uName.trim() || !uPhone.trim() || !uPass.trim()) { setErr("Name, phone, and password are required."); return; }
+  const saveUser = async () => {
+    if (!uName.trim() || !uPhone.trim() || (!editingUserId && !uPass.trim())) { setErr("Name, phone, and password are required."); return; }
     if ((uRole === "DRIVER" || uRole === "HELPER") && !uAddress.trim()) { setErr("Address is required for staff accounts."); return; }
-    if ((uRole === "DRIVER" || uRole === "HELPER") && !uOfficialPhoto) { setErr("An official photo is required for staff accounts."); return; }
-    if (uRole === "DRIVER" && (!uLicenseNumber.trim() || !uLicensePhoto)) { setErr("Driver license number and license photo are required."); return; }
+    if ((uRole === "DRIVER" || uRole === "HELPER") && !uOfficialPhoto && !editingUserId) { setErr("An official photo is required for staff accounts."); return; }
+    if (uRole === "DRIVER" && (!uLicenseNumber.trim() || (!uLicensePhoto && !editingUserId))) { setErr("Driver license number and license photo are required."); return; }
     setUMgmtBusy(true); setErr(""); setUMgmtMsg("");
     try {
       const formData = new FormData();
       formData.append("full_name", uName.trim());
       formData.append("phone", uPhone.trim());
-      formData.append("password", uPass);
+      if (uPass.trim()) formData.append("password", uPass);
       formData.append("role", uRole);
       if (uEmail.trim()) formData.append("email", uEmail.trim());
       if (uAddress.trim()) formData.append("address", uAddress.trim());
       if (uOfficialPhoto) formData.append("official_photo", uOfficialPhoto);
       if (uRole === "DRIVER" && uLicenseNumber.trim()) formData.append("license_number", uLicenseNumber.trim());
       if (uRole === "DRIVER" && uLicensePhoto) formData.append("license_photo", uLicensePhoto);
-      const r = await api.post("/api/auth/admin/users/", formData);
-      setUMgmtMsg(r.data.message || "User created.");
-      setUName("");
-      setUPhone("");
-      setUEmail("");
-      setUAddress("");
-      setUPass("");
-      setUOfficialPhoto(null);
-      setULicenseNumber("");
-      setULicensePhoto(null);
-      await loadUsers();
-      await loadSched();
+      const r = editingUserId
+        ? await api.patch(`/api/auth/admin/users/${editingUserId}/`, formData)
+        : await api.post("/api/auth/admin/users/", formData);
+      setUMgmtMsg(r.data.message || (editingUserId ? "User updated." : "User created."));
+      resetUserForm();
+      await Promise.all([reloadFilteredUsers(), loadSched(), loadDB({ silent: true })]);
     }
-    catch (e) { const d = e?.response?.data; setErr(d?.phone?.[0] || d?.email?.[0] || d?.detail || "Failed to create user."); } finally { setUMgmtBusy(false); }
+    catch (e) { const d = e?.response?.data; setErr(d?.phone?.[0] || d?.email?.[0] || d?.detail || `Failed to ${editingUserId ? "update" : "create"} user.`); } finally { setUMgmtBusy(false); }
+  };
+
+  const startEditingUser = (staffUser) => {
+    setErr("");
+    setUMgmtMsg("");
+    setEditingUserId(staffUser.id);
+    setURole(staffUser.role || "DRIVER");
+    setUName(staffUser.full_name || "");
+    setUPhone(staffUser.phone || "");
+    setUEmail(staffUser.email || "");
+    setUAddress(staffUser.address || "");
+    setUPass("");
+    setUOfficialPhoto(null);
+    setULicenseNumber(staffUser.license_number || "");
+    setULicensePhoto(null);
+  };
+
+  const deleteUser = async (staffUser) => {
+    if (!window.confirm(`Delete ${staffUser.full_name}? This cannot be undone.`)) return;
+    setUserDeleteBusyId(staffUser.id);
+    setErr("");
+    setUMgmtMsg("");
+    setReviewMsg("");
+    try {
+      const r = await api.delete(`/api/auth/admin/users/${staffUser.id}/`);
+      setUMgmtMsg(r.data.message || "User deleted.");
+      if (editingUserId === staffUser.id) resetUserForm();
+      await Promise.all([reloadFilteredUsers(), loadSched(), loadDB({ silent: true })]);
+    } catch (e) {
+      const d = e?.response?.data;
+      setErr(d?.detail || "Failed to delete user.");
+    } finally {
+      setUserDeleteBusyId(null);
+    }
   };
 
   const setStaffFilter = async (role) => {
@@ -670,8 +761,17 @@ export default function AdminHome() {
             {/* Add Bus */}
             <div className="space-y-4">
               <GlassCard t={t}>
-                <SLabel t={t}>Add New Bus</SLabel>
-                <p className={`text-xs mb-4 ${t.textSub}`}>Add the full bus profile, media, and seat layout used across the MetroBus system.</p>
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <SLabel t={t}>{editingBusId ? "Edit Bus" : "Add New Bus"}</SLabel>
+                    <p className={`text-xs ${t.textSub}`}>{editingBusId ? "Update the selected bus profile, layout, and media." : "Add the full bus profile, media, and seat layout used across the MetroBus system."}</p>
+                  </div>
+                  {editingBusId ? (
+                    <button type="button" onClick={resetBusForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
+                      Cancel
+                    </button>
+                  ) : null}
+                </div>
                 {busMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>OK: {busMgmtMsg}</div>}
                 <div className="space-y-3">
                   <InputField label="Bus Name / Identifier" value={busName} onChange={setBusName} placeholder="MetroBus Lakeside Express" t={t} />
@@ -697,8 +797,8 @@ export default function AdminHome() {
                       {busActive ? "Active" : "Inactive"}
                     </button>
                   </div>
-                  <Btn tone="primary" onClick={createBus} disabled={busMgmtBusy} className="w-full !py-4">
-                    {busMgmtBusy ? "Creating..." : "Add Bus"}
+                  <Btn tone="primary" onClick={saveBus} disabled={busMgmtBusy} className="w-full !py-4">
+                    {busMgmtBusy ? (editingBusId ? "Saving..." : "Creating...") : (editingBusId ? "Save Bus Changes" : "Add Bus")}
                   </Btn>
                 </div>
               </GlassCard>
@@ -732,6 +832,12 @@ export default function AdminHome() {
                         </div>
                         <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
                       </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Btn tone="primary" onClick={() => startEditingBus(bus)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
+                        <Btn tone="danger" onClick={() => deleteBus(bus)} disabled={busDeleteBusyId === bus.id} className="!rounded-full !px-3 !py-2 text-[11px]">
+                          {busDeleteBusyId === bus.id ? "Deleting..." : "Delete"}
+                        </Btn>
+                      </div>
                       {(bus.exterior_photo_url || bus.interior_photo_url || bus.seat_photo_url) ? (
                         <div className="mt-3 grid grid-cols-3 gap-2">
                           {[bus.exterior_photo_url, bus.interior_photo_url, bus.seat_photo_url].filter(Boolean).map((url, index) => (
@@ -748,8 +854,17 @@ export default function AdminHome() {
             {/* Add Staff User */}
             <div className="space-y-4">
               <GlassCard t={t}>
-                <SLabel t={t}>Add Staff Account</SLabel>
-                <p className={`text-xs mb-4 ${t.textSub}`}>Create fully documented driver, helper, or admin accounts. Passengers still self-register, and admin review happens after upload.</p>
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <SLabel t={t}>{editingUserId ? "Edit Staff Account" : "Add Staff Account"}</SLabel>
+                    <p className={`text-xs ${t.textSub}`}>{editingUserId ? "Update the selected staff profile, login phone, and documents. Leave password blank to keep it unchanged." : "Create fully documented driver, helper, or admin accounts. Passengers still self-register, and admin review happens after upload."}</p>
+                  </div>
+                  {editingUserId ? (
+                    <button type="button" onClick={resetUserForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
+                      Cancel
+                    </button>
+                  ) : null}
+                </div>
                 {uMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>OK: {uMgmtMsg}</div>}
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-2">
@@ -763,7 +878,7 @@ export default function AdminHome() {
                   <InputField label="Phone (login ID)" value={uPhone} onChange={setUPhone} placeholder="9800000000" t={t} />
                   <InputField label="Email (optional)" value={uEmail} onChange={setUEmail} placeholder="ramesh@example.com" t={t} />
                   <InputField label="Address" value={uAddress} onChange={setUAddress} placeholder="Pokhara-8, Nepal" t={t} />
-                  <InputField label="Password" value={uPass} onChange={setUPass} placeholder="Min 6 characters" type="password" t={t} />
+                  <InputField label={editingUserId ? "Password (optional)" : "Password"} value={uPass} onChange={setUPass} placeholder={editingUserId ? "Leave blank to keep current password" : "Min 6 characters"} type="password" t={t} />
                   <FileField label="Official Staff Photo" file={uOfficialPhoto} onChange={setUOfficialPhoto} t={t} />
                   {uRole === "DRIVER" ? (
                     <>
@@ -771,8 +886,8 @@ export default function AdminHome() {
                       <FileField label="License Photo" file={uLicensePhoto} onChange={setULicensePhoto} t={t} />
                     </>
                   ) : null}
-                  <Btn tone="success" onClick={createUser} disabled={uMgmtBusy} className="w-full !py-4">
-                    {uMgmtBusy ? "Creating..." : `Add ${uRole.charAt(0) + uRole.slice(1).toLowerCase()}`}
+                  <Btn tone="success" onClick={saveUser} disabled={uMgmtBusy} className="w-full !py-4">
+                    {uMgmtBusy ? (editingUserId ? "Saving..." : "Creating...") : (editingUserId ? "Save Staff Changes" : `Add ${uRole.charAt(0) + uRole.slice(1).toLowerCase()}`)}
                   </Btn>
                 </div>
               </GlassCard>
@@ -817,6 +932,12 @@ export default function AdminHome() {
                         </div>
                       ) : null}
                       <div className="mt-3 flex flex-wrap gap-2">
+                        <Btn tone="primary" onClick={() => startEditingUser(u)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
+                        {user?.id !== u.id ? (
+                          <Btn tone="danger" onClick={() => deleteUser(u)} disabled={userDeleteBusyId === u.id} className="!rounded-full !px-3 !py-2 text-[11px]">
+                            {userDeleteBusyId === u.id ? "Deleting..." : "Delete"}
+                          </Btn>
+                        ) : null}
                         {u.official_photo_url ? (
                           <button
                             type="button"

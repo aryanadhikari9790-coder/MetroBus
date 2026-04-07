@@ -424,3 +424,93 @@ class AdminCreateUserSerializer(serializers.ModelSerializer):
             is_active=True,
             is_staff=validated_data["role"] == User.Role.ADMIN,
         )
+
+
+class AdminUpdateUserSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=6, required=False, allow_blank=False)
+    role = serializers.ChoiceField(choices=["DRIVER", "HELPER", "ADMIN"], required=False)
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    official_photo = serializers.ImageField(required=False, allow_null=True)
+    license_number = serializers.CharField(max_length=120, required=False, allow_blank=True)
+    license_photo = serializers.ImageField(required=False, allow_null=True)
+
+    class Meta:
+        model = User
+        fields = (
+            "full_name",
+            "phone",
+            "email",
+            "password",
+            "role",
+            "address",
+            "official_photo",
+            "license_number",
+            "license_photo",
+        )
+
+    def validate_phone(self, value):
+        try:
+            phone = normalize_nepal_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+
+        if User.objects.filter(phone=phone).exclude(id=self.instance.id).exists():
+            raise serializers.ValidationError("An account with this phone number already exists.")
+        return phone
+
+    def validate_email(self, value):
+        if value in ("", None):
+            return None
+
+        if User.objects.filter(email=value).exclude(id=self.instance.id).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        return value
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        next_role = attrs.get("role", self.instance.role)
+        address = (attrs.get("address", self.instance.address) or "").strip()
+        official_photo = attrs.get("official_photo", self.instance.official_photo)
+        license_number = (attrs.get("license_number", self.instance.license_number) or "").strip()
+        license_photo = attrs.get("license_photo", self.instance.license_photo)
+
+        if next_role in {User.Role.DRIVER, User.Role.HELPER}:
+            if not address:
+                raise serializers.ValidationError({"address": "Address is required for staff accounts."})
+            if not official_photo:
+                raise serializers.ValidationError({"official_photo": "An official staff photo is required."})
+
+        if next_role == User.Role.DRIVER:
+            if not license_number:
+                raise serializers.ValidationError({"license_number": "Driver license number is required."})
+            if not license_photo:
+                raise serializers.ValidationError({"license_photo": "Driver license photo is required."})
+
+        attrs["address"] = address
+        attrs["license_number"] = license_number
+        return attrs
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
+        next_role = validated_data.get("role", instance.role)
+
+        if next_role != User.Role.DRIVER:
+            validated_data.setdefault("license_number", "")
+            validated_data.setdefault("license_photo", None)
+            instance.license_verified = False
+
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        instance.is_staff = instance.role == User.Role.ADMIN
+        if password:
+            instance.set_password(password)
+
+        update_fields = list(validated_data.keys()) + ["is_staff"]
+        if next_role != User.Role.DRIVER:
+            update_fields.append("license_verified")
+        if password:
+            update_fields.append("password")
+
+        instance.save(update_fields=sorted(set(update_fields)) or None)
+        return instance

@@ -8,6 +8,7 @@ from .views import (
     AdminDashboardView,
     AdminUserListCreateView,
     AdminUserReviewView,
+    AdminUserDetailView,
 )
 
 
@@ -23,5 +24,6 @@ urlpatterns = [
     path("me/", MeView.as_view(), name="me"),
     path("admin/dashboard/", AdminDashboardView.as_view(), name="admin-dashboard"),
     path("admin/users/", AdminUserListCreateView.as_view(), name="admin-users"),
+    path("admin/users/<int:user_id>/", AdminUserDetailView.as_view(), name="admin-user-detail"),
     path("admin/users/<int:user_id>/review/", AdminUserReviewView.as_view(), name="admin-user-review"),
 ]

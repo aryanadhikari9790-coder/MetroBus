@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -261,7 +262,7 @@ class AdminBusDetailView(APIView):
         driver_id = request.data.get("driver")
         helper_id = request.data.get("helper")
         updated_fields = []
-        
+
         if driver_id is not None:
             if driver_id == "":
                 bus.driver = None
@@ -280,10 +281,25 @@ class AdminBusDetailView(APIView):
                 bus.helper = helper
             updated_fields.append("helper")
 
-        for field in ("display_name", "condition"):
-            if field in request.data:
-                setattr(bus, field, request.data.get(field) or "")
-                updated_fields.append(field)
+        if "display_name" in request.data:
+            bus.display_name = (request.data.get("display_name") or "").strip()
+            updated_fields.append("display_name")
+
+        if "plate_number" in request.data:
+            plate = (request.data.get("plate_number") or "").strip().upper()
+            if not plate:
+                return Response({"detail": "plate_number is required."}, status=400)
+            if Bus.objects.filter(plate_number=plate).exclude(id=bus.id).exists():
+                return Response({"detail": f"Bus '{plate}' already exists."}, status=400)
+            bus.plate_number = plate
+            updated_fields.append("plate_number")
+
+        if "condition" in request.data:
+            condition = str(request.data.get("condition") or "").upper()
+            if condition not in Bus.Condition.values:
+                return Response({"detail": "condition must be NEW, NORMAL, or OLD."}, status=400)
+            bus.condition = condition
+            updated_fields.append("condition")
 
         if "model_year" in request.data:
             raw_value = request.data.get("model_year")
@@ -294,18 +310,113 @@ class AdminBusDetailView(APIView):
                     bus.model_year = int(raw_value)
                 except (TypeError, ValueError):
                     return Response({"detail": "model_year must be a valid year."}, status=400)
+                if bus.model_year < 1980 or bus.model_year > 2100:
+                    return Response({"detail": "model_year must be between 1980 and 2100."}, status=400)
             updated_fields.append("model_year")
 
         if "is_active" in request.data:
             bus.is_active = _parse_bool(request.data.get("is_active"), default=bus.is_active)
             updated_fields.append("is_active")
 
+        next_rows = bus.layout_rows
+        next_columns = bus.layout_columns
+        next_capacity = bus.capacity
+        seat_layout_updated = False
+
+        if "layout_rows" in request.data:
+            try:
+                next_rows = int(request.data.get("layout_rows"))
+            except (TypeError, ValueError):
+                return Response({"detail": "layout_rows must be a valid integer."}, status=400)
+            if next_rows < 1 or next_rows > 30:
+                return Response({"detail": "layout_rows must be between 1 and 30."}, status=400)
+            bus.layout_rows = next_rows
+            updated_fields.append("layout_rows")
+            seat_layout_updated = True
+
+        if "layout_columns" in request.data:
+            try:
+                next_columns = int(request.data.get("layout_columns"))
+            except (TypeError, ValueError):
+                return Response({"detail": "layout_columns must be a valid integer."}, status=400)
+            if next_columns < 1 or next_columns > 8:
+                return Response({"detail": "layout_columns must be between 1 and 8."}, status=400)
+            bus.layout_columns = next_columns
+            updated_fields.append("layout_columns")
+            seat_layout_updated = True
+
+        if "capacity" in request.data:
+            try:
+                next_capacity = int(request.data.get("capacity"))
+            except (TypeError, ValueError):
+                return Response({"detail": "capacity must be a valid integer."}, status=400)
+            if next_capacity < 1 or next_capacity > 200:
+                return Response({"detail": "capacity must be between 1 and 200."}, status=400)
+            updated_fields.append("capacity")
+            seat_layout_updated = True
+
+        if next_capacity > next_rows * next_columns:
+            return Response({"detail": "Seat capacity cannot be greater than rows × columns."}, status=400)
+        if "capacity" in request.data and next_capacity < bus.seats.count():
+            return Response(
+                {"detail": "Reducing capacity below the existing seat count is not supported. Create a new bus if you need a smaller layout."},
+                status=400,
+            )
+        if "capacity" in request.data:
+            bus.capacity = next_capacity
+
+        if "exterior_photo" in request.FILES:
+            bus.exterior_photo = request.FILES.get("exterior_photo")
+            updated_fields.append("exterior_photo")
+        if _parse_bool(request.data.get("clear_exterior_photo"), default=False):
+            bus.exterior_photo = None
+            updated_fields.append("exterior_photo")
+
+        if "interior_photo" in request.FILES:
+            bus.interior_photo = request.FILES.get("interior_photo")
+            updated_fields.append("interior_photo")
+        if _parse_bool(request.data.get("clear_interior_photo"), default=False):
+            bus.interior_photo = None
+            updated_fields.append("interior_photo")
+
+        if "seat_photo" in request.FILES:
+            bus.seat_photo = request.FILES.get("seat_photo")
+            updated_fields.append("seat_photo")
+        if _parse_bool(request.data.get("clear_seat_photo"), default=False):
+            bus.seat_photo = None
+            updated_fields.append("seat_photo")
+
         bus.save(update_fields=sorted(set(updated_fields)) or None)
-        
+        if seat_layout_updated:
+            ensure_bus_seats(bus)
+
         return Response({
-            "message": "Bus assigned staff updated.",
+            "message": "Bus updated successfully.",
             "bus": BusSerializer(bus, context=_serializer_context(request)).data
         })
+
+    def delete(self, request, bus_id):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        try:
+            bus = Bus.objects.get(id=bus_id)
+        except Bus.DoesNotExist:
+            return Response({"detail": "Bus not found."}, status=404)
+
+        plate = bus.plate_number
+        try:
+            bus.delete()
+        except ProtectedError:
+            return Response(
+                {
+                    "detail": "This bus is linked to trips or schedules. Remove those assignments before deleting it."
+                },
+                status=409,
+            )
+
+        return Response({"message": f"Deleted bus '{plate}'."}, status=200)
 
 
 class MyAssignedBusView(APIView):
