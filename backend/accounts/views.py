@@ -16,9 +16,10 @@ from payments.wallets import FREE_RIDE_REWARD_POINTS
 from transport.models import Route, Stop, Bus, Seat
 from trips.models import Trip
 from .models import PhoneOTP
-from .otp_delivery import OTPDeliveryError, send_registration_otp
+from .otp_delivery import OTPDeliveryError, send_password_reset_otp, send_registration_otp
 from .serializers import (
     RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
+    PasswordResetOTPRequestSerializer, PasswordResetConfirmSerializer,
     AdminCreateUserSerializer, AdminUserListSerializer,
     AdminUserReviewSerializer,
     AdminUpdateUserSerializer,
@@ -75,6 +76,66 @@ class RegisterOTPRequestView(APIView):
             payload["dev_code"] = delivery_result["dev_code"]
 
         return Response(payload, status=201)
+
+
+class PasswordResetOTPRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetOTPRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        phone = serializer.validated_data["phone"]
+        recent_otp = (
+            PhoneOTP.objects.filter(phone=phone, purpose=PhoneOTP.Purpose.PASSWORD_RESET)
+            .order_by("-created_at")
+            .first()
+        )
+        if recent_otp and recent_otp.created_at >= timezone.now() - timedelta(seconds=45):
+            return Response({"detail": "Please wait a few seconds before requesting another OTP."}, status=429)
+
+        code = f"{random.randint(0, 9999):04d}"
+        otp = PhoneOTP(
+            phone=phone,
+            purpose=PhoneOTP.Purpose.PASSWORD_RESET,
+            expires_at=timezone.now() + timedelta(minutes=5),
+        )
+        otp.set_code(code)
+        otp.save()
+
+        try:
+            delivery_result = send_password_reset_otp(phone, code)
+        except OTPDeliveryError as exc:
+            otp.delete()
+            return Response({"detail": str(exc)}, status=503)
+
+        payload = {
+            "message": f"Password reset OTP sent to {phone}. It will expire in 5 minutes.",
+            "phone": phone,
+            "delivery": delivery_result["delivery"],
+            "expires_in_seconds": 300,
+        }
+        if delivery_result.get("detail"):
+            payload["detail"] = delivery_result["detail"]
+        if delivery_result.get("dev_code"):
+            payload["dev_code"] = delivery_result["dev_code"]
+
+        return Response(payload, status=201)
+
+
+class PasswordResetConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        return Response(
+            {
+                "message": f"Password reset complete for {user.phone}. You can sign in now."
+            },
+            status=200,
+        )
 
 
 class MeView(APIView):

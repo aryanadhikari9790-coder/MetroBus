@@ -36,6 +36,35 @@ def normalize_nepal_phone(value: str) -> str:
     return f"{NEPAL_COUNTRY_CODE}{national}"
 
 
+def phone_lookup_candidates(value: str) -> list[str]:
+    identifier = str(value or "").strip()
+    if not identifier:
+        return []
+
+    candidates = []
+    compact = identifier.replace(" ", "").replace("-", "")
+
+    for option in (identifier, compact, compact.lstrip("+")):
+        if option and option not in candidates:
+            candidates.append(option)
+
+    try:
+        normalized = normalize_nepal_phone(identifier)
+    except ValidationError:
+        normalized = None
+    else:
+        for option in (
+            normalized,
+            normalized[1:],
+            normalized[4:],
+            f"0{normalized[4:]}",
+        ):
+            if option and option not in candidates:
+                candidates.append(option)
+
+    return candidates
+
+
 def build_full_name(first_name: str, middle_name: str = "", last_name: str = "") -> str:
     parts = [str(first_name or "").strip(), str(middle_name or "").strip(), str(last_name or "").strip()]
     return " ".join(part for part in parts if part)

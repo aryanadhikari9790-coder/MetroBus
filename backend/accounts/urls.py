@@ -4,6 +4,8 @@ from .serializers import PhoneTokenObtainPairSerializer
 from .views import (
     RegisterView,
     RegisterOTPRequestView,
+    PasswordResetOTPRequestView,
+    PasswordResetConfirmView,
     MeView,
     AdminDashboardView,
     AdminUserListCreateView,
@@ -18,6 +20,8 @@ class PhoneTokenObtainPairView(TokenObtainPairView):
 
 urlpatterns = [
     path("otp/request/", RegisterOTPRequestView.as_view(), name="register-otp-request"),
+    path("password-reset/request/", PasswordResetOTPRequestView.as_view(), name="password-reset-request"),
+    path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
     path("register/", RegisterView.as_view(), name="register"),
     path("login/", PhoneTokenObtainPairView.as_view(), name="login"),
     path("refresh/", TokenRefreshView.as_view(), name="refresh"),

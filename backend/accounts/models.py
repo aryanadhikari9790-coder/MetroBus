@@ -78,6 +78,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 class PhoneOTP(models.Model):
     class Purpose(models.TextChoices):
         REGISTER = "REGISTER", "Passenger registration"
+        PASSWORD_RESET = "PASSWORD_RESET", "Passenger password reset"
 
     phone = models.CharField(max_length=20, db_index=True)
     purpose = models.CharField(max_length=20, choices=Purpose.choices, default=Purpose.REGISTER)

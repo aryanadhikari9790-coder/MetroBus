@@ -10,9 +10,9 @@ class OTPDeliveryError(Exception):
     pass
 
 
-def _render_message(code: str) -> str:
+def _render_message(code: str, template_env_key: str = "OTP_MESSAGE_TEMPLATE") -> str:
     template = os.getenv(
-        "OTP_MESSAGE_TEMPLATE",
+        template_env_key,
         "MetroBus OTP is {code}. Valid for 5 minutes. Do not share it.",
     ).strip() or "MetroBus OTP is {code}. Valid for 5 minutes. Do not share it."
     try:
@@ -38,8 +38,8 @@ def _sparrow_recipient(phone: str) -> str:
     return recipient
 
 
-def _send_console(phone: str, code: str):
-    print(f"[MetroBus OTP][console] Registration OTP for {phone}: {code}")
+def _send_console(phone: str, code: str, purpose_label: str):
+    print(f"[MetroBus OTP][console] {purpose_label} OTP for {phone}: {code}")
     return {
         "delivery": "console",
         "detail": "Sparrow SMS is not configured yet. Using console OTP for now.",
@@ -47,7 +47,7 @@ def _send_console(phone: str, code: str):
     }
 
 
-def _send_sparrow(phone: str, code: str):
+def _send_sparrow(phone: str, code: str, purpose_label: str, template_env_key: str = "OTP_MESSAGE_TEMPLATE"):
     token = os.getenv("SPARROW_SMS_TOKEN", "").strip()
     sender = os.getenv("SPARROW_SMS_FROM", "").strip()
     url = os.getenv("SPARROW_SMS_URL", "https://api.sparrowsms.com/v2/sms/").strip()
@@ -63,7 +63,7 @@ def _send_sparrow(phone: str, code: str):
             "token": token,
             "from": sender,
             "to": _sparrow_recipient(phone),
-            "text": _render_message(code),
+            "text": _render_message(code, template_env_key=template_env_key),
         },
         timeout=15,
     )
@@ -88,7 +88,7 @@ def _send_sparrow(phone: str, code: str):
         detail = body.get("response_description") or body.get("message") or "Unknown Sparrow SMS error."
         raise OTPDeliveryError(f"Sparrow SMS rejected the OTP request: {detail}")
 
-    print(f"[MetroBus OTP][sparrow] Registration OTP requested for {phone}")
+    print(f"[MetroBus OTP][sparrow] {purpose_label} OTP requested for {phone}")
     return {
         "delivery": "sparrow",
         "detail": "OTP sent via Sparrow SMS.",
@@ -96,10 +96,34 @@ def _send_sparrow(phone: str, code: str):
     }
 
 
-def send_registration_otp(phone: str, code: str):
+def _dispatch_otp(
+    phone: str,
+    code: str,
+    *,
+    purpose_label: str,
+    template_env_key: str = "OTP_MESSAGE_TEMPLATE",
+):
     provider = os.getenv("OTP_PROVIDER", "console").strip().lower() or "console"
     if provider == "console":
-        return _send_console(phone, code)
+        return _send_console(phone, code, purpose_label)
     if provider == "sparrow":
-        return _send_sparrow(phone, code)
+        return _send_sparrow(phone, code, purpose_label, template_env_key=template_env_key)
     raise OTPDeliveryError(f"Unsupported OTP provider: {provider}")
+
+
+def send_registration_otp(phone: str, code: str):
+    return _dispatch_otp(
+        phone,
+        code,
+        purpose_label="Registration",
+        template_env_key="OTP_MESSAGE_TEMPLATE",
+    )
+
+
+def send_password_reset_otp(phone: str, code: str):
+    return _dispatch_otp(
+        phone,
+        code,
+        purpose_label="Password reset",
+        template_env_key="PASSWORD_RESET_OTP_MESSAGE_TEMPLATE",
+    )

@@ -8,7 +8,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.settings import api_settings
 
 from .models import PhoneOTP
-from .utils import build_full_name, normalize_nepal_phone
+from .utils import build_full_name, normalize_nepal_phone, phone_lookup_candidates
 
 User = get_user_model()
 
@@ -36,26 +36,7 @@ class PhoneTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not password:
             raise serializers.ValidationError({"password": "Password is required."})
 
-        candidates = []
-        compact = identifier.replace(" ", "").replace("-", "")
-
-        for value in (identifier, compact, compact.lstrip("+")):
-            if value and value not in candidates:
-                candidates.append(value)
-
-        try:
-            normalized = normalize_nepal_phone(identifier)
-        except DjangoValidationError:
-            normalized = None
-        else:
-            for value in (
-                normalized,
-                normalized[1:],
-                normalized[4:],
-                f"0{normalized[4:]}",
-            ):
-                if value and value not in candidates:
-                    candidates.append(value)
+        candidates = phone_lookup_candidates(identifier)
 
         query = Q(phone__in=candidates)
         if "@" in identifier:
@@ -91,6 +72,73 @@ class RegisterOTPRequestSerializer(serializers.Serializer):
         if User.objects.filter(phone=phone).exists():
             raise serializers.ValidationError("An account with this phone number already exists.")
         return phone
+
+
+class PasswordResetOTPRequestSerializer(serializers.Serializer):
+    phone = serializers.CharField()
+
+    def validate_phone(self, value):
+        lookup_candidates = phone_lookup_candidates(value)
+        try:
+            phone = normalize_nepal_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+
+        user = User.objects.filter(phone__in=lookup_candidates, role=User.Role.PASSENGER, is_active=True).order_by("id").first()
+        if not user:
+            raise serializers.ValidationError("No active passenger account was found for this phone number.")
+        self.context["reset_user"] = user
+        return phone
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    phone = serializers.CharField()
+    otp_code = serializers.CharField(write_only=True, min_length=4, max_length=4)
+    password = serializers.CharField(write_only=True, min_length=6)
+    password_confirm = serializers.CharField(write_only=True, min_length=6)
+
+    def validate_phone(self, value):
+        lookup_candidates = phone_lookup_candidates(value)
+        try:
+            phone = normalize_nepal_phone(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.messages[0])
+
+        user = User.objects.filter(phone__in=lookup_candidates, role=User.Role.PASSENGER, is_active=True).order_by("id").first()
+        if not user:
+            raise serializers.ValidationError("No active passenger account was found for this phone number.")
+        self.context["reset_user"] = user
+        return phone
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
+
+        otp = (
+            PhoneOTP.objects.filter(
+                phone=attrs["phone"],
+                purpose=PhoneOTP.Purpose.PASSWORD_RESET,
+                consumed_at__isnull=True,
+                expires_at__gt=timezone.now(),
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if not otp or not otp.matches(attrs["otp_code"]):
+            raise serializers.ValidationError({"otp_code": "Invalid or expired OTP."})
+
+        attrs["_otp"] = otp
+        attrs["_user"] = self.context["reset_user"]
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.validated_data["_user"]
+        otp = self.validated_data["_otp"]
+        user.set_password(self.validated_data["password"])
+        user.save(update_fields=["password"])
+        otp.consume()
+        return user
 
 
 class RegisterSerializer(serializers.ModelSerializer):
