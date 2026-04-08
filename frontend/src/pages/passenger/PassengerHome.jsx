@@ -418,14 +418,6 @@ export default function PassengerHome() {
   }, [acceptedTripId, activeBooking?.trip_id]);
 
   useEffect(() => {
-    if (activeView !== "home") return;
-    if (activeBooking && homeStage === "planner" && !matchedTrips.length && !acceptedTripId) {
-      setTicketBookingId((current) => current || activeBooking.id);
-      setHomeStage("ticket");
-    }
-  }, [acceptedTripId, activeBooking, activeView, homeStage, matchedTrips.length]);
-
-  useEffect(() => {
     if (homeStage === "matches" && !visibleMatchedTrips.length) setHomeStage("planner");
   }, [homeStage, visibleMatchedTrips.length]);
 
@@ -937,6 +929,40 @@ export default function PassengerHome() {
 
             {homeStage === "planner" ? (
               <div className="space-y-4">
+                {activeBooking ? (
+                  <div className="rounded-[30px] border border-[rgba(141,18,235,0.12)] bg-white p-5 shadow-[var(--mb-shadow)]">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Current Ride</p>
+                        <h2 className="mt-2 text-2xl font-black text-[var(--mb-text)]">
+                          {activeBooking.pickup_stop_name} to {activeBooking.destination_stop_name}
+                        </h2>
+                        <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">
+                          Home stays focused on booking. Your current ride is still available in Track and My Rides.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTicketBookingId(activeBooking.id);
+                            setActiveView("rides");
+                          }}
+                          className="rounded-full border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-2.5 text-sm font-black text-[var(--mb-purple)]"
+                        >
+                          View Ticket
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveView("track")}
+                          className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow)]"
+                        >
+                          Track Ride
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="flex gap-3 overflow-x-auto pb-1">
                   {quickRouteOptions.map((option) => (
                     <button
