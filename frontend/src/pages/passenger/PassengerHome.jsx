@@ -6,6 +6,7 @@ import { api } from "../../api";
 import { snapRouteToRoad } from "../../lib/mapRoute";
 import {
   BottomNav,
+  CancellationSheet,
   DriverCard,
   HeaderBar,
   HistoryCard,
@@ -61,6 +62,10 @@ export default function PassengerHome() {
   const [liveLocationOverwrites, setLiveLocationOverwrites] = useState({});
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [ticketBookingId, setTicketBookingId] = useState(null);
+  const [cancellationBookingId, setCancellationBookingId] = useState(null);
+  const [cancellationReason, setCancellationReason] = useState("");
+  const [cancellationNote, setCancellationNote] = useState("");
+  const [cancellationBusy, setCancellationBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [bookingsLoading, setBookingsLoading] = useState(true);
   const [findingRoutes, setFindingRoutes] = useState(false);
@@ -238,6 +243,32 @@ export default function PassengerHome() {
     },
   }), [visibleMatchedTrips.length]);
   const stageOrder = ["planner", "matches", "seats", "ticket"];
+  const cancellationBooking = useMemo(
+    () => bookings.find((booking) => Number(booking.id) === Number(cancellationBookingId)) || null,
+    [bookings, cancellationBookingId],
+  );
+  const cancellationReasons = useMemo(() => ([
+    { value: "CHANGE_OF_PLANS", label: "Change of plans" },
+    { value: "WRONG_ROUTE", label: "Booked the wrong route" },
+    { value: "DELAY", label: "Bus arrival delay" },
+    { value: "PAYMENT_ISSUE", label: "Payment issue" },
+    { value: "EMERGENCY", label: "Emergency or urgent issue" },
+    { value: "OTHER", label: "Other" },
+  ]), []);
+  const logoutCancellationBookings = useMemo(
+    () =>
+      bookings.filter(
+        (booking) =>
+          booking.can_cancel
+          && (
+            booking.trip_status === "LIVE"
+            || booking.checked_in_at
+            || booking.payment_requested_at
+            || booking.accepted_by_helper_at
+          ),
+      ),
+    [bookings],
+  );
 
   const ensureCtx = useCallback(async (tripList) => {
     const missing = tripList.filter((trip) => !tripContexts[trip.id]);
@@ -691,11 +722,88 @@ export default function PassengerHome() {
     catch { setErr("Unable to share trip right now."); }
   };
 
-  const handleLogout = useCallback(() => {
-    clearToken();
-    setUser(null);
-    navigate("/auth/login", { replace: true });
-  }, [navigate, setUser]);
+  const closeCancellationSheet = () => {
+    setCancellationBookingId(null);
+    setCancellationReason("");
+    setCancellationNote("");
+  };
+
+  const cancelBooking = useCallback(async (bookingId, reason, note = "") => {
+    const response = await api.post(`/api/bookings/${bookingId}/cancel/`, { reason, note });
+    const cancelledBooking = response.data.booking || null;
+    setBookings((current) => current.map((booking) => (Number(booking.id) === Number(bookingId) ? cancelledBooking || booking : booking)));
+    if (Number(lastBookingId) === Number(bookingId)) setLastBookingId(null);
+    setLastBookingSummary((current) => (current && Number(current.id) === Number(bookingId) ? null : current));
+    if (Number(ticketBookingId) === Number(bookingId)) setTicketBookingId(null);
+    if (Number(selectedTripId) === Number(cancelledBooking?.trip_id || activeBooking?.trip_id)) {
+      setSelectedTripId("");
+    }
+    if (Number(acceptedTripId) === Number(cancelledBooking?.trip_id || activeBooking?.trip_id)) {
+      setAcceptedTripId("");
+    }
+    setSelectedSeatIds([]);
+    setHomeStage("planner");
+    setMatchedTrips([]);
+    setDismissedMatchIds([]);
+    setMsg(response.data.message || "Ride cancelled.");
+    return cancelledBooking;
+  }, [acceptedTripId, activeBooking?.trip_id, lastBookingId, selectedTripId, ticketBookingId]);
+
+  const confirmPassengerCancellation = async () => {
+    if (!cancellationBookingId || !cancellationReason) {
+      setErr("Choose a cancellation reason first.");
+      return;
+    }
+    if (cancellationReason === "OTHER" && !cancellationNote.trim()) {
+      setErr("Please enter a short note for the cancellation.");
+      return;
+    }
+    setCancellationBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      await cancelBooking(cancellationBookingId, cancellationReason, cancellationNote.trim());
+      closeCancellationSheet();
+      if (activeView === "track") setActiveView("home");
+      await loadBookings({ silent: true });
+    } catch (error) {
+      setErr(error?.response?.data?.note?.[0] || error?.response?.data?.detail || "Unable to cancel this ride.");
+    } finally {
+      setCancellationBusy(false);
+    }
+  };
+
+  const requestCancellation = (booking) => {
+    if (!booking?.can_cancel) {
+      setErr("This ride can no longer be cancelled.");
+      return;
+    }
+    setErr("");
+    setMsg("");
+    setCancellationBookingId(booking.id);
+    setCancellationReason("");
+    setCancellationNote("");
+  };
+
+  const handleLogout = useCallback(async () => {
+    try {
+      setErr("");
+      setMsg("");
+      if (logoutCancellationBookings.length) {
+        await Promise.allSettled(
+          logoutCancellationBookings.map((booking) =>
+            cancelBooking(booking.id, "LOGOUT", "Passenger logged out while the ride was still active."),
+          ),
+        );
+      }
+    } catch {
+      // Logout should still proceed even if the cancellation request fails.
+    } finally {
+      clearToken();
+      setUser(null);
+      navigate("/auth/login", { replace: true });
+    }
+  }, [cancelBooking, logoutCancellationBookings, navigate, setUser]);
 
   const goBackHomeStage = () => {
     setErr("");
@@ -874,6 +982,19 @@ export default function PassengerHome() {
                   <span>{findingRoutes ? "Finding Buses..." : "Find Buses"}</span>
                   <span className="text-xl">→</span>
                 </button>
+                {cancellationBooking ? (
+                  <CancellationSheet
+                    booking={cancellationBooking}
+                    reasons={cancellationReasons}
+                    reason={cancellationReason}
+                    note={cancellationNote}
+                    busy={cancellationBusy}
+                    onReasonChange={setCancellationReason}
+                    onNoteChange={setCancellationNote}
+                    onConfirm={confirmPassengerCancellation}
+                    onClose={closeCancellationSheet}
+                  />
+                ) : null}
               </div>
             ) : null}
 
@@ -1001,6 +1122,28 @@ export default function PassengerHome() {
                     Back to Previous Step
                   </button>
                 </div>
+                {ticketBooking?.can_cancel ? (
+                  <button
+                    type="button"
+                    onClick={() => requestCancellation(ticketBooking)}
+                    className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-base font-black text-red-600 shadow-[var(--mb-shadow)]"
+                  >
+                    Cancel This Ride
+                  </button>
+                ) : null}
+                {cancellationBooking && Number(cancellationBooking.id) === Number(ticketBooking?.id) ? (
+                  <CancellationSheet
+                    booking={cancellationBooking}
+                    reasons={cancellationReasons}
+                    reason={cancellationReason}
+                    note={cancellationNote}
+                    busy={cancellationBusy}
+                    onReasonChange={setCancellationReason}
+                    onNoteChange={setCancellationNote}
+                    onConfirm={confirmPassengerCancellation}
+                    onClose={closeCancellationSheet}
+                  />
+                ) : null}
               </div>
             ) : null}
           </section>
@@ -1017,10 +1160,32 @@ export default function PassengerHome() {
                 window.location.href = "tel:100";
               }}
             />
+            {activeBooking?.can_cancel ? (
+              <button
+                type="button"
+                onClick={() => requestCancellation(activeBooking)}
+                className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-base font-black text-red-600 shadow-[var(--mb-shadow)]"
+              >
+                Cancel Current Ride
+              </button>
+            ) : null}
+            {cancellationBooking && Number(cancellationBooking.id) === Number(activeBooking?.id) ? (
+              <CancellationSheet
+                booking={cancellationBooking}
+                reasons={cancellationReasons}
+                reason={cancellationReason}
+                note={cancellationNote}
+                busy={cancellationBusy}
+                onReasonChange={setCancellationReason}
+                onNoteChange={setCancellationNote}
+                onConfirm={confirmPassengerCancellation}
+                onClose={closeCancellationSheet}
+              />
+            ) : null}
           </section>
         ) : null}
 
-        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <ReservationCard booking={activeBooking} onReschedule={() => { setHomeStage("planner"); setActiveView("home"); }} onViewTicket={() => setTicketBookingId(activeBooking.id)} /> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
+        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <div className="space-y-4"><ReservationCard booking={activeBooking} onReschedule={() => { setHomeStage("planner"); setActiveView("home"); }} onViewTicket={() => setTicketBookingId(activeBooking.id)} />{activeBooking.can_cancel ? <button type="button" onClick={() => requestCancellation(activeBooking)} className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-lg font-black text-red-600 shadow-[var(--mb-shadow)]">Cancel Ride</button> : null}{cancellationBooking && Number(cancellationBooking.id) === Number(activeBooking.id) ? <CancellationSheet booking={cancellationBooking} reasons={cancellationReasons} reason={cancellationReason} note={cancellationNote} busy={cancellationBusy} onReasonChange={setCancellationReason} onNoteChange={setCancellationNote} onConfirm={confirmPassengerCancellation} onClose={closeCancellationSheet} /> : null}</div> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
 
         {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} walletSummary={walletSummary} passPlans={passPlans} onTopUp={() => topUpWallet(500)} onBuyPass={buyRidePass} actionBusy={walletBusy} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
       </main>

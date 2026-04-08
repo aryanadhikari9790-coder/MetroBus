@@ -21,6 +21,15 @@ class Booking(models.Model):
         COMPLETED = "COMPLETED", "Completed"
         NO_SHOW = "NO_SHOW", "No show"
 
+    class CancellationReason(models.TextChoices):
+        CHANGE_OF_PLANS = "CHANGE_OF_PLANS", "Change of plans"
+        WRONG_ROUTE = "WRONG_ROUTE", "Booked the wrong route"
+        DELAY = "DELAY", "Bus arrival delay"
+        PAYMENT_ISSUE = "PAYMENT_ISSUE", "Payment issue"
+        EMERGENCY = "EMERGENCY", "Emergency or urgent issue"
+        LOGOUT = "LOGOUT", "Passenger logged out mid-ride"
+        OTHER = "OTHER", "Other"
+
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.CONFIRMED)
 
     ticket_code = models.CharField(max_length=20, unique=True, default=generate_ticket_code, editable=False)
@@ -58,6 +67,21 @@ class Booking(models.Model):
         blank=True,
         related_name="completed_bookings",
     )
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelled_bookings",
+    )
+    cancellation_reason = models.CharField(
+        max_length=32,
+        choices=CancellationReason.choices,
+        blank=True,
+        default="",
+    )
+    cancellation_note = models.CharField(max_length=255, blank=True, default="")
 
     created_at = models.DateTimeField(auto_now_add=True)
 

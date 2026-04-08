@@ -15,6 +15,7 @@ from .serializers import (
     PassengerBookingListSerializer,
     HelperLookupSerializer,
     HelperBookingTicketSerializer,
+    PassengerCancelBookingSerializer,
 )
 from .permissions import IsPassenger, IsHelper
 from .services import validate_seats_available, get_fare_for_segment, get_taken_seat_ids_for_trip
@@ -58,6 +59,54 @@ class PassengerBookingsView(APIView):
             route.route_stops_cache = route_cache[route.id]
 
         return Response({"bookings": PassengerBookingListSerializer(bookings, many=True).data})
+
+
+class PassengerCancelBookingView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def post(self, request, booking_id: int):
+        booking = _booking_queryset().filter(id=booking_id, passenger=request.user).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=404)
+        if booking.status == Booking.Status.CANCELLED:
+            return Response(
+                {"message": "This ride is already cancelled.", "booking": PassengerBookingListSerializer(booking).data},
+                status=200,
+            )
+        if booking.status in {Booking.Status.COMPLETED, Booking.Status.NO_SHOW}:
+            return Response({"detail": "This ride can no longer be cancelled."}, status=400)
+
+        serializer = PassengerCancelBookingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        booking.status = Booking.Status.CANCELLED
+        booking.cancelled_at = timezone.now()
+        booking.cancelled_by = request.user
+        booking.cancellation_reason = serializer.validated_data["reason"]
+        booking.cancellation_note = serializer.validated_data.get("note", "")
+        booking.save(
+            update_fields=[
+                "status",
+                "cancelled_at",
+                "cancelled_by",
+                "cancellation_reason",
+                "cancellation_note",
+            ]
+        )
+
+        payment = getattr(booking, "payment", None)
+        if payment and payment.status == "PENDING":
+            payment.status = "CANCELLED"
+            payment.save(update_fields=["status"])
+
+        booking = _booking_queryset().filter(id=booking.id).first()
+        return Response(
+            {
+                "message": "Your ride was cancelled and the reserved seat is now available again.",
+                "booking": PassengerBookingListSerializer(booking).data,
+            },
+            status=200,
+        )
 
 
 class TripSeatAvailabilityView(APIView):
@@ -219,6 +268,8 @@ class HelperAcceptBookingView(APIView):
                 {"message": "This ride is already completed.", "booking": HelperBookingTicketSerializer(booking).data},
                 status=200,
             )
+        if booking.status == Booking.Status.CANCELLED:
+            return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
         if booking.accepted_by_helper_at:
             return Response(
                 {"message": "Ride details already accepted by the helper.", "booking": HelperBookingTicketSerializer(booking).data},
@@ -249,6 +300,8 @@ class HelperBoardBookingView(APIView):
                 {"message": "This ride is already completed.", "booking": HelperBookingTicketSerializer(booking).data},
                 status=200,
             )
+        if booking.status == Booking.Status.CANCELLED:
+            return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
         if not booking.accepted_by_helper_at:
             return Response({"detail": "Accept the passenger ride details before boarding."}, status=400)
 
@@ -281,6 +334,8 @@ class HelperRequestBookingPaymentView(APIView):
             return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
         if booking.status == Booking.Status.COMPLETED:
             return Response({"detail": "This ride is already completed."}, status=400)
+        if booking.status == Booking.Status.CANCELLED:
+            return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
 
         accepted_during_request = False
         if not booking.accepted_by_helper_at:
@@ -336,6 +391,8 @@ class HelperCompleteBookingView(APIView):
                 {"message": "Ride already completed and seat already released.", "booking": HelperBookingTicketSerializer(booking).data},
                 status=200,
             )
+        if booking.status == Booking.Status.CANCELLED:
+            return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
         if not booking.accepted_by_helper_at:
             return Response({"detail": "Accept the passenger ride details before completing the ride."}, status=400)
         if not booking.checked_in_at:

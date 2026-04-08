@@ -49,8 +49,11 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     ticket_qr_svg = serializers.SerializerMethodField()
     payment_requested_by_name = serializers.CharField(source="payment_requested_by.full_name", read_only=True)
     accepted_by_helper_name = serializers.CharField(source="accepted_by_helper.full_name", read_only=True)
+    cancelled_by_name = serializers.CharField(source="cancelled_by.full_name", read_only=True)
     needs_payment_selection = serializers.SerializerMethodField()
     payment_pending_verification = serializers.SerializerMethodField()
+    cancellation_reason_label = serializers.SerializerMethodField()
+    can_cancel = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -75,11 +78,17 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
             "payment_requested_by_name",
             "accepted_by_helper_at",
             "accepted_by_helper_name",
+            "cancelled_at",
+            "cancelled_by_name",
+            "cancellation_reason",
+            "cancellation_reason_label",
+            "cancellation_note",
             "payment_status",
             "payment_method",
             "payment",
             "needs_payment_selection",
             "payment_pending_verification",
+            "can_cancel",
             "pickup_stop_name",
             "destination_stop_name",
             "seat_labels",
@@ -132,6 +141,12 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
         payment = getattr(obj, "payment", None)
         return bool(payment and payment.status == "PENDING")
 
+    def get_cancellation_reason_label(self, obj):
+        return obj.get_cancellation_reason_display() if obj.cancellation_reason else ""
+
+    def get_can_cancel(self, obj):
+        return bool(obj.status in {Booking.Status.CONFIRMED, Booking.Status.PENDING})
+
 
 class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     trip_id = serializers.IntegerField(source="trip.id", read_only=True)
@@ -152,8 +167,11 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
     ended_at = serializers.DateTimeField(source="trip.ended_at", read_only=True)
     payment_requested_by_name = serializers.CharField(source="payment_requested_by.full_name", read_only=True)
     accepted_by_helper_name = serializers.CharField(source="accepted_by_helper.full_name", read_only=True)
+    cancelled_by_name = serializers.CharField(source="cancelled_by.full_name", read_only=True)
     needs_payment_selection = serializers.SerializerMethodField()
     payment_pending_verification = serializers.SerializerMethodField()
+    cancellation_reason_label = serializers.SerializerMethodField()
+    can_cancel = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -175,11 +193,17 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
             "payment_requested_by_name",
             "accepted_by_helper_at",
             "accepted_by_helper_name",
+            "cancelled_at",
+            "cancelled_by_name",
+            "cancellation_reason",
+            "cancellation_reason_label",
+            "cancellation_note",
             "payment_status",
             "payment_method",
             "payment",
             "needs_payment_selection",
             "payment_pending_verification",
+            "can_cancel",
             "pickup_stop_name",
             "destination_stop_name",
             "seat_labels",
@@ -221,6 +245,12 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
         payment = getattr(obj, "payment", None)
         return bool(payment and payment.status == "PENDING")
 
+    def get_cancellation_reason_label(self, obj):
+        return obj.get_cancellation_reason_display() if obj.cancellation_reason else ""
+
+    def get_can_cancel(self, obj):
+        return bool(obj.status in {Booking.Status.CONFIRMED, Booking.Status.PENDING})
+
 
 class CreateBookingSerializer(serializers.Serializer):
     from_stop_order = serializers.IntegerField(min_value=1)
@@ -259,6 +289,30 @@ class HelperLookupSerializer(serializers.Serializer):
     reference = serializers.CharField()
 
 
+class PassengerCancelBookingSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(
+        choices=[
+            (Booking.CancellationReason.CHANGE_OF_PLANS, "Change of plans"),
+            (Booking.CancellationReason.WRONG_ROUTE, "Booked the wrong route"),
+            (Booking.CancellationReason.DELAY, "Bus arrival delay"),
+            (Booking.CancellationReason.PAYMENT_ISSUE, "Payment issue"),
+            (Booking.CancellationReason.EMERGENCY, "Emergency or urgent issue"),
+            (Booking.CancellationReason.LOGOUT, "Passenger logged out mid-ride"),
+            (Booking.CancellationReason.OTHER, "Other"),
+        ]
+    )
+    note = serializers.CharField(required=False, allow_blank=True, max_length=255)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        reason = attrs.get("reason")
+        note = (attrs.get("note") or "").strip()
+        if reason == Booking.CancellationReason.OTHER and not note:
+            raise serializers.ValidationError({"note": "Please provide a short note for the cancellation."})
+        attrs["note"] = note
+        return attrs
+
+
 class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     route_name = serializers.CharField(source="trip.route.name", read_only=True)
     bus_plate = serializers.CharField(source="trip.bus.plate_number", read_only=True)
@@ -276,6 +330,7 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     can_request_payment = serializers.SerializerMethodField()
     payment_requested_by_name = serializers.CharField(source="payment_requested_by.full_name", read_only=True)
     accepted_by_helper_name = serializers.CharField(source="accepted_by_helper.full_name", read_only=True)
+    cancellation_reason_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -296,6 +351,10 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
             "payment_requested_by_name",
             "accepted_by_helper_at",
             "accepted_by_helper_name",
+            "cancelled_at",
+            "cancellation_reason",
+            "cancellation_reason_label",
+            "cancellation_note",
             "payment",
             "can_accept",
             "checked_in_at",
@@ -358,3 +417,6 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
                 or payment.status in {"FAILED", "CANCELLED"}
             )
         )
+
+    def get_cancellation_reason_label(self, obj):
+        return obj.get_cancellation_reason_display() if obj.cancellation_reason else ""

@@ -1267,6 +1267,76 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
   );
 }
 
+export function CancellationSheet({
+  booking,
+  reasons,
+  reason,
+  note,
+  busy,
+  onReasonChange,
+  onNoteChange,
+  onConfirm,
+  onClose,
+}) {
+  if (!booking) return null;
+  return (
+    <div className="rounded-[34px] border border-[var(--mb-border)] bg-white p-5 shadow-[var(--mb-shadow)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Cancel Ride</p>
+          <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Confirm cancellation</h3>
+          <p className="mt-2 text-sm leading-6 text-[var(--mb-muted)]">
+            Choose the reason for cancelling Booking #{booking.id}. This will release your reserved seats immediately.
+          </p>
+        </div>
+        <button type="button" onClick={onClose} className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-xs font-black text-[var(--mb-purple)]">
+          Close
+        </button>
+      </div>
+
+      <div className="mt-5 space-y-4">
+        <div className="grid gap-2">
+          {reasons.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => onReasonChange(item.value)}
+              className={`rounded-[24px] border px-4 py-3 text-left text-sm font-bold transition ${
+                reason === item.value
+                  ? "border-transparent bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]"
+                  : "border-[var(--mb-border)] bg-[var(--mb-card-soft)] text-[var(--mb-text)]"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        {reason === "OTHER" ? (
+          <label className="block">
+            <span className="mb-2 block text-xs font-black uppercase tracking-[0.2em] text-[var(--mb-muted)]">Short note</span>
+            <textarea
+              value={note}
+              onChange={(event) => onNoteChange(event.target.value)}
+              placeholder="Tell MetroBus why you need to cancel."
+              className="min-h-[7rem] w-full rounded-[24px] border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-4 text-sm font-medium text-[var(--mb-text)] outline-none transition focus:border-[var(--mb-purple)]"
+            />
+          </label>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={busy || !reason}
+          className="w-full rounded-full bg-[#b1002b] px-6 py-4 text-lg font-black text-white shadow-[0_16px_32px_rgba(177,0,43,0.22)] disabled:opacity-60"
+        >
+          {busy ? "Cancelling..." : "Confirm Cancellation"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsRow({ icon, title, description, trailing }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-[28px] bg-[var(--mb-card)] px-5 py-4 shadow-[var(--mb-shadow)]">
