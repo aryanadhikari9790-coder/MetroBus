@@ -664,6 +664,77 @@ export default function HelperHome() {
     };
   }, [lookupTicket, scanSupported, scannerOpen]);
 
+  const copyToClipboard = useCallback(async (text) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const shareHelperUpdate = useCallback(async (title, text) => {
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ title, text });
+        return "shared";
+      } catch {
+        // Fall back to clipboard when the share sheet is dismissed or unsupported.
+      }
+    }
+    const copied = await copyToClipboard(text);
+    return copied ? "copied" : "ready";
+  }, [copyToClipboard]);
+
+  const openVehicleLogs = () => {
+    setErr("");
+    setActiveTab("route");
+    setMsg(`Vehicle log preview loaded for ${assignedBus?.plate_number || currentTrip?.bus_plate || "the assigned bus"}.`);
+  };
+
+  const broadcastUpdate = async () => {
+    setErr("");
+    const updateText = `MetroBus helper update
+Route: ${routeTitle}
+Bus: ${assignedBus?.plate_number || currentTrip?.bus_plate || "--"}
+Status: ${helperHeaderStatus}
+Current stop: ${routeStops[currentStopIndex]?.stop?.name || routeStops[0]?.stop?.name || "--"}
+Next stop: ${upcomingStop?.stop?.name || routeDestination}`;
+    const result = await shareHelperUpdate("MetroBus helper update", updateText);
+    setMsg(result === "shared" ? "Live trip update shared." : result === "copied" ? "Trip update copied. Paste it into your dispatch channel." : "Trip update is ready to send.");
+  };
+
+  const contactDispatch = async () => {
+    setErr("");
+    const dispatchNote = `MetroBus dispatch note
+Route: ${routeTitle}
+Bus: ${assignedBus?.plate_number || currentTrip?.bus_plate || "--"}
+Driver: ${assignedDriverName}
+Status: ${helperHeaderStatus}
+Current stop: ${routeStops[currentStopIndex]?.stop?.name || routeStops[0]?.stop?.name || "--"}
+Need support with live trip operations.`;
+    const copied = await copyToClipboard(dispatchNote);
+    setMsg(copied ? "Dispatch note copied. Opening your messaging app." : "Dispatch note prepared for messaging.");
+    if (typeof window !== "undefined") {
+      window.location.href = `sms:?body=${encodeURIComponent(dispatchNote)}`;
+    }
+  };
+
+  const openFullMap = () => {
+    const focusPoint = livePoint || mapPolyline[Math.min(currentStopIndex, Math.max(mapPolyline.length - 1, 0))] || mapPolyline[0];
+    if (!focusPoint) {
+      setErr("No route map is available yet.");
+      return;
+    }
+    const [lat, lng] = focusPoint;
+    setErr("");
+    setMsg("Opened the live route in a full map.");
+    if (typeof window !== "undefined") {
+      window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=15/${lat}/${lng}`, "_blank", "noopener,noreferrer");
+    }
+  };
+
   const handleLogout = () => {
     clearToken();
     navigate("/auth/login");
@@ -848,12 +919,12 @@ export default function HelperHome() {
                 <div className="h-2 rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)]" style={{ width: `${Math.min(Math.max(occupancyPercent, 12), 100)}%` }} />
               </div>
               <p className="mt-4 text-center text-[0.82rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Current Occupancy: {Math.min(Math.max(occupancyPercent, 12), 100)}%</p>
-              <PrimaryButton tone="ghost" className="mt-5 w-full !py-4 !text-base">Vehicle Logs</PrimaryButton>
+              <PrimaryButton tone="ghost" onClick={openVehicleLogs} className="mt-5 w-full !py-4 !text-base">Vehicle Logs</PrimaryButton>
             </SurfaceCard>
 
             <div className="space-y-4">
-              <PrimaryButton tone="primary" className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">Broadcast Update <Icon name="broadcast" className="h-5 w-5" /></PrimaryButton>
-              <PrimaryButton tone="ghost" className="w-full !justify-between !rounded-[1.8rem] !bg-[var(--hlp-soft)] !px-6 !py-5 !text-base">Contact Dispatch <Icon name="headset" className="h-5 w-5" /></PrimaryButton>
+              <PrimaryButton tone="primary" onClick={broadcastUpdate} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">Broadcast Update <Icon name="broadcast" className="h-5 w-5" /></PrimaryButton>
+              <PrimaryButton tone="ghost" onClick={contactDispatch} className="w-full !justify-between !rounded-[1.8rem] !bg-[var(--hlp-soft)] !px-6 !py-5 !text-base">Contact Dispatch <Icon name="headset" className="h-5 w-5" /></PrimaryButton>
             </div>
           </div>
         ) : null}
@@ -1191,7 +1262,7 @@ export default function HelperHome() {
                 </MapContainer>
               </div>
               <div className="px-5 py-4">
-                <PrimaryButton tone="ghost" className="w-full">Open Full Map</PrimaryButton>
+                <PrimaryButton tone="ghost" onClick={openFullMap} className="w-full">Open Full Map</PrimaryButton>
               </div>
             </SurfaceCard>
             <SurfaceCard className="border-dashed">
