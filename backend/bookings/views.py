@@ -151,6 +151,22 @@ class CreateBookingView(APIView):
     permission_classes = [IsAuthenticated, IsPassenger]
 
     def post(self, request, trip_id: int):
+        existing_booking = (
+            Booking.objects
+            .filter(passenger=request.user, status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED])
+            .order_by("-created_at")
+            .first()
+        )
+        if existing_booking:
+            return Response(
+                {
+                    "detail": "You already have an active ride. Complete or cancel it before booking another one.",
+                    "booking_id": existing_booking.id,
+                    "trip_id": existing_booking.trip_id,
+                },
+                status=400,
+            )
+
         trip = Trip.objects.select_related("route", "bus").filter(id=trip_id, status=Trip.Status.LIVE).first()
         if not trip:
             return Response({"detail": "Trip not found or not LIVE"}, status=404)

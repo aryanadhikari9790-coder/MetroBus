@@ -220,9 +220,9 @@ export default function PassengerHome() {
   ]);
   const homeStageMeta = useMemo(() => ({
     planner: {
-      eyebrow: "Journey Planner",
-      title: "Where to next?",
-      description: "Plan your journey across the city.",
+      eyebrow: activeBooking ? "Active Ride" : "Journey Planner",
+      title: activeBooking ? "Your current ride is still active" : "Where to next?",
+      description: activeBooking ? "MetroBus only allows one active passenger ride at a time." : "Plan your journey across the city.",
     },
     matches: {
       eyebrow: "Available Buses",
@@ -241,7 +241,7 @@ export default function PassengerHome() {
       title: "Your ride QR is ready",
       description: "Show this QR to the helper when the bus arrives. Payment and boarding updates will continue from this same booking flow.",
     },
-  }), [visibleMatchedTrips.length]);
+  }), [activeBooking, visibleMatchedTrips.length]);
   const stageOrder = ["planner", "matches", "seats", "ticket"];
   const cancellationBooking = useMemo(
     () => bookings.find((booking) => Number(booking.id) === Number(cancellationBookingId)) || null,
@@ -255,6 +255,7 @@ export default function PassengerHome() {
     { value: "EMERGENCY", label: "Emergency or urgent issue" },
     { value: "OTHER", label: "Other" },
   ]), []);
+  const homeBookingLocked = Boolean(activeBooking && homeStage === "planner");
   const logoutCancellationBookings = useMemo(
     () =>
       bookings.filter(
@@ -640,6 +641,10 @@ export default function PassengerHome() {
   const toggleSeat = (seatId) => setSelectedSeatIds((current) => current.includes(seatId) ? current.filter((id) => id !== seatId) : [...current, seatId]);
 
   const bookSeats = async () => {
+    if (activeBooking && Number(activeBooking.trip_id) !== Number(acceptedTrip?.id)) {
+      setErr("Finish or cancel your current ride before booking another one.");
+      return;
+    }
     if (!acceptedTrip || !selectedSeatIds.length) { setErr("Accept a live bus and choose at least one seat."); return; }
     setBookingBusy(true); setErr(""); setMsg("");
     try {
@@ -874,7 +879,7 @@ export default function PassengerHome() {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {homeStage !== "planner" ? (
+                  {!homeBookingLocked && homeStage !== "planner" ? (
                     <button
                       type="button"
                       onClick={goBackHomeStage}
@@ -883,7 +888,7 @@ export default function PassengerHome() {
                       Back
                     </button>
                   ) : null}
-                  {(matchedTrips.length || acceptedTripId || lastBookingSummary) ? (
+                  {!homeBookingLocked && (matchedTrips.length || acceptedTripId || lastBookingSummary) ? (
                     <button
                       type="button"
                       onClick={restartHomeFlow}
@@ -895,29 +900,31 @@ export default function PassengerHome() {
                 </div>
               </div>
 
-              <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {stageOrder.map((stage, index) => {
-                  const reached = stageOrder.indexOf(homeStage) >= index;
-                  const active = homeStage === stage;
-                  return (
-                    <div
-                      key={stage}
-                      className={`rounded-[24px] px-4 py-3 text-sm font-black transition ${
-                        active
-                          ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]"
-                          : reached
-                            ? "bg-[#f6dbff] text-[var(--mb-purple)]"
-                            : "bg-white text-[var(--mb-muted)]"
-                      }`}
-                    >
-                      <span className="block text-[0.65rem] uppercase tracking-[0.2em] opacity-80">Step {index + 1}</span>
-                      <span className="mt-1 block">{stage === "planner" ? "Route" : stage === "matches" ? "Bus" : stage === "seats" ? "Seat" : "QR"}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              {!homeBookingLocked ? (
+                <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {stageOrder.map((stage, index) => {
+                    const reached = stageOrder.indexOf(homeStage) >= index;
+                    const active = homeStage === stage;
+                    return (
+                      <div
+                        key={stage}
+                        className={`rounded-[24px] px-4 py-3 text-sm font-black transition ${
+                          active
+                            ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]"
+                            : reached
+                              ? "bg-[#f6dbff] text-[var(--mb-purple)]"
+                              : "bg-white text-[var(--mb-muted)]"
+                        }`}
+                      >
+                        <span className="block text-[0.65rem] uppercase tracking-[0.2em] opacity-80">Step {index + 1}</span>
+                        <span className="mt-1 block">{stage === "planner" ? "Route" : stage === "matches" ? "Bus" : stage === "seats" ? "Seat" : "QR"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
 
-              {pickupStop || dropStop ? (
+              {!homeBookingLocked && (pickupStop || dropStop) ? (
                 <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[26px] bg-[var(--mb-card-soft)] p-4">
                   <span className="rounded-full bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Current route</span>
                   <p className="text-base font-bold text-[var(--mb-text)]">
@@ -933,12 +940,12 @@ export default function PassengerHome() {
                   <div className="rounded-[30px] border border-[rgba(141,18,235,0.12)] bg-white p-5 shadow-[var(--mb-shadow)]">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Current Ride</p>
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Booking Locked</p>
                         <h2 className="mt-2 text-2xl font-black text-[var(--mb-text)]">
                           {activeBooking.pickup_stop_name} to {activeBooking.destination_stop_name}
                         </h2>
                         <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">
-                          Home stays focused on booking. Your current ride is still available in Track and My Rides.
+                          You can only keep one ride active at a time. Complete or cancel this ride before MetroBus opens a new booking flow.
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -959,11 +966,20 @@ export default function PassengerHome() {
                         >
                           Track Ride
                         </button>
+                        {activeBooking.can_cancel ? (
+                          <button
+                            type="button"
+                            onClick={() => requestCancellation(activeBooking)}
+                            className="rounded-full border border-red-200 bg-white px-4 py-2.5 text-sm font-black text-red-600"
+                          >
+                            Cancel Ride
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   </div>
                 ) : null}
-                <div className="flex gap-3 overflow-x-auto pb-1">
+                {!activeBooking ? <div className="flex gap-3 overflow-x-auto pb-1">
                   {quickRouteOptions.map((option) => (
                     <button
                       key={option.id}
@@ -977,8 +993,8 @@ export default function PassengerHome() {
                       <p className="mt-2 text-sm font-semibold text-[var(--mb-text)]">{option.caption}</p>
                     </button>
                   ))}
-                </div>
-                <PlannerCard
+                </div> : null}
+                {!activeBooking ? <PlannerCard
                   stops={stops}
                   pickupStopId={pickupStopId}
                   dropStopId={dropStopId}
@@ -998,8 +1014,8 @@ export default function PassengerHome() {
                   onViewOccupancy={openOccupancyDetails}
                   displayLine={displayLine}
                   showSubmit={false}
-                />
-                <button
+                /> : null}
+                {!activeBooking ? <button
                   type="button"
                   onClick={findRoutes}
                   disabled={findingRoutes}
@@ -1007,7 +1023,7 @@ export default function PassengerHome() {
                 >
                   <span>{findingRoutes ? "Finding Buses..." : "Find Buses"}</span>
                   <span className="text-xl">→</span>
-                </button>
+                </button> : null}
                 {cancellationBooking ? (
                   <CancellationSheet
                     booking={cancellationBooking}
