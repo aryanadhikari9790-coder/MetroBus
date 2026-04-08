@@ -188,6 +188,7 @@ export default function DriverHome() {
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [activeTab, setActiveTab] = useState("home");
   const [expandStops, setExpandStops] = useState(false);
+  const [showAllHistoryTrips, setShowAllHistoryTrips] = useState(false);
   const locationWatch = useMemo(() => ({ id: null }), []);
   const wsRef = useMemo(() => ({ current: null }), []);
   const queueRef = useMemo(() => ({ current: [] }), []);
@@ -278,6 +279,8 @@ export default function DriverHome() {
     { route: "Route 42A: Downtown Express", time: "08:30 AM - 09:45 AM", earnings: "Rs. 840" },
     { route: "Route 12: Westside Terminal", time: "10:15 AM - 11:30 AM", earnings: "Rs. 620" },
     { route: "Route 05: Airport Shuttle", time: "12:00 PM - 01:45 PM", earnings: "Rs. 1,150" },
+    { route: "Route 18: University Loop", time: "02:15 PM - 03:05 PM", earnings: "Rs. 540" },
+    { route: "Route 07: Fewa Connector", time: "03:25 PM - 04:10 PM", earnings: "Rs. 430" },
   ];
   const earningsGrowth = "+12%";
   const weeklyTargetPct = 58;
@@ -320,6 +323,7 @@ export default function DriverHome() {
     : activeTrip?.driver_end_confirmed
       ? "Driver has confirmed trip end. Waiting on helper."
       : "End confirmation has not been requested yet.";
+  const visibleHistoryTrips = showAllHistoryTrips ? recentHistoryTrips : recentHistoryTrips.slice(0, 3);
 
   const loadDashboard = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -582,6 +586,67 @@ export default function DriverHome() {
     clearWatch();
     clearToken();
     navigate("/auth/login");
+  };
+
+  const copyToClipboard = useCallback(async (text) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const handleViewAllTrips = () => {
+    const next = !showAllHistoryTrips;
+    setShowAllHistoryTrips(next);
+    setErr("");
+    setMsg(next ? "Showing the full recent trip list." : "Showing the latest recent trips.");
+  };
+
+  const handleMarkShiftComplete = () => {
+    setErr("");
+    if (activeTrip || pendingTrip) {
+      setMsg("");
+      setErr("Finish the current trip before marking the shift complete.");
+      return;
+    }
+    setShowAllHistoryTrips(false);
+    setMsg("Shift marked complete. Returning to the home dashboard.");
+    setActiveTab("home");
+  };
+
+  const handleWithdraw = async () => {
+    setErr("");
+    const summary = `MetroBus earnings summary
+Driver: ${user?.full_name || "Driver"}
+Date: ${lastShiftDate}
+Today earnings: Rs. ${todaysEarnings.toLocaleString()}
+Completed trips: ${completedTrips}
+Passengers served: ${totalPassengers}`;
+    const copied = await copyToClipboard(summary);
+    setMsg(copied ? "Earnings summary copied. Share it with finance to process the withdrawal." : "Earnings are ready for withdrawal review.");
+  };
+
+  const handleReportIssue = async () => {
+    setErr("");
+    const summary = `MetroBus earnings issue
+Driver: ${user?.full_name || "Driver"}
+Route: ${currentRoute}
+Bus: ${currentBus}
+Today earnings: Rs. ${todaysEarnings.toLocaleString()}
+Please review the earnings breakdown for this shift.`;
+    const copied = await copyToClipboard(summary);
+    setMsg(copied ? "Issue summary copied. Send it to operations support." : "Issue summary prepared for support.");
+  };
+
+  const handleSOS = () => {
+    setErr("");
+    setMsg("Opening the emergency dialer.");
+    if (typeof window !== "undefined") {
+      window.location.href = "tel:100";
+    }
   };
 
   if (loading) {
@@ -1219,13 +1284,13 @@ export default function DriverHome() {
             <div>
               <div className="mb-3 flex items-center justify-between px-1">
                 <h3 className="text-3xl font-black">Recent Trips</h3>
-                <button type="button" className="text-[0.72rem] font-black uppercase tracking-[0.2em] text-[var(--drv-purple)]">
-                  View All
+                <button type="button" onClick={handleViewAllTrips} className="text-[0.72rem] font-black uppercase tracking-[0.2em] text-[var(--drv-purple)]">
+                  {showAllHistoryTrips ? "Show Less" : "View All"}
                 </button>
               </div>
 
               <div className="space-y-4">
-                {recentHistoryTrips.map((trip, index) => (
+                {visibleHistoryTrips.map((trip, index) => (
                   <Panel key={`${trip.route}-${trip.time}`} className={index === 1 ? "bg-[rgba(251,234,252,0.86)]" : "bg-white/88"}>
                     <div className="flex items-start gap-4">
                       <div className="mt-1 grid h-12 w-12 place-items-center rounded-[1.1rem] bg-[rgba(140,18,235,0.1)] text-[var(--drv-purple)]">
@@ -1245,7 +1310,7 @@ export default function DriverHome() {
               </div>
             </div>
 
-            <ActionButton tone="primary" className="w-full !justify-between !py-5 !pl-7 !pr-6 text-base">
+            <ActionButton tone="primary" onClick={handleMarkShiftComplete} className="w-full !justify-between !py-5 !pl-7 !pr-6 text-base">
               <span>Mark Shift Complete</span>
               <span className="grid h-10 w-10 place-items-center rounded-full bg-white/16">
                 <Icon name="history" className="h-5 w-5" />
@@ -1273,7 +1338,7 @@ export default function DriverHome() {
                     <div className="h-full rounded-full bg-white" style={{ width: `${weeklyTargetPct}%` }} />
                   </div>
                 </div>
-                <button type="button" className="rounded-full bg-white/18 px-6 py-3 text-base font-black shadow-[0_16px_34px_rgba(71,39,81,0.16)] backdrop-blur-sm">
+                <button type="button" onClick={handleWithdraw} className="rounded-full bg-white/18 px-6 py-3 text-base font-black shadow-[0_16px_34px_rgba(71,39,81,0.16)] backdrop-blur-sm">
                   Withdraw
                 </button>
               </div>
@@ -1362,7 +1427,7 @@ export default function DriverHome() {
                 <p className="text-2xl font-black">Inconsistency?</p>
                 <p className="mt-1 text-sm text-[var(--drv-muted)]">Report an earnings issue</p>
               </div>
-              <button type="button" className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]">
+              <button type="button" onClick={handleReportIssue} className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]">
                 <Icon name="arrow-right" />
               </button>
             </div>
@@ -1374,7 +1439,7 @@ export default function DriverHome() {
             <ActionButton tone="danger" onClick={endTrip} disabled={busy || activeTrip?.driver_end_confirmed} className="flex-1 !py-4">
               {busy ? "Sending..." : activeTrip?.helper_end_confirmed ? "Confirm End Trip" : activeTrip?.driver_end_confirmed ? "End Requested" : "Request End Trip"}
             </ActionButton>
-            <ActionButton tone="danger" className="min-w-[8.2rem] !bg-[linear-gradient(135deg,#8a0f2f,#c11449)] !py-4">
+            <ActionButton tone="danger" onClick={handleSOS} className="min-w-[8.2rem] !bg-[linear-gradient(135deg,#8a0f2f,#c11449)] !py-4">
               <Icon name="alert" />
               SOS
             </ActionButton>
