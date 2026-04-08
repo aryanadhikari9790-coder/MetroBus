@@ -16,26 +16,26 @@ import {
 
 export function SplashScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,#f8f7ff,#f5f2ff_42%,#f7f3ff)] px-6">
+    <div className="flex min-h-screen items-center justify-center bg-[linear-gradient(180deg,var(--mb-bg-deep),#4a1e77_46%,#fbf3f6)] px-6">
       <div className="w-full max-w-[23rem] text-center">
-        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full bg-white shadow-[0_28px_60px_rgba(111,40,255,0.14)]">
-          <div className="grid h-20 w-20 place-items-center rounded-full bg-[linear-gradient(135deg,#6810ff,#8f28ff)] text-white shadow-[0_18px_34px_rgba(104,16,255,0.24)]">
+        <div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full bg-white/95 shadow-[0_28px_60px_rgba(34,12,59,0.22)]">
+          <div className="grid h-20 w-20 place-items-center rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]">
             <MetroBusMark className="h-10 w-10" />
           </div>
         </div>
         <div className="mt-8">
           <MetroBusWordmark />
         </div>
-        <p className="mt-3 text-sm font-semibold uppercase tracking-[0.28em] text-[var(--mb-muted)]">
+        <p className="mt-3 text-sm font-semibold uppercase tracking-[0.28em] text-white/72">
           Premium Mobility
         </p>
-        <div className="mx-auto mt-24 h-1.5 w-16 overflow-hidden rounded-full bg-[#d7d3e8]">
-          <div className="h-full w-7 rounded-full bg-[var(--mb-purple)]" />
+        <div className="mx-auto mt-24 h-1.5 w-16 overflow-hidden rounded-full bg-white/20">
+          <div className="h-full w-7 rounded-full bg-[var(--mb-accent)]" />
         </div>
-        <p className="mx-auto mt-20 max-w-[17rem] text-[2rem] font-black leading-tight tracking-[-0.03em] text-[var(--mb-text)]">
+        <p className="mx-auto mt-20 max-w-[17rem] text-[2rem] font-black leading-tight tracking-[-0.03em] text-white">
           The serene way to navigate your city.
         </p>
-        <p className="mt-9 text-xs font-semibold uppercase tracking-[0.3em] text-[#bbb4ca]">
+        <p className="mt-9 text-xs font-semibold uppercase tracking-[0.3em] text-white/46">
           Powered by Metro Dynamics
         </p>
       </div>
@@ -48,8 +48,9 @@ export function MetroBusMark({ className = "h-12 w-12" }) {
     <svg viewBox="0 0 72 72" className={className} aria-hidden="true">
       <defs>
         <linearGradient id="metrobus-brand-gradient" x1="10%" y1="0%" x2="90%" y2="100%">
-          <stop offset="0%" stopColor="#5f0c84" />
-          <stop offset="100%" stopColor="#be3fff" />
+          <stop offset="0%" stopColor="#2f1151" />
+          <stop offset="52%" stopColor="#ff6b73" />
+          <stop offset="100%" stopColor="#ff8a5b" />
         </linearGradient>
       </defs>
       <rect x="17" y="9" width="33" height="52" rx="10" fill="url(#metrobus-brand-gradient)" />
@@ -72,8 +73,8 @@ export function MetroBusMark({ className = "h-12 w-12" }) {
 export function MetroBusWordmark({ compact = false }) {
   return (
     <div className={`font-black tracking-[-0.05em] ${compact ? "text-[1.45rem]" : "text-[3rem]"}`}>
-      <span className="text-[#17131d]">Metro</span>
-      <span className="text-[var(--mb-purple)]">Bus</span>
+      <span className="text-[var(--mb-purple)]">Metro</span>
+      <span className="text-[var(--mb-accent)]">Bus</span>
     </div>
   );
 }
@@ -146,7 +147,7 @@ export function Icon({ name, className = "h-5 w-5" }) {
 
 export function PassengerAvatar({ user, size = "h-11 w-11" }) {
   return (
-    <div className={`grid ${size} place-items-center rounded-full bg-[linear-gradient(135deg,#8d12eb,#ff4fd8)] text-sm font-black text-white shadow-[var(--mb-shadow-strong)]`}>
+    <div className={`grid ${size} place-items-center rounded-full bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] text-sm font-black text-white shadow-[var(--mb-shadow-strong)]`}>
       {(user?.full_name || "P").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}
     </div>
   );
@@ -171,7 +172,7 @@ export function HeaderBar({ user, activeView, onLogout, onMenu, onNotifications,
           <button type="button" onClick={onNotifications} className="relative grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
             <Icon name="bell" />
             {notificationCount ? (
-              <span className="absolute -right-1 -top-1 min-w-[1.2rem] rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-1.5 py-0.5 text-[0.62rem] font-black text-white shadow-[var(--mb-shadow-strong)]">
+              <span className="absolute -right-1 -top-1 min-w-[1.2rem] rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-1.5 py-0.5 text-[0.62rem] font-black text-white shadow-[var(--mb-shadow-strong)]">
                 {notificationCount > 9 ? "9+" : notificationCount}
               </span>
             ) : null}
@@ -212,7 +213,7 @@ export function SearchBar({ summary, onOpenPlanner, onSearch }) {
       <button type="button" onClick={onOpenPlanner} className="min-w-0 flex-1 text-left text-lg font-medium text-[var(--mb-muted)]">
         <span className="block truncate">{summary}</span>
       </button>
-      <button type="button" onClick={onSearch} className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
+      <button type="button" onClick={onSearch} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
         GO
       </button>
     </div>
@@ -386,7 +387,7 @@ export function PlannerCard({
                           event.stopPropagation();
                           onSelectTrip?.(trip.id);
                         }}
-                        className={`rounded-full px-4 py-2.5 text-sm font-black text-white ${trip.open_seats != null && trip.open_seats <= 0 ? "bg-[#dcc8e5] text-[#876f92]" : "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] shadow-[var(--mb-shadow-strong)]"}`}
+                        className={`rounded-full px-4 py-2.5 text-sm font-black text-white ${trip.open_seats != null && trip.open_seats <= 0 ? "bg-[#e7d8df] text-[#8b7180]" : "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] shadow-[var(--mb-shadow-strong)]"}`}
                       >
                         {trip.open_seats != null && trip.open_seats <= 0 ? "Full" : "Accept"}
                       </button>
@@ -441,7 +442,7 @@ export function PlannerCard({
             <p className="text-sm font-semibold text-[var(--mb-text)]">{pickupStop?.name || "Choose pickup"} to {dropStop?.name || "Choose destination"}</p>
             <p className="mt-1 text-xs text-[var(--mb-muted)]">Choose both points to see live buses and seat availability.</p>
           </div>
-          <button type="button" onClick={onFindRoutes} disabled={findingRoutes} className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
+          <button type="button" onClick={onFindRoutes} disabled={findingRoutes} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
             {findingRoutes ? "Finding..." : "Find buses"}
           </button>
         </div>
@@ -492,7 +493,7 @@ export function NearbyMapCard({ stops, displayLine, selectedTrip, matchedTrips =
           {stops.map((stop) => {
             const point = toPoint(stop.lat, stop.lng);
             if (!point) return null;
-            return <CircleMarker key={stop.id} center={point} radius={6} pathOptions={{ color: "#f9d4fa", fillColor: "#b641ff", fillOpacity: 0.9 }} />;
+            return <CircleMarker key={stop.id} center={point} radius={6} pathOptions={{ color: "#ffe6e8", fillColor: "#ff6b73", fillOpacity: 0.9 }} />;
           })}
           {routeMatches.map(({ trip, index, bus }) => (
             <Marker
@@ -515,7 +516,7 @@ export function NearbyMapCard({ stops, displayLine, selectedTrip, matchedTrips =
           {selectedTrip?.pickup_stop_name || stops[0]?.name || "Downtown Hub"} • {selectedTrip ? fmtEta(selectedTrip.eta) : "Nearby now"}
         </div>
         {selectedTripId && matchedTrips.length ? (
-          <div className="absolute bottom-16 right-4 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[var(--mb-shadow-strong)]">
+          <div className="absolute bottom-16 right-4 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[var(--mb-shadow-strong)]">
             Selected bus live
           </div>
         ) : null}
@@ -526,8 +527,8 @@ export function NearbyMapCard({ stops, displayLine, selectedTrip, matchedTrips =
 
 export function StopFeatureCard({ icon, eyebrow, title, featured = false }) {
   return (
-    <div className={`min-h-[158px] rounded-[36px] p-5 shadow-[var(--mb-shadow)] ${featured ? "bg-[linear-gradient(135deg,#8d12eb,#b200ff)] text-white" : "bg-[var(--mb-card-strong)] text-[var(--mb-text)]"}`}>
-      <div className={`grid h-10 w-10 place-items-center rounded-full ${featured ? "bg-white/18 text-white" : "bg-[#f7cdee] text-[var(--mb-purple)]"}`}>
+    <div className={`min-h-[158px] rounded-[36px] p-5 shadow-[var(--mb-shadow)] ${featured ? "bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] text-white" : "bg-[var(--mb-card-strong)] text-[var(--mb-text)]"}`}>
+      <div className={`grid h-10 w-10 place-items-center rounded-full ${featured ? "bg-white/18 text-white" : "bg-[var(--mb-accent-soft)] text-[var(--mb-purple)]"}`}>
         <Icon name={icon} className="h-5 w-5" />
       </div>
       <p className={`mt-10 text-xs font-bold uppercase tracking-[0.24em] ${featured ? "text-white/70" : "text-[var(--mb-muted)]"}`}>{eyebrow}</p>
@@ -539,7 +540,7 @@ export function StopFeatureCard({ icon, eyebrow, title, featured = false }) {
 export function LiveBusCard({ trip, index, active, onClick, now, onViewOccupancy }) {
   const tone = statusTone(trip, now);
   return (
-    <button type="button" onClick={onClick} className={`flex w-full items-center gap-4 rounded-[34px] border px-5 py-4 text-left shadow-[var(--mb-shadow)] transition ${active ? "border-transparent bg-[linear-gradient(180deg,#fff8fc,#f7dff6)] ring-2 ring-[rgba(141,18,235,0.18)]" : "border-[var(--mb-border)] bg-[var(--mb-card)]"}`}>
+    <button type="button" onClick={onClick} className={`flex w-full items-center gap-4 rounded-[34px] border px-5 py-4 text-left shadow-[var(--mb-shadow)] transition ${active ? "border-transparent bg-[linear-gradient(180deg,#fff9f8,#fff0f0)] ring-2 ring-[rgba(255,107,115,0.2)]" : "border-[var(--mb-border)] bg-[var(--mb-card)]"}`}>
       <div className="grid h-16 w-16 flex-none place-items-center rounded-full bg-white text-[2rem] font-black text-[var(--mb-purple)]">
         {routeCode(trip, index)}
       </div>
@@ -576,7 +577,7 @@ export function SeatButton({ seat, selected, onClick }) {
       type="button"
       disabled={!seat.available}
       onClick={onClick}
-      className={`rounded-[18px] border px-3 py-3 text-center text-xs font-black transition ${!seat.available ? "border-transparent bg-[#f4e3f1] text-[#c0a5c6] opacity-70" : selected ? "border-transparent bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]"}`}
+      className={`rounded-[18px] border px-3 py-3 text-center text-xs font-black transition ${!seat.available ? "border-transparent bg-[#f3e5eb] text-[#b8a7bc] opacity-70" : selected ? "border-transparent bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]" : "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]"}`}
     >
       <div>{seat.seat_no}</div>
       <div className="mt-1 text-[0.58rem] uppercase tracking-[0.24em]">{!seat.available ? "Taken" : selected ? "Selected" : "Open"}</div>
@@ -624,7 +625,7 @@ export function OccupancySheet({ trip, seats = [], loading, onClose }) {
   return (
     <div className="fixed inset-0 z-[1400] bg-[rgba(49,23,56,0.3)] px-4 py-8 backdrop-blur-sm">
       <div className="mx-auto flex min-h-full max-w-2xl items-center justify-center">
-        <div className="w-full rounded-[36px] bg-[linear-gradient(180deg,#fffdfd,#fff1f9)] p-5 shadow-[0_36px_90px_rgba(141,18,235,0.24)]">
+        <div className="w-full rounded-[36px] bg-[linear-gradient(180deg,#fffdfd,#fff4f2)] p-5 shadow-[0_36px_90px_rgba(255,107,115,0.2)]">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Live Occupancy</p>
@@ -656,7 +657,7 @@ export function OccupancySheet({ trip, seats = [], loading, onClose }) {
           <div className="mt-5 rounded-[28px] bg-[var(--mb-card)] p-4 shadow-[var(--mb-shadow)]">
             <div className="mb-3 flex flex-wrap gap-2 text-[0.68rem] font-black uppercase tracking-[0.18em]">
               <span className="rounded-full bg-white px-3 py-2 text-[var(--mb-purple)]">Open</span>
-              <span className="rounded-full bg-[#f4e3f1] px-3 py-2 text-[#8d6f97]">Occupied</span>
+              <span className="rounded-full bg-[#f3e5eb] px-3 py-2 text-[#8b7180]">Occupied</span>
             </div>
             {loading ? (
               <p className="py-6 text-center text-sm font-medium text-[var(--mb-muted)]">Loading occupancy details...</p>
@@ -665,7 +666,7 @@ export function OccupancySheet({ trip, seats = [], loading, onClose }) {
                 {seats.map((seat) => (
                   <div
                     key={seat.seat_id}
-                    className={`rounded-[18px] border px-3 py-3 text-center text-xs font-black ${seat.available ? "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]" : "border-transparent bg-[#f4e3f1] text-[#c0a5c6]"}`}
+                    className={`rounded-[18px] border px-3 py-3 text-center text-xs font-black ${seat.available ? "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]" : "border-transparent bg-[#f3e5eb] text-[#b8a7bc]"}`}
                   >
                     <div>{seat.seat_no}</div>
                     <div className="mt-1 text-[0.58rem] uppercase tracking-[0.24em]">{seat.available ? "Open" : "Taken"}</div>
@@ -838,7 +839,7 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
                   <p className="mt-2 text-[2.1rem] font-black leading-tight text-[var(--mb-purple)]">{fmtMoney(total)}</p>
                 </div>
               </div>
-              <button type="button" onClick={onBook} disabled={bookingBusy || !selectedSeatIds.length} className="mt-5 w-full rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-4 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
+              <button type="button" onClick={onBook} disabled={bookingBusy || !selectedSeatIds.length} className="mt-5 w-full rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
                 {bookingBusy ? "Confirming..." : "Confirm Booking"}
               </button>
             </div>
@@ -1089,7 +1090,7 @@ export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel =
         <div className="flex gap-4">
           <div className="mt-1 flex flex-col items-center">
             <span className="h-4 w-4 rounded-full border-4 border-[var(--mb-purple)] bg-white" />
-            <span className="h-10 border-l border-dashed border-[rgba(141,18,235,0.25)]" />
+            <span className="h-10 border-l border-dashed border-[rgba(255,107,115,0.25)]" />
             <span className="h-4 w-4 rounded-full border-4 border-[var(--mb-muted)] bg-white" />
           </div>
           <div className="space-y-4">
@@ -1108,7 +1109,7 @@ export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel =
         <button type="button" onClick={onPrimaryAction} className="rounded-full bg-white px-6 py-4 text-lg font-black text-[var(--mb-text)]">
           {primaryActionLabel}
         </button>
-        <button type="button" onClick={onViewTicket} className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-4 text-lg font-black text-white shadow-[var(--mb-shadow-strong)]">
+        <button type="button" onClick={onViewTicket} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-lg font-black text-white shadow-[var(--mb-shadow-strong)]">
           View Ticket
         </button>
       </div>
@@ -1153,7 +1154,7 @@ export function ProfileCard({ user, profileForm, setProfileForm, onSave, profile
     <div className="rounded-[40px] bg-[var(--mb-card)] p-6 text-center shadow-[var(--mb-shadow)]">
       <div className="relative mx-auto w-fit">
         <PassengerAvatar user={user} size="h-28 w-28" />
-        <button type="button" onClick={() => nameInputRef.current?.focus()} className="absolute bottom-0 right-0 grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]">
+        <button type="button" onClick={() => nameInputRef.current?.focus()} className="absolute bottom-0 right-0 grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]">
           <Icon name="edit" />
         </button>
       </div>
@@ -1168,7 +1169,7 @@ export function ProfileCard({ user, profileForm, setProfileForm, onSave, profile
         <input className="rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-muted)] outline-none opacity-70" value={user?.phone || ""} readOnly />
         <input className="md:col-span-2 rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-text)] outline-none" value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" />
       </div>
-      <button type="button" onClick={onSave} disabled={profileBusy} className="mt-5 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-8 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
+      <button type="button" onClick={onSave} disabled={profileBusy} className="mt-5 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-8 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
         {profileBusy ? "Saving..." : "Save Profile"}
       </button>
     </div>
@@ -1188,7 +1189,7 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
         <h3 className="text-3xl font-black text-[var(--mb-text)]">Payment Methods</h3>
         <button type="button" onClick={onTopUp} disabled={actionBusy} className="text-lg font-black text-[var(--mb-purple)] disabled:opacity-60">Top Up +500</button>
       </div>
-      <div className="rounded-[36px] bg-[linear-gradient(135deg,#8d12eb,#c243ff)] p-6 text-white shadow-[var(--mb-shadow-strong)]">
+      <div className="rounded-[36px] bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] p-6 text-white shadow-[var(--mb-shadow-strong)]">
         <div className="flex items-center justify-between">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--mb-purple)]">
             <Icon name="wallet" />
@@ -1232,8 +1233,8 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
                   disabled={actionBusy}
                   className={`rounded-[24px] border px-4 py-4 text-left shadow-[var(--mb-shadow)] transition disabled:opacity-60 ${
                     isActive
-                      ? "border-[rgba(141,18,235,0.18)] bg-white"
-                      : "border-transparent bg-white/80 hover:border-[rgba(141,18,235,0.14)]"
+                      ? "border-[rgba(255,107,115,0.18)] bg-white"
+                      : "border-transparent bg-white/80 hover:border-[rgba(255,107,115,0.14)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -1243,7 +1244,7 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
                     </div>
                     <span className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
                       isActive
-                        ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white"
+                        ? "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white"
                         : "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]"
                     }`}>
                       {isActive ? "Active" : "Choose"}
@@ -1309,7 +1310,7 @@ export function CancellationSheet({
               onClick={() => onReasonChange(item.value)}
               className={`rounded-[24px] border px-4 py-3 text-left text-sm font-bold transition ${
                 reason === item.value
-                  ? "border-transparent bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]"
+                  ? "border-transparent bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]"
                   : "border-[var(--mb-border)] bg-[var(--mb-card-soft)] text-[var(--mb-text)]"
               }`}
             >

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api";
 import LocationPicker from "../../components/LocationPicker";
 import { Icon, MetroBusWordmark } from "../../components/passenger/PassengerUI";
+import { PASSENGER_THEME } from "../passenger/passengerUtils";
 
 function OtpSlots({ value, onChange }) {
   const digits = value.padEnd(4, " ").slice(0, 4).split("");
@@ -129,8 +130,8 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#fbf9ff,#f6f2ff_46%,#f8f2fb)] text-[#241828]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(170,97,255,0.1),transparent_38%),radial-gradient(circle_at_bottom,rgba(124,49,245,0.08),transparent_34%)]" />
+    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),var(--mb-bg-alt)_46%,#fff7f4)] text-[var(--mb-text)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,107,115,0.12),transparent_38%),radial-gradient(circle_at_bottom,rgba(52,21,93,0.1),transparent_34%)]" />
 
       <div className="relative mx-auto max-w-[29rem] px-4 py-6">
         <header className="flex items-start justify-between gap-3">
@@ -232,7 +233,7 @@ export default function Register() {
                 <button
                   type="button"
                   onClick={verifyOtpLocally}
-                  className="rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-4 py-3 text-sm font-black text-white shadow-[0_14px_30px_rgba(104,13,255,0.2)]"
+                  className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
                 >
                   Verify OTP
                 </button>
@@ -344,7 +345,7 @@ export default function Register() {
             type="button"
             onClick={onRegister}
             disabled={busy}
-            className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-6 py-5 text-[1.05rem] font-black text-white shadow-[0_22px_40px_rgba(113,23,255,0.24)] transition hover:translate-y-[-1px] disabled:opacity-60"
+            className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-5 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition hover:translate-y-[-1px] disabled:opacity-60"
           >
             <span>{busy ? "Registering..." : "Register"}</span>
             <span className="text-xl">→</span>

@@ -4,6 +4,7 @@ import { api } from "../../api";
 import { setToken } from "../../auth";
 import { useAuth } from "../../AuthContext";
 import { Icon, MetroBusMark, MetroBusWordmark } from "../../components/passenger/PassengerUI";
+import { PASSENGER_THEME } from "../passenger/passengerUtils";
 
 const roleToHome = {
   PASSENGER: "/passenger",
@@ -138,12 +139,12 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#fbf9ff,#f6f0ff_48%,#f7eefb)] text-[#26172f]">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(175,71,255,0.12),transparent_36%),radial-gradient(circle_at_bottom,rgba(110,42,255,0.12),transparent_36%)]" />
+    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),var(--mb-bg-alt)_48%,#fff7f4)] text-[var(--mb-text)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,107,115,0.14),transparent_36%),radial-gradient(circle_at_bottom,rgba(52,21,93,0.12),transparent_36%)]" />
 
       <div className="relative mx-auto flex min-h-screen max-w-[29rem] flex-col justify-center px-5 py-8">
         <div className="text-center">
-          <div className="mx-auto grid h-28 w-28 place-items-center rounded-[2rem] bg-[linear-gradient(180deg,#6e11ff,#8f2bff)] shadow-[0_28px_56px_rgba(110,17,255,0.24)]">
+          <div className="mx-auto grid h-28 w-28 place-items-center rounded-[2rem] bg-[linear-gradient(180deg,var(--mb-purple),var(--mb-accent))] shadow-[var(--mb-shadow-strong)]">
             <MetroBusMark className="h-14 w-14" />
           </div>
           <div className="mt-7 flex justify-center">
@@ -211,7 +212,7 @@ export default function Login() {
             <button
               type="button"
               onClick={onLogin}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-6 py-5 text-[1.05rem] font-black text-white shadow-[0_22px_40px_rgba(113,23,255,0.26)] transition hover:translate-y-[-1px]"
+              className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-5 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition hover:translate-y-[-1px]"
             >
               <span>Log In</span>
               <span className="text-xl">→</span>
@@ -309,7 +310,7 @@ export default function Login() {
                   type="button"
                   onClick={confirmResetPassword}
                   disabled={resetBusy || !resetRequested}
-                  className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-6 py-4 text-[1rem] font-black text-white shadow-[0_18px_34px_rgba(113,23,255,0.22)] transition disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition disabled:opacity-60"
                 >
                   <span>{resetBusy && resetRequested ? "Resetting..." : "Reset Password"}</span>
                   <span className="text-lg">→</span>

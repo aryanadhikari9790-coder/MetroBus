@@ -928,7 +928,7 @@ export default function PassengerHome() {
   if (loading) return <div style={PASSENGER_THEME} className="min-h-screen bg-[var(--mb-bg)] px-6 py-20 text-center text-xl font-semibold text-[var(--mb-muted)]">Loading your MetroBus dashboard...</div>;
 
   return (
-    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),#f6f1ff)] text-[var(--mb-text)]">
+    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),var(--mb-bg-alt))] text-[var(--mb-text)]">
       <HeaderBar
         user={user}
         activeView={activeView}
@@ -941,25 +941,25 @@ export default function PassengerHome() {
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
         {paymentActionBooking ? (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[rgba(141,18,235,0.12)] bg-white px-4 py-3 shadow-[var(--mb-shadow)]">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-3 shadow-[var(--mb-shadow)]">
             <div>
               <p className="text-sm font-black text-[var(--mb-text)]">A helper requested payment for Booking #{paymentActionBooking.id}.</p>
               <p className="mt-1 text-sm text-[var(--mb-muted)]">Open Track or My Rides to choose your payment method before boarding.</p>
             </div>
-            <button type="button" onClick={() => setActiveView("track")} className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
+            <button type="button" onClick={() => setActiveView("track")} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
               Pay Now
             </button>
           </div>
         ) : null}
         {!paymentActionBooking && paymentPendingBooking ? (
-          <div className="mb-4 rounded-[24px] border border-[rgba(141,18,235,0.12)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
+          <div className="mb-4 rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
             Payment for Booking #{paymentPendingBooking.id} is pending. {paymentPendingBooking.payment_method === "CASH" ? "Please hand the fare to the helper for verification." : "Keep MetroBus open while the payment completes."}
           </div>
         ) : null}
 
         {activeView === "home" ? (
           <section className="space-y-5">
-            <div className="rounded-[42px] bg-[radial-gradient(circle_at_top_right,rgba(182,65,255,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,241,249,0.96))] p-5 shadow-[var(--mb-shadow)] md:p-8">
+            <div className="rounded-[42px] bg-[radial-gradient(circle_at_top_right,rgba(255,107,115,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,244,244,0.96))] p-5 shadow-[var(--mb-shadow)] md:p-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-black uppercase tracking-[0.28em] text-[var(--mb-purple)]">
@@ -1004,9 +1004,9 @@ export default function PassengerHome() {
                         key={stage}
                         className={`rounded-[24px] px-4 py-3 text-sm font-black transition ${
                           active
-                            ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]"
+                            ? "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]"
                             : reached
-                              ? "bg-[#f6dbff] text-[var(--mb-purple)]"
+                              ? "bg-[var(--mb-accent-soft)] text-[var(--mb-purple)]"
                               : "bg-white text-[var(--mb-muted)]"
                         }`}
                       >
@@ -1031,7 +1031,7 @@ export default function PassengerHome() {
             {homeStage === "planner" ? (
               <div className="space-y-4">
                 {activeBooking ? (
-                  <div className="rounded-[30px] border border-[rgba(141,18,235,0.12)] bg-white p-5 shadow-[var(--mb-shadow)]">
+                  <div className="rounded-[30px] border border-[var(--mb-border)] bg-white p-5 shadow-[var(--mb-shadow)]">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Booking Locked</p>
@@ -1056,7 +1056,7 @@ export default function PassengerHome() {
                         <button
                           type="button"
                           onClick={() => setActiveView("track")}
-                          className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow)]"
+                          className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow)]"
                         >
                           Track Ride
                         </button>
@@ -1113,7 +1113,7 @@ export default function PassengerHome() {
                   type="button"
                   onClick={findRoutes}
                   disabled={findingRoutes}
-                  className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-6 py-5 text-[1.1rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-5 text-[1.1rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60"
                 >
                   <span>{findingRoutes ? "Finding Buses..." : "Find Buses"}</span>
                   <span className="text-xl">→</span>
@@ -1191,7 +1191,7 @@ export default function PassengerHome() {
                             type="button"
                             disabled={!canAccept}
                             onClick={() => acceptMatchedTrip(trip.id)}
-                            className={`rounded-full px-5 py-4 text-[1.05rem] font-black ${canAccept ? "bg-[linear-gradient(135deg,#680dff,#991dff)] text-white shadow-[var(--mb-shadow-strong)]" : "bg-[#d8cee8] text-[#86759c]"}`}
+                            className={`rounded-full px-5 py-4 text-[1.05rem] font-black ${canAccept ? "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]" : "bg-[#e7d8df] text-[#8b7180]"}`}
                           >
                             {canAccept ? "Accept" : "Full"}
                           </button>
@@ -1246,7 +1246,7 @@ export default function PassengerHome() {
                   <button
                     type="button"
                     onClick={() => setActiveView("track")}
-                    className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)]"
+                    className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)]"
                   >
                     Track Live Bus
                   </button>
@@ -1322,7 +1322,7 @@ export default function PassengerHome() {
           </section>
         ) : null}
 
-        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <div className="space-y-4"><ReservationCard booking={activeBooking} onPrimaryAction={() => setActiveView("track")} primaryActionLabel="Track Ride" onViewTicket={() => setTicketBookingId(activeBooking.id)} />{activeBooking.can_cancel ? <button type="button" onClick={() => requestCancellation(activeBooking)} className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-lg font-black text-red-600 shadow-[var(--mb-shadow)]">Cancel Ride</button> : null}{cancellationBooking && Number(cancellationBooking.id) === Number(activeBooking.id) ? <CancellationSheet booking={cancellationBooking} reasons={cancellationReasons} reason={cancellationReason} note={cancellationNote} busy={cancellationBusy} onReasonChange={setCancellationReason} onNoteChange={setCancellationNote} onConfirm={confirmPassengerCancellation} onClose={closeCancellationSheet} /> : null}</div> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
+        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <div className="space-y-4"><ReservationCard booking={activeBooking} onPrimaryAction={() => setActiveView("track")} primaryActionLabel="Track Ride" onViewTicket={() => setTicketBookingId(activeBooking.id)} />{activeBooking.can_cancel ? <button type="button" onClick={() => requestCancellation(activeBooking)} className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-lg font-black text-red-600 shadow-[var(--mb-shadow)]">Cancel Ride</button> : null}{cancellationBooking && Number(cancellationBooking.id) === Number(activeBooking.id) ? <CancellationSheet booking={cancellationBooking} reasons={cancellationReasons} reason={cancellationReason} note={cancellationNote} busy={cancellationBusy} onReasonChange={setCancellationReason} onNoteChange={setCancellationNote} onConfirm={confirmPassengerCancellation} onClose={closeCancellationSheet} /> : null}</div> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
 
         {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} walletSummary={walletSummary} passPlans={passPlans} onTopUp={() => topUpWallet(500)} onBuyPass={buyRidePass} actionBusy={walletBusy} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
       </main>
@@ -1393,7 +1393,7 @@ export default function PassengerHome() {
                       <button
                         type="button"
                         onClick={() => openNotificationTarget(item)}
-                        className="mt-4 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow)]"
+                        className="mt-4 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow)]"
                       >
                         {item.actionLabel}
                       </button>

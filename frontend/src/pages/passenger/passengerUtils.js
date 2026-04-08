@@ -2,22 +2,26 @@ import { useEffect, useState } from "react";
 import { divIcon } from "leaflet";
 
 export const PASSENGER_THEME = {
-  "--mb-bg": "#f8f6ff",
-  "--mb-bg-alt": "#f2ecff",
+  "--mb-bg": "#fbf3f6",
+  "--mb-bg-alt": "#f5ebf2",
+  "--mb-bg-deep": "#2e124f",
   "--mb-card": "rgba(255,255,255,0.96)",
-  "--mb-card-strong": "#f5f1ff",
-  "--mb-card-soft": "#f4efff",
-  "--mb-text": "#1d1722",
-  "--mb-muted": "#7a738b",
-  "--mb-purple": "#5f19e6",
-  "--mb-purple-2": "#8d2fff",
-  "--mb-magenta": "#ff4fd8",
-  "--mb-border": "rgba(95, 25, 230, 0.1)",
+  "--mb-card-strong": "#fff5f3",
+  "--mb-card-soft": "#fbf0f4",
+  "--mb-text": "#27133f",
+  "--mb-muted": "#7d6b93",
+  "--mb-purple": "#34155d",
+  "--mb-purple-2": "#552681",
+  "--mb-magenta": "#ff6b73",
+  "--mb-accent": "#ff6b73",
+  "--mb-accent-2": "#ff8a5b",
+  "--mb-accent-soft": "#ffe6e8",
+  "--mb-border": "rgba(52, 21, 93, 0.08)",
   "--mb-success": "#16a34a",
-  "--mb-danger": "#c1002b",
-  "--mb-shadow": "0 22px 48px rgba(93, 39, 180, 0.11)",
-  "--mb-shadow-strong": "0 24px 44px rgba(104, 16, 255, 0.2)",
-  "--mb-nav": "rgba(251, 249, 255, 0.94)",
+  "--mb-danger": "#c53b56",
+  "--mb-shadow": "0 22px 48px rgba(46, 18, 79, 0.12)",
+  "--mb-shadow-strong": "0 24px 44px rgba(255, 107, 115, 0.24)",
+  "--mb-nav": "rgba(252, 245, 248, 0.95)",
 };
 
 export function useSplash() {
@@ -201,8 +205,8 @@ export function createBusIcon({ label = "Bus", heading = 0 }) {
     iconAnchor: [37, 44],
     html: `
       <div style="position:relative;width:74px;height:82px;">
-        <div style="position:absolute;left:50%;top:0;transform:translateX(-50%);padding:8px 14px;border-radius:18px;background:linear-gradient(135deg,#8d12eb,#c243ff);box-shadow:0 16px 30px rgba(141,18,235,.28);color:white;font-weight:800;font-size:12px;letter-spacing:.02em;white-space:nowrap;">${label}</div>
-        <div style="position:absolute;left:50%;top:46px;transform:translateX(-50%) rotate(${rotation}deg);width:22px;height:22px;background:#ffffff;border:6px solid #8d12eb;border-radius:999px;box-shadow:0 8px 20px rgba(141,18,235,.24);"></div>
+        <div style="position:absolute;left:50%;top:0;transform:translateX(-50%);padding:8px 14px;border-radius:18px;background:linear-gradient(135deg,#ff6b73,#ff8a5b);box-shadow:0 16px 30px rgba(255,107,115,.28);color:white;font-weight:800;font-size:12px;letter-spacing:.02em;white-space:nowrap;">${label}</div>
+        <div style="position:absolute;left:50%;top:46px;transform:translateX(-50%) rotate(${rotation}deg);width:22px;height:22px;background:#ffffff;border:6px solid #34155d;border-radius:999px;box-shadow:0 8px 20px rgba(52,21,93,.22);"></div>
       </div>
     `,
   });

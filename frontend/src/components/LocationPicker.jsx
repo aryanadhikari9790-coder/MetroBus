@@ -141,7 +141,7 @@ export default function LocationPicker({
   };
 
   return (
-    <section className="overflow-hidden rounded-[2rem] bg-[#f7f4fb]">
+    <section className="overflow-hidden rounded-[2rem] bg-[var(--mb-card-soft)]">
       <div className="px-4 pt-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -151,7 +151,7 @@ export default function LocationPicker({
             {helperText ? <p className="mt-1 text-xs leading-5 text-[#6d6581]">{helperText}</p> : null}
           </div>
           {current.lat != null && current.lng != null ? (
-            <span className="rounded-full bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#5a17e8]">
+            <span className="rounded-full bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--mb-accent)]">
               Pinned
             </span>
           ) : null}
@@ -174,7 +174,7 @@ export default function LocationPicker({
             type="button"
             onClick={searchPlaces}
             disabled={searching}
-            className="rounded-full bg-[linear-gradient(135deg,#680dff,#991dff)] px-4 py-3 text-sm font-black text-white shadow-[0_14px_24px_rgba(104,13,255,0.18)] disabled:opacity-60"
+            className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60"
           >
             {searching ? "..." : "Search"}
           </button>
@@ -205,7 +205,7 @@ export default function LocationPicker({
         ) : null}
 
         {error ? <p className="mt-3 text-xs font-medium text-red-600">{error}</p> : null}
-        {info ? <p className="mt-3 text-xs font-medium text-[#4f21d1]">{info}</p> : null}
+        {info ? <p className="mt-3 text-xs font-medium text-[var(--mb-accent)]">{info}</p> : null}
       </div>
 
       <div className="relative mt-4 overflow-hidden rounded-[1.8rem]">
@@ -220,18 +220,18 @@ export default function LocationPicker({
             <CircleMarker
               center={[Number(current.lat), Number(current.lng)]}
               radius={10}
-              pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#6c12ff", fillOpacity: 1 }}
+              pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#ff6b73", fillOpacity: 1 }}
             />
           ) : (
             <CircleMarker
               center={POKHARA_CENTER}
               radius={8}
-              pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#b89eff", fillOpacity: 0.85 }}
+              pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#ff9b91", fillOpacity: 0.85 }}
             />
           )}
         </MapContainer>
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(16,8,40,0.1),rgba(16,8,40,0.24))]" />
-        <div className="absolute bottom-4 left-4 rounded-full bg-white/92 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[#5a17e8] shadow-[0_10px_22px_rgba(17,9,40,0.18)]">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(46,18,79,0.08),rgba(46,18,79,0.2))]" />
+        <div className="absolute bottom-4 left-4 rounded-full bg-white/92 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-accent)] shadow-[0_10px_22px_rgba(17,9,40,0.18)]">
           Tap map to pin
         </div>
       </div>
