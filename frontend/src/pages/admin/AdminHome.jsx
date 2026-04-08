@@ -54,7 +54,7 @@ function fmt(v) { if (!v) return "--"; try { return new Date(v).toLocaleString()
 function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
 
 const EMPTY_OBJ = {};
-const TABS = [{ id: "overview", label: "Overview", icon: "OV" }, { id: "routes", label: "Routes", icon: "RT" }, { id: "schedules", label: "Schedules", icon: "SC" }, { id: "activity", label: "Activity", icon: "AC" }, { id: "manage", label: "Manage", icon: "MG" }];
+const TABS = [{ id: "overview", label: "Overview" }, { id: "routes", label: "Routes" }, { id: "schedules", label: "Schedules" }, { id: "activity", label: "Activity" }, { id: "manage", label: "Manage" }];
 
 export default function AdminHome() {
   const navigate = useNavigate();
@@ -449,8 +449,8 @@ export default function AdminHome() {
         <div className={`flex gap-1.5 rounded-2xl border p-1.5 mb-6 backdrop-blur ${t.tabBar}`}>
           {TABS.map(tab => (
             <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/50" : t.tabInactive}`}>
-              <span>{tab.icon}</span><span className="hidden sm:inline">{tab.label}</span>
+              className={`flex flex-1 items-center justify-center rounded-xl px-1 py-2.5 text-[0.72rem] font-bold leading-tight transition-all ${activeTab === tab.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/50" : t.tabInactive}`}>
+              <span>{tab.label}</span>
             </button>
           ))}
         </div>
