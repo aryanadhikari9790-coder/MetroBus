@@ -1,9 +1,10 @@
 import random
+from decimal import Decimal
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db.models.deletion import ProtectedError
-from django.db.models import Count, Sum, Q
+from django.db.models import Count, Sum, Q, Value, DecimalField
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework import generics, permissions
@@ -158,6 +159,8 @@ class AdminDashboardView(APIView):
         if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
             return Response({"detail": "You do not have permission to view the admin dashboard."}, status=403)
 
+        money_zero = Value(Decimal("0.00"), output_field=DecimalField(max_digits=10, decimal_places=2))
+
         role_rows = User.objects.values("role").annotate(count=Count("id"))
         role_counts = {row["role"]: row["count"] for row in role_rows}
 
@@ -171,7 +174,7 @@ class AdminDashboardView(APIView):
         }
 
         revenue_success = Payment.objects.filter(status=Payment.Status.SUCCESS).aggregate(
-            total=Coalesce(Sum("amount"), 0)
+            total=Coalesce(Sum("amount"), money_zero)
         )["total"]
         confirmed_bookings = Booking.objects.filter(status=Booking.Status.CONFIRMED)
         ride_ops = {
@@ -226,7 +229,7 @@ class AdminDashboardView(APIView):
             .order_by("-created_at")[:8]
         )
         wallet_totals = PassengerWallet.objects.aggregate(
-            total_balance=Coalesce(Sum("balance"), 0),
+            total_balance=Coalesce(Sum("balance"), money_zero),
             total_reward_points=Coalesce(Sum("reward_points"), 0),
             total_lifetime_reward_points=Coalesce(Sum("lifetime_reward_points"), 0),
             active_passes=Count("id", filter=Q(pass_valid_until__gte=timezone.localdate(), pass_rides_remaining__gt=0)),
