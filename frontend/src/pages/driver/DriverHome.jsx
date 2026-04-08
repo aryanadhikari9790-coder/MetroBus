@@ -8,37 +8,37 @@ import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
 
 const LIGHT_THEME = {
-  "--drv-bg": "#fff7fb",
-  "--drv-bg-end": "rgba(255,241,248,0.98)",
-  "--drv-surface": "rgba(255,255,255,0.86)",
-  "--drv-soft": "#f8def9",
-  "--drv-border": "rgba(167,96,204,0.16)",
-  "--drv-text": "#2f1738",
-  "--drv-muted": "#89738f",
-  "--drv-purple": "#8c12eb",
-  "--drv-purple-2": "#c243ff",
-  "--drv-plum": "#472751",
-  "--drv-header": "rgba(255,247,251,0.9)",
-  "--drv-nav": "rgba(255,252,255,0.9)",
-  "--drv-shadow": "0 24px 56px rgba(155,54,184,0.12)",
-  "--drv-shadow-strong": "0 26px 60px rgba(141,18,235,0.22)",
+  "--drv-bg": "#fbf3f6",
+  "--drv-bg-end": "rgba(245,235,242,0.98)",
+  "--drv-surface": "rgba(255,255,255,0.92)",
+  "--drv-soft": "#fbebf0",
+  "--drv-border": "rgba(52,21,93,0.08)",
+  "--drv-text": "#27133f",
+  "--drv-muted": "#7d6b93",
+  "--drv-purple": "#34155d",
+  "--drv-purple-2": "#ff6b73",
+  "--drv-plum": "#2e124f",
+  "--drv-header": "rgba(252,245,248,0.92)",
+  "--drv-nav": "rgba(252,245,248,0.94)",
+  "--drv-shadow": "0 24px 56px rgba(46,18,79,0.12)",
+  "--drv-shadow-strong": "0 26px 60px rgba(255,107,115,0.22)",
 };
 
 const DARK_THEME = {
-  "--drv-bg": "#130d19",
-  "--drv-bg-end": "rgba(18,12,24,0.98)",
-  "--drv-surface": "rgba(33,22,42,0.9)",
-  "--drv-soft": "rgba(81,44,104,0.52)",
+  "--drv-bg": "#241043",
+  "--drv-bg-end": "rgba(36,16,67,0.98)",
+  "--drv-surface": "rgba(57,27,92,0.9)",
+  "--drv-soft": "rgba(255,107,115,0.12)",
   "--drv-border": "rgba(196,152,233,0.14)",
-  "--drv-text": "#f7eefc",
-  "--drv-muted": "#b8a6c2",
-  "--drv-purple": "#c56bff",
-  "--drv-purple-2": "#8c12eb",
-  "--drv-plum": "#25142d",
-  "--drv-header": "rgba(19,13,25,0.9)",
-  "--drv-nav": "rgba(28,19,35,0.92)",
+  "--drv-text": "#fff7f5",
+  "--drv-muted": "#d3c3e2",
+  "--drv-purple": "#ff8a77",
+  "--drv-purple-2": "#ff9a5c",
+  "--drv-plum": "#2e124f",
+  "--drv-header": "rgba(36,16,67,0.92)",
+  "--drv-nav": "rgba(43,20,78,0.94)",
   "--drv-shadow": "0 24px 56px rgba(0,0,0,0.24)",
-  "--drv-shadow-strong": "0 26px 60px rgba(141,18,235,0.28)",
+  "--drv-shadow-strong": "0 26px 60px rgba(255,107,115,0.26)",
 };
 
 function Icon({ name, className = "h-5 w-5" }) {
@@ -658,7 +658,7 @@ Please review the earnings breakdown for this shift.`;
       <header className="sticky top-0 z-30 border-b border-[var(--drv-border)] bg-[var(--drv-header)] px-4 py-4 backdrop-blur-xl">
         <div className={`${APP_SHELL_CLASS} flex items-center justify-between gap-3`}>
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-sm font-black text-white shadow-[var(--drv-shadow-strong)]">{(user?.full_name || "DR").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
+            <div className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] text-sm font-black text-white shadow-[var(--drv-shadow-strong)]">{(user?.full_name || "DR").split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
             <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--drv-shadow)]"><span className="text-xs font-black uppercase tracking-[0.2em] text-[var(--drv-purple)]">MB</span></div>
           </div>
           <div className="flex items-center gap-2">
@@ -674,7 +674,7 @@ Please review the earnings breakdown for this shift.`;
         {err ? <div className="mb-4 rounded-[1.6rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[1.6rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
-        <section className="relative overflow-hidden rounded-[2.6rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--drv-shadow-strong)]">
+        <section className="relative overflow-hidden rounded-[2.6rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-6 text-white shadow-[var(--drv-shadow-strong)]">
           <div className="absolute inset-y-0 right-0 w-32 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
           <p className="text-[0.7rem] font-black uppercase tracking-[0.28em] text-white/70">{activeTrip ? "Route In Progress" : pendingTrip ? "Trip Confirmation" : "Shift Dashboard"}</p>
           <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "ROUTE\nLIVE" : pendingTrip ? "WAITING\nTO GO" : "READY TO\nSTART"}</h1>
@@ -697,7 +697,7 @@ Please review the earnings breakdown for this shift.`;
               <div className="text-[var(--drv-purple)]"><Icon name={card.icon} /></div>
               <p className="mt-10 text-[0.7rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p>
               <p className={`mt-2 font-black leading-none text-[var(--drv-text)] ${index === 1 ? "text-[1.65rem]" : "text-[1.9rem]"}`}>{card.value}</p>
-              {card.icon === "fuel" ? <div className="mt-4 h-2 rounded-full bg-[#edd6f7]"><div className="h-2 rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)]" style={{ width: `${fuelLevel}%` }} /></div> : null}
+              {card.icon === "fuel" ? <div className="mt-4 h-2 rounded-full bg-[#f0dce4]"><div className="h-2 rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))]" style={{ width: `${fuelLevel}%` }} /></div> : null}
               <p className="mt-2 text-xs text-[var(--drv-muted)]">{card.note}</p>
             </Panel>
           ))}
@@ -719,9 +719,9 @@ Please review the earnings breakdown for this shift.`;
               <ActionButton tone="primary" onClick={() => (nextSchedule ? startScheduledTrip(nextSchedule.id) : startManualTrip())} disabled={busy || (!nextSchedule && (!routeId || !busId || !helperId))} className="mt-5 w-full !py-5 !text-base"><Icon name="play" />{busy ? "Starting Trip" : "Start Trip"}</ActionButton>
             </Panel>
 
-            <div className="mt-6"><div className="mb-3 flex items-center justify-between"><h2 className="text-3xl font-black">Upcoming Schedules</h2><Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>{minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Today"}</Pill></div><div className="space-y-3">{schedules.length === 0 ? <Panel><p className="text-sm text-[var(--drv-muted)]">No planned schedules right now.</p></Panel> : schedules.slice(0, 4).map((schedule, index) => <button key={schedule.id} type="button" onClick={() => startScheduledTrip(schedule.id)} disabled={busy || Boolean(currentTrip)} className={`flex w-full items-center gap-4 rounded-[1.8rem] border px-4 py-4 text-left shadow-[var(--drv-shadow)] transition ${index === 0 ? "border-transparent bg-[var(--drv-soft)]" : "border-[var(--drv-border)] bg-white/72"}`}><div className="min-w-[4.8rem] rounded-[1.4rem] bg-white/70 px-3 py-3 text-center"><p className="text-2xl font-black leading-none text-[var(--drv-purple)]">{formatTime(schedule.scheduled_start_time)}</p></div><div className="min-w-0 flex-1"><p className="truncate text-lg font-black">{schedule.route_name}</p><p className="mt-1 text-sm text-[var(--drv-muted)]">{schedule.bus_plate} - {schedule.helper_name || "Helper pending"}</p></div>{index === 0 ? <span className="rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white">Active</span> : null}</button>)}</div></div>
+            <div className="mt-6"><div className="mb-3 flex items-center justify-between"><h2 className="text-3xl font-black">Upcoming Schedules</h2><Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>{minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Today"}</Pill></div><div className="space-y-3">{schedules.length === 0 ? <Panel><p className="text-sm text-[var(--drv-muted)]">No planned schedules right now.</p></Panel> : schedules.slice(0, 4).map((schedule, index) => <button key={schedule.id} type="button" onClick={() => startScheduledTrip(schedule.id)} disabled={busy || Boolean(currentTrip)} className={`flex w-full items-center gap-4 rounded-[1.8rem] border px-4 py-4 text-left shadow-[var(--drv-shadow)] transition ${index === 0 ? "border-transparent bg-[var(--drv-soft)]" : "border-[var(--drv-border)] bg-white/72"}`}><div className="min-w-[4.8rem] rounded-[1.4rem] bg-white/70 px-3 py-3 text-center"><p className="text-2xl font-black leading-none text-[var(--drv-purple)]">{formatTime(schedule.scheduled_start_time)}</p></div><div className="min-w-0 flex-1"><p className="truncate text-lg font-black">{schedule.route_name}</p><p className="mt-1 text-sm text-[var(--drv-muted)]">{schedule.bus_plate} - {schedule.helper_name || "Helper pending"}</p></div>{index === 0 ? <span className="rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white">Active</span> : null}</button>)}</div></div>
 
-            <Panel className="mt-5 bg-[rgba(250,227,252,0.86)]"><div className="flex items-start gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--drv-purple)]"><Icon name="alert" /></div><div><SectionLabel>Traffic Alert</SectionLabel><p className="text-lg font-black">Heavy congestion reported near Mahendrapul.</p><p className="mt-2 text-sm leading-6 text-[var(--drv-muted)]">Consider switching to deviation mode if your next departure starts before the scheduled corridor clears.</p></div></div></Panel>
+            <Panel className="mt-5 bg-[rgba(255,240,239,0.9)]"><div className="flex items-start gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--drv-purple)]"><Icon name="alert" /></div><div><SectionLabel>Traffic Alert</SectionLabel><p className="text-lg font-black">Heavy congestion reported near Mahendrapul.</p><p className="mt-2 text-sm leading-6 text-[var(--drv-muted)]">Consider switching to deviation mode if your next departure starts before the scheduled corridor clears.</p></div></div></Panel>
           </>
         ) : null}
 
@@ -815,7 +815,7 @@ Please review the earnings breakdown for this shift.`;
             </div>
           ) : tripAwaitingStart ? (
             <div className="mt-5 space-y-5 pb-32">
-              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-5 text-white shadow-[var(--drv-shadow-strong)]">
+              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Trip Confirmation</p>
@@ -888,7 +888,7 @@ Please review the earnings breakdown for this shift.`;
             </div>
           ) : (
             <div className="mt-5 space-y-5 pb-40">
-              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-5 text-white shadow-[var(--drv-shadow-strong)]">
+              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Current Route</p>
@@ -1002,7 +1002,7 @@ Please review the earnings breakdown for this shift.`;
                   <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
                     <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
                     <MapViewport points={mapPoints} />
-                    {displayedPolyline.length > 0 ? <Polyline positions={displayedPolyline} pathOptions={{ color: "#8c12eb", weight: 5, opacity: 0.9 }} /> : null}
+                    {displayedPolyline.length > 0 ? <Polyline positions={displayedPolyline} pathOptions={{ color: "#ff6b73", weight: 5, opacity: 0.9 }} /> : null}
                     {routeStops.map((item, index) => {
                       const lat = Number(item.stop?.lat);
                       const lng = Number(item.stop?.lng);
@@ -1013,7 +1013,7 @@ Please review the earnings breakdown for this shift.`;
                           key={`${item.stop_order}-${item.stop?.name}`}
                           center={[lat, lng]}
                           radius={current ? 8 : 5}
-                          pathOptions={{ color: current ? "#8c12eb" : "#b68ac8", fillColor: current ? "#8c12eb" : "#edd6f7", fillOpacity: 0.95 }}
+                          pathOptions={{ color: current ? "#ff6b73" : "#af8bbf", fillColor: current ? "#ff6b73" : "#f0dce4", fillOpacity: 0.95 }}
                         >
                           <Popup>Stop {item.stop_order}: {item.stop?.name}</Popup>
                         </CircleMarker>
@@ -1030,8 +1030,8 @@ Please review the earnings breakdown for this shift.`;
                           center={[lat, lng]}
                           radius={isPickup ? 10 : 8}
                           pathOptions={{
-                            color: isPickup ? "#ff4fd8" : "#8c12eb",
-                            fillColor: isPickup ? "#ff9ae8" : "#c243ff",
+                            color: isPickup ? "#ff8a5b" : "#34155d",
+                            fillColor: isPickup ? "#ffb290" : "#ff6b73",
                             fillOpacity: 0.96,
                           }}
                         >
@@ -1241,7 +1241,7 @@ Please review the earnings breakdown for this shift.`;
               <p className="pb-2 text-sm font-medium text-[var(--drv-muted)]">{lastShiftDate}</p>
             </div>
 
-            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--drv-shadow-strong)]">
+            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-6 text-white shadow-[var(--drv-shadow-strong)]">
               <div className="grid h-12 w-12 place-items-center rounded-[1.2rem] bg-white/14 text-white">
                 <Icon name="wallet" />
               </div>
@@ -1266,7 +1266,7 @@ Please review the earnings breakdown for this shift.`;
               {historyMetrics.map((metric, index) => (
                 <Panel key={metric.label} className={index === 2 ? "bg-[rgba(243,224,250,0.95)]" : "bg-[rgba(252,227,252,0.82)]"}>
                   <div className="flex items-center gap-4">
-                    <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--drv-purple)]">
+                    <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--drv-purple)]">
                       <Icon name={metric.icon} />
                     </div>
                     <div>
@@ -1293,7 +1293,7 @@ Please review the earnings breakdown for this shift.`;
                 {visibleHistoryTrips.map((trip, index) => (
                   <Panel key={`${trip.route}-${trip.time}`} className={index === 1 ? "bg-[rgba(251,234,252,0.86)]" : "bg-white/88"}>
                     <div className="flex items-start gap-4">
-                      <div className="mt-1 grid h-12 w-12 place-items-center rounded-[1.1rem] bg-[rgba(140,18,235,0.1)] text-[var(--drv-purple)]">
+                      <div className="mt-1 grid h-12 w-12 place-items-center rounded-[1.1rem] bg-[rgba(255,107,115,0.12)] text-[var(--drv-purple)]">
                         <Icon name="bus" />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -1325,7 +1325,7 @@ Please review the earnings breakdown for this shift.`;
 
         {activeTab === "earnings" ? (
           <div className="mt-5 space-y-5 pb-32">
-            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,#8c12eb,#c765ff)] p-6 text-white shadow-[var(--drv-shadow-strong)]">
+            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-6 text-white shadow-[var(--drv-shadow-strong)]">
               <p className="text-[0.72rem] font-black uppercase tracking-[0.28em] text-white/76">Today Earnings</p>
               <div className="mt-5 flex items-end justify-between gap-4">
                 <p className="text-6xl font-black leading-none">Rs. {todaysEarnings.toLocaleString()}</p>
@@ -1346,7 +1346,7 @@ Please review the earnings breakdown for this shift.`;
 
             <div className="rounded-[2.1rem] bg-[rgba(247,212,250,0.82)] p-6 shadow-[var(--drv-shadow)]">
               <div className="flex items-start justify-between gap-4">
-                <div className="grid h-14 w-14 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--drv-purple)]">
+                <div className="grid h-14 w-14 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--drv-purple)]">
                   <Icon name="ticket" className="h-6 w-6" />
                 </div>
                 <p className="text-sm font-black text-[var(--drv-purple)]">{earningsBreakdown[0].note}</p>
@@ -1374,7 +1374,7 @@ Please review the earnings breakdown for this shift.`;
               ].map((card) => (
                 <div key={card.label} className="rounded-[1.8rem] border border-[var(--drv-border)] bg-white/90 px-4 py-4 shadow-[var(--drv-shadow)]">
                   <div className="flex items-center gap-3">
-                    <div className="grid h-11 w-11 place-items-center rounded-full bg-[rgba(140,18,235,0.08)] text-[var(--drv-purple)]">
+                    <div className="grid h-11 w-11 place-items-center rounded-full bg-[rgba(255,107,115,0.1)] text-[var(--drv-purple)]">
                       <Icon name={card.icon} />
                     </div>
                     <div>
@@ -1408,7 +1408,7 @@ Please review the earnings breakdown for this shift.`;
                 {fuelBars.map((bar, index) => (
                   <div key={bar.day} className="flex flex-1 flex-col items-center gap-3">
                     <div
-                      className={`w-full max-w-[2.4rem] rounded-t-[1.1rem] ${index === fuelBars.length - 1 ? "bg-[linear-gradient(180deg,#c243ff,#8c12eb)]" : index >= fuelBars.length - 3 ? "bg-[rgba(174,122,228,0.68)]" : "bg-[rgba(241,200,247,0.9)]"}`}
+                      className={`w-full max-w-[2.4rem] rounded-t-[1.1rem] ${index === fuelBars.length - 1 ? "bg-[linear-gradient(180deg,#ff8a5b,#ff6b73)]" : index >= fuelBars.length - 3 ? "bg-[rgba(255,145,120,0.68)]" : "bg-[rgba(249,221,218,0.9)]"}`}
                       style={{ height: `${Math.max(bar.value, 24)}px` }}
                     />
                     <span className={`text-[0.66rem] font-black uppercase tracking-[0.14em] ${index === fuelBars.length - 1 ? "text-[var(--drv-purple)]" : "text-[var(--drv-muted)]"}`}>
@@ -1427,7 +1427,7 @@ Please review the earnings breakdown for this shift.`;
                 <p className="text-2xl font-black">Inconsistency?</p>
                 <p className="mt-1 text-sm text-[var(--drv-muted)]">Report an earnings issue</p>
               </div>
-              <button type="button" onClick={handleReportIssue} className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]">
+              <button type="button" onClick={handleReportIssue} className="grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] text-white shadow-[var(--drv-shadow-strong)]">
                 <Icon name="arrow-right" />
               </button>
             </div>
@@ -1446,7 +1446,7 @@ Please review the earnings breakdown for this shift.`;
           </div>
         ) : null}
 
-        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[var(--drv-nav)] p-2 shadow-[var(--drv-shadow)] backdrop-blur-xl"><div className="grid grid-cols-4 gap-2">{TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--drv-shadow-strong)]" : "text-[var(--drv-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}</div></div>
+        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[var(--drv-nav)] p-2 shadow-[var(--drv-shadow)] backdrop-blur-xl"><div className="grid grid-cols-4 gap-2">{TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] text-white shadow-[var(--drv-shadow-strong)]" : "text-[var(--drv-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}</div></div>
       </main>
     </div>
   );

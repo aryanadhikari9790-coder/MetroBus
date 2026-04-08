@@ -6,37 +6,37 @@ import { clearToken } from "../../auth";
 import { useTheme } from "../../ThemeContext";
 
 const LIGHT_THEME = {
-  "--hlp-bg": "#fff7fb",
-  "--hlp-bg-end": "rgba(255,243,249,0.98)",
-  "--hlp-surface": "rgba(255,255,255,0.9)",
-  "--hlp-soft": "#f9e3fb",
-  "--hlp-border": "rgba(169,103,210,0.16)",
-  "--hlp-text": "#321b39",
-  "--hlp-muted": "#89718d",
-  "--hlp-purple": "#8c12eb",
-  "--hlp-purple-2": "#c243ff",
-  "--hlp-plum": "#4a2656",
-  "--hlp-header": "rgba(255,247,251,0.92)",
-  "--hlp-nav": "rgba(255,252,255,0.92)",
-  "--hlp-shadow": "0 26px 58px rgba(161,69,197,0.12)",
-  "--hlp-shadow-strong": "0 28px 62px rgba(140,18,235,0.22)",
+  "--hlp-bg": "#fbf3f6",
+  "--hlp-bg-end": "rgba(245,235,242,0.98)",
+  "--hlp-surface": "rgba(255,255,255,0.92)",
+  "--hlp-soft": "#fbebf0",
+  "--hlp-border": "rgba(52,21,93,0.08)",
+  "--hlp-text": "#27133f",
+  "--hlp-muted": "#7d6b93",
+  "--hlp-purple": "#34155d",
+  "--hlp-purple-2": "#ff6b73",
+  "--hlp-plum": "#2e124f",
+  "--hlp-header": "rgba(252,245,248,0.92)",
+  "--hlp-nav": "rgba(252,245,248,0.94)",
+  "--hlp-shadow": "0 26px 58px rgba(46,18,79,0.12)",
+  "--hlp-shadow-strong": "0 28px 62px rgba(255,107,115,0.22)",
 };
 
 const DARK_THEME = {
-  "--hlp-bg": "#140d1a",
-  "--hlp-bg-end": "rgba(18,12,24,0.98)",
-  "--hlp-surface": "rgba(34,22,43,0.92)",
-  "--hlp-soft": "rgba(96,51,119,0.48)",
+  "--hlp-bg": "#241043",
+  "--hlp-bg-end": "rgba(36,16,67,0.98)",
+  "--hlp-surface": "rgba(57,27,92,0.9)",
+  "--hlp-soft": "rgba(255,107,115,0.12)",
   "--hlp-border": "rgba(202,161,233,0.14)",
-  "--hlp-text": "#f7eefb",
-  "--hlp-muted": "#bba8c4",
-  "--hlp-purple": "#cb7cff",
-  "--hlp-purple-2": "#8c12eb",
-  "--hlp-plum": "#26152c",
-  "--hlp-header": "rgba(20,13,26,0.9)",
-  "--hlp-nav": "rgba(27,18,34,0.92)",
+  "--hlp-text": "#fff7f5",
+  "--hlp-muted": "#d3c3e2",
+  "--hlp-purple": "#ff8a77",
+  "--hlp-purple-2": "#ff9a5c",
+  "--hlp-plum": "#2e124f",
+  "--hlp-header": "rgba(36,16,67,0.92)",
+  "--hlp-nav": "rgba(43,20,78,0.94)",
   "--hlp-shadow": "0 26px 58px rgba(0,0,0,0.24)",
-  "--hlp-shadow-strong": "0 28px 62px rgba(140,18,235,0.28)",
+  "--hlp-shadow-strong": "0 28px 62px rgba(255,107,115,0.26)",
 };
 
 const TABS = [
@@ -783,7 +783,7 @@ Need support with live trip operations.`;
         {msg ? <div className="mb-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
         {activeTab === "trip" ? <>
-          <section className="relative overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,#8c12eb,#c243ff)] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
+          <section className="relative overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
             <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
             <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
             <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "LIVE\nSUPPORT" : pendingTrip ? "START\nPENDING" : "READY ON\nSHIFT"}</h1>
@@ -820,7 +820,7 @@ Need support with live trip operations.`;
               <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setTicketLookup(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: tripAwaitingStart ? "Trip is waiting for driver/helper confirmation" : "No live trips available" }]} disabled={!trips.length} />
             </div>
 
-            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]">
+            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
               <Chip tone="dark" className="bg-white/18">{activeTrip ? "Active Trip" : pendingTrip ? "Start Pending" : "Shift Ready"}</Chip>
               <h3 className="mt-6 text-[3rem] font-black leading-[0.92]">{helperTripHeroTitle}</h3>
               <div className="mt-6 flex flex-wrap gap-3">
@@ -880,12 +880,12 @@ Need support with live trip operations.`;
 
             <div className="grid grid-cols-2 gap-4">
               <SurfaceCard className="bg-[rgba(247,224,249,0.84)]">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--hlp-purple)]"><Icon name="ticket" /></div>
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--hlp-purple)]"><Icon name="ticket" /></div>
                 <p className="mt-8 text-4xl font-black">{availableSeats.length || 12}</p>
                 <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Open Seats</p>
               </SurfaceCard>
               <SurfaceCard className="bg-[rgba(245,219,248,0.92)]">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(140,18,235,0.12)] text-[var(--hlp-purple)]"><Icon name="profile" /></div>
+                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--hlp-purple)]"><Icon name="profile" /></div>
                 <p className="mt-8 text-4xl font-black">{occupiedCount || 18}</p>
                 <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Occupied</p>
               </SurfaceCard>
@@ -915,8 +915,8 @@ Need support with live trip operations.`;
                   <span className="text-xl font-black text-[var(--hlp-purple)]">{vehicleCapacity} Seats</span>
                 </div>
               </div>
-              <div className="mt-5 h-2 rounded-full bg-[#edd6f7]">
-                <div className="h-2 rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)]" style={{ width: `${Math.min(Math.max(occupancyPercent, 12), 100)}%` }} />
+              <div className="mt-5 h-2 rounded-full bg-[#f0dce4]">
+                <div className="h-2 rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))]" style={{ width: `${Math.min(Math.max(occupancyPercent, 12), 100)}%` }} />
               </div>
               <p className="mt-4 text-center text-[0.82rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Current Occupancy: {Math.min(Math.max(occupancyPercent, 12), 100)}%</p>
               <PrimaryButton tone="ghost" onClick={openVehicleLogs} className="mt-5 w-full !py-4 !text-base">Vehicle Logs</PrimaryButton>
@@ -942,7 +942,7 @@ Need support with live trip operations.`;
             ) : null}
             <div className="flex gap-2 overflow-x-auto pb-1">
               {terminalChips.map((chip, index) => (
-                <button key={`${chip.label}-${index}`} type="button" onClick={() => chip.value && setFromOrder(chip.value)} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
+                <button key={`${chip.label}-${index}`} type="button" onClick={() => chip.value && setFromOrder(chip.value)} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
                   {chip.label}
                 </button>
               ))}
@@ -966,7 +966,7 @@ Need support with live trip operations.`;
               <div className="mt-4 flex flex-wrap items-center gap-5 text-[0.72rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">
                 <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full border border-[var(--hlp-border)] bg-white" />Open</span>
                 <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[rgba(233,198,244,0.86)]" />Occupied</span>
-                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)]" />Selected</span>
+                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))]" />Selected</span>
               </div>
             </SurfaceCard>
 
@@ -979,7 +979,7 @@ Need support with live trip operations.`;
                 {seats.length === 0 ? <div className="rounded-[1.8rem] bg-white/70 px-5 py-8 text-center text-sm font-medium text-[var(--hlp-muted)]">Select a live trip and a valid segment to load available seats.</div> : <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">{seats.map((seat) => <SeatNode key={seat.seat_id} seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => toggleSeat(seat.seat_id)} />)}</div>}
                 <div className="mx-auto mt-6 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
                   <span className="uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Selected seats:</span>
-                  {selectedSeatLabels.length ? selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,#8c12eb,#c243ff)] px-3 py-1 text-xs text-white">{label}</span>) : <span className="text-[var(--hlp-muted)]">None</span>}
+                  {selectedSeatLabels.length ? selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] px-3 py-1 text-xs text-white">{label}</span>) : <span className="text-[var(--hlp-muted)]">None</span>}
                 </div>
               </div>
             </SurfaceCard>
@@ -1222,14 +1222,14 @@ Need support with live trip operations.`;
                           </div>
                           <p className="text-lg font-black text-[var(--hlp-text)]">{index === currentStopIndex ? formatTime(latestLocation?.recorded_at || activeTrip?.started_at || nextSchedule?.scheduled_start_time) : `${9 + index}:${index === 0 ? "10" : `${index}5`}`}</p>
                         </div>
-                        {isCurrent ? <div className="mt-3 rounded-[1.4rem] border border-[rgba(140,18,235,0.25)] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium text-[var(--hlp-plum)]">Boarding support is active here. Next movement is toward {upcomingStop?.stop?.name || "the next stop"}.</div> : null}
+                        {isCurrent ? <div className="mt-3 rounded-[1.4rem] border border-[rgba(255,107,115,0.25)] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium text-[var(--hlp-plum)]">Boarding support is active here. Next movement is toward {upcomingStop?.stop?.name || "the next stop"}.</div> : null}
                       </div>
                     </div>
                   );
                 })}
               </div>
             </SurfaceCard>
-            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]">
+            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
               <div className="flex items-start justify-between gap-4">
                 <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/14"><Icon name="qr" className="h-7 w-7" /></div>
                 <Chip tone="dark" className="bg-white/18">Active Pass</Chip>
@@ -1250,13 +1250,13 @@ Need support with live trip operations.`;
                 <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
                   <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
                   <MapViewport points={mapPoints} />
-                  {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: "#8c12eb", weight: 5, opacity: 0.9 }} /> : null}
+                  {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: "#ff6b73", weight: 5, opacity: 0.9 }} /> : null}
                   {routeStops.map((stop, index) => {
                     const lat = Number(stop.stop?.lat);
                     const lng = Number(stop.stop?.lng);
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
                     const current = index === currentStopIndex;
-                    return <CircleMarker key={`${stop.stop_order}-${stop.stop?.name}`} center={[lat, lng]} radius={current ? 8 : 5} pathOptions={{ color: current ? "#8c12eb" : "#c48cdd", fillColor: current ? "#8c12eb" : "#f1daf7", fillOpacity: 0.95 }}><Popup>{stop.stop_order}. {stop.stop?.name}</Popup></CircleMarker>;
+                    return <CircleMarker key={`${stop.stop_order}-${stop.stop?.name}`} center={[lat, lng]} radius={current ? 8 : 5} pathOptions={{ color: current ? "#ff6b73" : "#af8bbf", fillColor: current ? "#ff6b73" : "#f4dde7", fillOpacity: 0.95 }}><Popup>{stop.stop_order}. {stop.stop?.name}</Popup></CircleMarker>;
                   })}
                   {livePoint ? <CircleMarker center={livePoint} radius={10} pathOptions={{ color: "#10b981", fillColor: "#34d399", fillOpacity: 1 }}><Popup>Latest helper-linked trip location</Popup></CircleMarker> : null}
                 </MapContainer>
@@ -1280,7 +1280,7 @@ Need support with live trip operations.`;
       </main>
       <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[var(--hlp-nav)] p-2 shadow-[var(--hlp-shadow)] backdrop-blur-xl">
         <div className="grid grid-cols-4 gap-2">
-          {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#8c12eb,#c243ff)] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}
+          {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}
         </div>
       </div>
     </div>
