@@ -15,7 +15,7 @@ function Btn({ children, onClick, disabled, tone = "primary", className = "" }) 
   return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-xl px-5 py-3 text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
 function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
-function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "â˜€ Light" : "ðŸŒ™ Dark"}</button>; }
+function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "Light Mode" : "Dark Mode"}</button>; }
 function StatCard({ label, value, sub, accent = "", t }) {
   return <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{label}</p><p className={`text-3xl font-black mt-2 leading-none ${accent || t.text}`}>{value}</p>{sub && <p className={`text-xs mt-1.5 ${t.textSub}`}>{sub}</p>}</GlassCard>;
 }
@@ -50,11 +50,11 @@ function StopMapPicker({ onPick }) {
   });
   return null;
 }
-function fmt(v) { if (!v) return "â€”"; try { return new Date(v).toLocaleString(); } catch { return v; } }
+function fmt(v) { if (!v) return "--"; try { return new Date(v).toLocaleString(); } catch { return v; } }
 function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
 
 const EMPTY_OBJ = {};
-const TABS = [{ id: "overview", label: "Overview", icon: "â—ˆ" }, { id: "routes", label: "Routes", icon: "âŠ•" }, { id: "schedules", label: "Schedules", icon: "â°" }, { id: "activity", label: "Activity", icon: "âš¡" }, { id: "manage", label: "Manage", icon: "ðŸ› " }];
+const TABS = [{ id: "overview", label: "Overview", icon: "OV" }, { id: "routes", label: "Routes", icon: "RT" }, { id: "schedules", label: "Schedules", icon: "SC" }, { id: "activity", label: "Activity", icon: "AC" }, { id: "manage", label: "Manage", icon: "MG" }];
 
 export default function AdminHome() {
   const navigate = useNavigate();
@@ -417,7 +417,7 @@ export default function AdminHome() {
     }
   };
 
-  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading admin dashboardâ€¦</p></div></div>;
+  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-indigo-500 border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading admin dashboard...</p></div></div>;
 
   const rowBg = isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-200";
 
@@ -433,7 +433,7 @@ export default function AdminHome() {
             <Pill color="emerald" isDark={isDark}>{trips.live || 0} live</Pill>
             <Pill color="amber" isDark={isDark}>{payments.pending || 0} pending</Pill>
             <ThemeToggle isDark={isDark} toggle={toggle} />
-            <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); loadSched(); }} className="!py-2 !px-3 text-xs">â†»</Btn>
+            <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); loadSched(); }} className="!py-2 !px-3 text-xs">Reload</Btn>
             <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
           </div>
         </div>
@@ -442,8 +442,8 @@ export default function AdminHome() {
       <div className="mx-auto max-w-7xl px-4 py-5">
         {err && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
         {stopMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {stopMsg}</div>}
-        {routeMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>âœ“ {routeMsg}</div>}
-        {scheduleMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>âœ“ {scheduleMsg}</div>}
+        {routeMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>Saved: {routeMsg}</div>}
+        {scheduleMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>Saved: {scheduleMsg}</div>}
 
         {/* Tabs */}
         <div className={`flex gap-1.5 rounded-2xl border p-1.5 mb-6 backdrop-blur ${t.tabBar}`}>
@@ -459,14 +459,14 @@ export default function AdminHome() {
         {activeTab === "overview" && (
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers Â· ${roleCounts.DRIVER || 0} drivers`} accent="text-indigo-500" t={t} />
+              <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers | ${roleCounts.DRIVER || 0} drivers`} accent="text-indigo-500" t={t} />
               <StatCard label="Live Trips" value={trips.live ?? 0} sub={`${trips.total || 0} total`} accent="text-emerald-500" t={t} />
               <StatCard label="Bookings" value={bookings.total ?? 0} sub={`${bookings.confirmed || 0} confirmed`} accent="text-amber-500" t={t} />
               <StatCard label="Revenue" value={fmtMoney(payments.revenue_success ?? 0)} sub={`${payments.success || 0} successful`} t={t} />
             </div>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <StatCard label="Wallet Float" value={fmtMoney(wallets.total_balance ?? 0)} sub="Passenger balance held" accent="text-fuchsia-500" t={t} />
-              <StatCard label="Active Passes" value={wallets.active_passes ?? 0} sub={`${wallets.weekly_passes || 0} weekly Â· ${wallets.monthly_passes || 0} monthly`} accent="text-sky-500" t={t} />
+              <StatCard label="Active Passes" value={wallets.active_passes ?? 0} sub={`${wallets.weekly_passes || 0} weekly | ${wallets.monthly_passes || 0} monthly`} accent="text-sky-500" t={t} />
               <StatCard label="Reward Ready" value={wallets.reward_ready ?? 0} sub={`${wallets.reward_threshold || 100} points unlock a free ride`} accent="text-violet-500" t={t} />
               <StatCard label="Free Rides Used" value={wallets.free_rides_redeemed ?? 0} sub={`${wallets.total_reward_points || 0} live points across wallets`} accent="text-emerald-500" t={t} />
             </div>
@@ -505,7 +505,7 @@ export default function AdminHome() {
                         <div className="min-w-0">
                           <p className={`text-sm font-bold ${t.text}`}>{index + 1}. {row.passenger_name}</p>
                           <p className={`text-xs mt-0.5 ${t.textSub}`}>{row.phone}</p>
-                          <p className={`text-xs mt-1 ${t.textSub}`}>{row.pass_plan ? `${row.pass_plan} Â· ${row.pass_rides_remaining} rides left` : "No active pass"}</p>
+                          <p className={`text-xs mt-1 ${t.textSub}`}>{row.pass_plan ? `${row.pass_plan} | ${row.pass_rides_remaining} rides left` : "No active pass"}</p>
                         </div>
                         <Pill color={row.reward_points >= (wallets.reward_threshold || 100) ? "emerald" : "amber"} isDark={isDark}>
                           {row.reward_points} pts
@@ -589,9 +589,9 @@ export default function AdminHome() {
                       <span className="text-xs text-indigo-500 font-bold w-5 flex-shrink-0">{i + 1}</span>
                       <span className={`text-sm flex-1 truncate ${t.text}`}>{stop.name}</span>
                       <div className="flex gap-1">
-                        <button type="button" onClick={() => moveStop(i, -1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>â†‘</button>
-                        <button type="button" onClick={() => moveStop(i, 1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>â†“</button>
-                        <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-red-500/20 px-2 py-1 text-xs text-red-400 hover:bg-red-500/30">âœ•</button>
+                        <button type="button" onClick={() => moveStop(i, -1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Up</button>
+                        <button type="button" onClick={() => moveStop(i, 1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Down</button>
+                        <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-red-500/20 px-2 py-1 text-xs text-red-400 hover:bg-red-500/30">Remove</button>
                       </div>
                     </div>
                   ))}
@@ -600,15 +600,15 @@ export default function AdminHome() {
                 <GlassCard t={t}>
                   <SLabel t={t}>Segment Fares (NPR)</SLabel>
                   {selectedStops.slice(0, -1).map((stop, i) => (
-                    <div key={`${stop.id}-fare`} className="mb-3"><label className={`block text-[10px] mb-1 ${t.textSub}`}>{stop.name} â†’ {selectedStops[i + 1].name}</label><input type="number" min="0" step="0.01" value={segmentFares[i] || ""} placeholder="Enter fare" onChange={e => { const n = [...segmentFares]; n[i] = e.target.value; setSegmentFares(n); }} className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-indigo-500 ${t.input}`} /></div>
+                    <div key={`${stop.id}-fare`} className="mb-3"><label className={`block text-[10px] mb-1 ${t.textSub}`}>{stop.name} to {selectedStops[i + 1].name}</label><input type="number" min="0" step="0.01" value={segmentFares[i] || ""} placeholder="Enter fare" onChange={e => { const n = [...segmentFares]; n[i] = e.target.value; setSegmentFares(n); }} className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-indigo-500 ${t.input}`} /></div>
                   ))}
                 </GlassCard>
               )}
-              <Btn tone="success" onClick={createRoute} disabled={routeBusy} className="w-full !py-4">{routeBusy ? "Creatingâ€¦" : "Create Route"}</Btn>
+              <Btn tone="success" onClick={createRoute} disabled={routeBusy} className="w-full !py-4">{routeBusy ? "Creating..." : "Create Route"}</Btn>
             </div>
             <div className="space-y-4">
               <GlassCard t={t} className="!p-0 overflow-hidden">
-                <div className={`px-5 py-4 border-b ${t.divider}`}><SLabel t={t}>Stop Map â€” Build Routes + Pin Stops</SLabel><p className={`text-sm font-bold -mt-2 ${t.text}`}>{selectedStopIds.length} stops selected for the route builder</p></div>
+                <div className={`px-5 py-4 border-b ${t.divider}`}><SLabel t={t}>Stop Map - Build Routes + Pin Stops</SLabel><p className={`text-sm font-bold -mt-2 ${t.text}`}>{selectedStopIds.length} stops selected for the route builder</p></div>
                 <div className="h-80">
                   <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom={false} className="h-full w-full">
                     <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={t.mapTile} />
@@ -644,7 +644,7 @@ export default function AdminHome() {
                 {recentRoutes.length === 0 ? <p className={`text-sm ${t.textSub}`}>No routes yet.</p>
                   : recentRoutes.map(r => (
                     <div key={r.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
-                      <div><p className={`text-sm font-bold ${t.text}`}>{r.name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{r.city} Â· {r.stops_count} stops</p></div>
+                      <div><p className={`text-sm font-bold ${t.text}`}>{r.name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{r.city} | {r.stops_count} stops</p></div>
                       <Pill color={r.is_active ? "emerald" : "slate"} isDark={isDark}>{r.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
                     </div>
                   ))}
@@ -661,7 +661,7 @@ export default function AdminHome() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <SelectField label="Route" value={sRouteId} onChange={setSRouteId} t={t} options={schedOpts.routes.map(r => ({ value: r.id, label: r.name }))} />
-                  <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} · ${b.plate_number}` }))} />
+                  <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} | ${b.plate_number}` }))} />
                   <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} t={t} options={schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))} />
                   <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} t={t} options={schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))} />
                 </div>
@@ -669,13 +669,13 @@ export default function AdminHome() {
                   <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
                     <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Assigned Bus Snapshot</p>
                     <p className={`mt-2 text-sm font-bold ${t.text}`}>{selectedScheduleBus.display_name || selectedScheduleBus.plate_number}</p>
-                    <p className={`mt-1 ${t.textSub}`}>{selectedScheduleBus.plate_number} · {selectedScheduleBus.capacity} seats</p>
-                    <p className={`mt-2 ${t.textSub}`}>Driver: {selectedScheduleBus.driver_name || "Not assigned"} · Helper: {selectedScheduleBus.helper_name || "Not assigned"}</p>
+                    <p className={`mt-1 ${t.textSub}`}>{selectedScheduleBus.plate_number} | {selectedScheduleBus.capacity} seats</p>
+                    <p className={`mt-2 ${t.textSub}`}>Driver: {selectedScheduleBus.driver_name || "Not assigned"} | Helper: {selectedScheduleBus.helper_name || "Not assigned"}</p>
                   </div>
                 ) : null}
                 <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} t={t} />
                 <div className={`rounded-xl border px-4 py-3 text-xs ${isDark ? "border-white/5 bg-white/5 text-slate-400" : "border-slate-200 bg-slate-50 text-slate-500"}`}>Schedules appear on the driver and helper dashboards so they can start assigned trips without manual setup. MetroBus now also blocks same-time conflicts for the same bus, driver, or helper.</div>
-                <Btn tone="primary" onClick={createSchedule} disabled={scheduleBusy} className="w-full !py-4">{scheduleBusy ? "Creatingâ€¦" : "Create Trip Schedule"}</Btn>
+                <Btn tone="primary" onClick={createSchedule} disabled={scheduleBusy} className="w-full !py-4">{scheduleBusy ? "Creating..." : "Create Trip Schedule"}</Btn>
               </div>
             </GlassCard>
             <div className="space-y-3">
@@ -683,7 +683,7 @@ export default function AdminHome() {
               {schedOpts.recent_schedules.length === 0 ? <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No schedules yet.</p></GlassCard>
                 : schedOpts.recent_schedules.map(s => (
                   <GlassCard key={s.id} t={t} className="!p-4">
-                    <div className="flex items-start justify-between gap-3"><div><p className={`text-sm font-bold ${t.text}`}>{s.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{s.bus_plate} Â· {s.driver_name || "â€”"} Â· {s.helper_name || "â€”"}</p></div><Pill color={s.status === "PLANNED" ? "amber" : s.status === "COMPLETED" ? "emerald" : "slate"} isDark={isDark}>{s.status}</Pill></div>
+                    <div className="flex items-start justify-between gap-3"><div><p className={`text-sm font-bold ${t.text}`}>{s.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{s.bus_plate} | {s.driver_name || "--"} | {s.helper_name || "--"}</p></div><Pill color={s.status === "PLANNED" ? "amber" : s.status === "COMPLETED" ? "emerald" : "slate"} isDark={isDark}>{s.status}</Pill></div>
                     <p className={`mt-2 text-xs ${t.textMuted}`}>Starts {fmt(s.scheduled_start_time)}</p>
                   </GlassCard>
                 ))}
@@ -698,7 +698,7 @@ export default function AdminHome() {
               <SLabel t={t}>Live Trips</SLabel>
               {dashboard?.live_trips?.length ? dashboard.live_trips.map(trip => (
                 <GlassCard key={trip.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>{trip.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Bus {trip.bus_plate} Â· {trip.driver_name} Â· {trip.helper_name}</p></div><Pill color={trip.deviation_mode ? "amber" : "emerald"} isDark={isDark}>{trip.deviation_mode ? "Deviation" : "Normal"}</Pill></div>
+                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>{trip.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Bus {trip.bus_plate} | {trip.driver_name} | {trip.helper_name}</p></div><Pill color={trip.deviation_mode ? "amber" : "emerald"} isDark={isDark}>{trip.deviation_mode ? "Deviation" : "Normal"}</Pill></div>
                   <div className="mt-3 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Started {fmt(trip.started_at)}</div><div className={`rounded-xl px-3 py-2 text-xs truncate ${t.textSub} ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS yet"}</div></div>
                 </GlassCard>
               )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No live trips right now.</p></GlassCard>}
@@ -707,8 +707,8 @@ export default function AdminHome() {
               <SLabel t={t}>Recent Bookings</SLabel>
               {dashboard?.recent_bookings?.length ? dashboard.recent_bookings.map(b => (
                 <GlassCard key={b.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Booking #{b.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{b.route_name} Â· {b.bus_plate}</p></div><Pill color={b.status === "CONFIRMED" ? "emerald" : b.status === "CANCELLED" ? "red" : "amber"} isDark={isDark}>{b.status}</Pill></div>
-                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.passenger_name}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.seats_count} seats Â· {fmtMoney(b.fare_total)}</div></div>
+                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Booking #{b.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{b.route_name} | {b.bus_plate}</p></div><Pill color={b.status === "CONFIRMED" ? "emerald" : b.status === "CANCELLED" ? "red" : "amber"} isDark={isDark}>{b.status}</Pill></div>
+                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.passenger_name}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.seats_count} seats | {fmtMoney(b.fare_total)}</div></div>
                 </GlassCard>
               )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No bookings yet.</p></GlassCard>}
             </div>
@@ -718,15 +718,15 @@ export default function AdminHome() {
                 <GlassCard key={flow.id} t={t} className="!p-4 mb-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className={`text-sm font-bold ${t.text}`}>Booking #{flow.id} · {flow.passenger_name}</p>
-                      <p className={`text-xs mt-0.5 ${t.textSub}`}>{flow.route_name} Â· {flow.bus_plate}</p>
+                      <p className={`text-sm font-bold ${t.text}`}>Booking #{flow.id} | {flow.passenger_name}</p>
+                      <p className={`text-xs mt-0.5 ${t.textSub}`}>{flow.route_name} | {flow.bus_plate}</p>
                     </div>
                     <Pill color={flow.completed_at ? "emerald" : flow.checked_in_at ? "sky" : flow.accepted_by_helper_at ? "amber" : "slate"} isDark={isDark}>
                       {flow.completed_at ? "Completed" : flow.checked_in_at ? "Onboard" : flow.accepted_by_helper_at ? "Accepted" : "Pending"}
                     </Pill>
                   </div>
                   <div className="mt-3 space-y-2">
-                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Payment: {flow.payment_method || "UNPAID"} Â· {flow.payment_status}</div>
+                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Payment: {flow.payment_method || "UNPAID"} | {flow.payment_status}</div>
                     <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Accepted: {flow.accepted_by_helper_name ? `${flow.accepted_by_helper_name} at ${fmt(flow.accepted_by_helper_at)}` : "Waiting for helper acceptance"}</div>
                     <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Boarded: {flow.checked_in_by_name ? `${flow.checked_in_by_name} at ${fmt(flow.checked_in_at)}` : "Not boarded yet"}</div>
                     <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Completed: {flow.completed_by_name ? `${flow.completed_by_name} at ${fmt(flow.completed_at)}` : "Ride still active"}</div>
@@ -738,8 +738,8 @@ export default function AdminHome() {
               <SLabel t={t}>Recent Payments</SLabel>
               {dashboard?.recent_payments?.length ? dashboard.recent_payments.map(p => (
                 <GlassCard key={p.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Payment #{p.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Booking #{p.booking_id} Â· {p.route_name}</p></div><Pill color={p.status === "SUCCESS" ? "emerald" : p.status === "FAILED" ? "red" : "amber"} isDark={isDark}>{p.status}</Pill></div>
-                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.method} Â· {fmtMoney(p.amount)}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.created_by_name}</div></div>
+                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Payment #{p.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Booking #{p.booking_id} | {p.route_name}</p></div><Pill color={p.status === "SUCCESS" ? "emerald" : p.status === "FAILED" ? "red" : "amber"} isDark={isDark}>{p.status}</Pill></div>
+                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.method} | {fmtMoney(p.amount)}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.created_by_name}</div></div>
                 </GlassCard>
               )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No payments yet.</p></GlassCard>}
             </div>
@@ -826,9 +826,9 @@ export default function AdminHome() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className={`text-sm font-bold ${t.text}`}>{bus.display_name || bus.plate_number}</p>
-                          <p className={`text-xs mt-0.5 ${t.textSub}`}>{bus.plate_number} · {bus.condition} · {bus.model_year || "Year N/A"}</p>
-                          <p className={`text-xs mt-1 ${t.textSub}`}>{bus.capacity} seats · layout {bus.layout_rows}x{bus.layout_columns}</p>
-                          <p className={`text-xs mt-1 ${t.textSub}`}>driver: {bus.driver_name || "—"} · helper: {bus.helper_name || "—"}</p>
+                          <p className={`text-xs mt-0.5 ${t.textSub}`}>{bus.plate_number} | {bus.condition} | {bus.model_year || "Year N/A"}</p>
+                          <p className={`text-xs mt-1 ${t.textSub}`}>{bus.capacity} seats | layout {bus.layout_rows}x{bus.layout_columns}</p>
+                          <p className={`text-xs mt-1 ${t.textSub}`}>driver: {bus.driver_name || "--"} | helper: {bus.helper_name || "--"}</p>
                         </div>
                         <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
                       </div>
@@ -913,7 +913,7 @@ export default function AdminHome() {
                           {u.official_photo_url ? <img src={u.official_photo_url} alt={u.full_name} className="h-14 w-14 rounded-2xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-100 text-sm font-black text-indigo-600">{(u.full_name || "MB").slice(0, 2).toUpperCase()}</div>}
                           <div className="min-w-0">
                             <p className={`text-sm font-bold ${t.text}`}>{u.full_name}</p>
-                            <p className={`text-xs mt-0.5 ${t.textSub}`}>{u.phone}{u.email ? ` · ${u.email}` : ""}</p>
+                            <p className={`text-xs mt-0.5 ${t.textSub}`}>{u.phone}{u.email ? ` | ${u.email}` : ""}</p>
                             {u.address ? <p className={`text-xs mt-1 ${t.textSub}`}>{u.address}</p> : null}
                             {u.license_number ? <p className={`text-xs mt-1 ${t.textSub}`}>License: {u.license_number}</p> : null}
                           </div>
