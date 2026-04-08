@@ -62,6 +62,7 @@ export default function PassengerHome() {
   const [liveLocationOverwrites, setLiveLocationOverwrites] = useState({});
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [ticketBookingId, setTicketBookingId] = useState(null);
+  const [headerPanel, setHeaderPanel] = useState("");
   const [cancellationBookingId, setCancellationBookingId] = useState(null);
   const [cancellationReason, setCancellationReason] = useState("");
   const [cancellationNote, setCancellationNote] = useState("");
@@ -270,6 +271,48 @@ export default function PassengerHome() {
       ),
     [bookings],
   );
+  const passengerNotifications = useMemo(() => {
+    const items = [];
+    if (paymentActionBooking) {
+      items.push({
+        id: `payment-request-${paymentActionBooking.id}`,
+        title: `Payment requested for Booking #${paymentActionBooking.id}`,
+        body: "A helper scanned or loaded your ticket and is waiting for your payment choice.",
+        actionLabel: "Open Payment",
+        action: "payment",
+      });
+    }
+    if (!paymentActionBooking && paymentPendingBooking) {
+      items.push({
+        id: `payment-pending-${paymentPendingBooking.id}`,
+        title: `Payment pending for Booking #${paymentPendingBooking.id}`,
+        body: paymentPendingBooking.payment_method === "CASH"
+          ? "Please hand the fare to the helper for verification."
+          : "Keep MetroBus open while the payment completes.",
+        actionLabel: "View Ride",
+        action: "track",
+      });
+    }
+    if (activeBooking) {
+      items.push({
+        id: `active-booking-${activeBooking.id}`,
+        title: `Ride #${activeBooking.id} is active`,
+        body: `${activeBooking.pickup_stop_name} to ${activeBooking.destination_stop_name}`,
+        actionLabel: "Open Ticket",
+        action: "ticket",
+      });
+    }
+    if (walletSummary?.reward_free_ride_ready) {
+      items.push({
+        id: "reward-ready",
+        title: "Reward ride is ready",
+        body: "You have enough points to redeem a free ride on your next booking.",
+        actionLabel: "Open Wallet",
+        action: "profile",
+      });
+    }
+    return items;
+  }, [activeBooking, paymentActionBooking, paymentPendingBooking, walletSummary?.reward_free_ride_ready]);
 
   const ensureCtx = useCallback(async (tripList) => {
     const missing = tripList.filter((trip) => !tripContexts[trip.id]);
@@ -470,6 +513,10 @@ export default function PassengerHome() {
     setRouteFeed((current) => apply(current));
     setMatchedTrips((current) => apply(current));
   }, [liveLocationOverwrites]);
+
+  useEffect(() => {
+    setHeaderPanel("");
+  }, [activeView]);
 
   const findRoutes = async () => {
     if (!pickupStopId || !dropStopId) { setErr("Choose both pickup and destination stops first."); setHomeStage("planner"); return; }
@@ -719,6 +766,46 @@ export default function PassengerHome() {
     catch { setErr("Unable to share trip right now."); }
   };
 
+  const contactTripSupport = async () => {
+    const text = `Hello MetroBus, I need help with ${selectedTrip?.route_name || "my ride"}${selectedTrip?.bus_plate ? ` on ${selectedTrip.bus_plate}` : ""}${activeBooking ? ` for booking #${activeBooking.id}` : ""}.`;
+    try {
+      window.location.href = `sms:?body=${encodeURIComponent(text)}`;
+      setMsg("Opening your messaging app for trip support.");
+    } catch {
+      try {
+        if (navigator.clipboard) {
+          await navigator.clipboard.writeText(text);
+          setMsg("Support message copied. Paste it into your messaging app.");
+          return;
+        }
+      } catch {
+        // Fall through to a visible error.
+      }
+      setErr("Unable to open your messaging app right now.");
+    }
+  };
+
+  const openMenuPanel = () => {
+    setHeaderPanel((current) => (current === "menu" ? "" : "menu"));
+  };
+
+  const openNotificationsPanel = () => {
+    setHeaderPanel((current) => (current === "notifications" ? "" : "notifications"));
+  };
+
+  const openNotificationTarget = (item) => {
+    if (!item) return;
+    if (item.action === "payment" || item.action === "track") {
+      setActiveView("track");
+    } else if (item.action === "ticket" && activeBooking) {
+      setTicketBookingId(activeBooking.id);
+      setActiveView("rides");
+    } else if (item.action === "profile") {
+      setActiveView("profile");
+    }
+    setHeaderPanel("");
+  };
+
   const closeCancellationSheet = () => {
     setCancellationBookingId(null);
     setCancellationReason("");
@@ -842,7 +929,14 @@ export default function PassengerHome() {
 
   return (
     <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),#f6f1ff)] text-[var(--mb-text)]">
-      <HeaderBar user={user} activeView={activeView} onLogout={handleLogout} />
+      <HeaderBar
+        user={user}
+        activeView={activeView}
+        onLogout={handleLogout}
+        onMenu={openMenuPanel}
+        onNotifications={openNotificationsPanel}
+        notificationCount={passengerNotifications.length}
+      />
       <main className="mx-auto max-w-[28rem] px-4 pb-36 pt-24">
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
@@ -1198,6 +1292,7 @@ export default function PassengerHome() {
             <DriverCard
               trip={selectedTrip}
               onShare={shareTrip}
+              onChat={contactTripSupport}
               onSos={() => {
                 window.location.href = "tel:100";
               }}
@@ -1227,7 +1322,7 @@ export default function PassengerHome() {
           </section>
         ) : null}
 
-        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <div className="space-y-4"><ReservationCard booking={activeBooking} onReschedule={() => { setHomeStage("planner"); setActiveView("home"); }} onViewTicket={() => setTicketBookingId(activeBooking.id)} />{activeBooking.can_cancel ? <button type="button" onClick={() => requestCancellation(activeBooking)} className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-lg font-black text-red-600 shadow-[var(--mb-shadow)]">Cancel Ride</button> : null}{cancellationBooking && Number(cancellationBooking.id) === Number(activeBooking.id) ? <CancellationSheet booking={cancellationBooking} reasons={cancellationReasons} reason={cancellationReason} note={cancellationNote} busy={cancellationBusy} onReasonChange={setCancellationReason} onNoteChange={setCancellationNote} onConfirm={confirmPassengerCancellation} onClose={closeCancellationSheet} /> : null}</div> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
+        {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} walletSummary={walletSummary} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <div className="space-y-4"><ReservationCard booking={activeBooking} onPrimaryAction={() => setActiveView("track")} primaryActionLabel="Track Ride" onViewTicket={() => setTicketBookingId(activeBooking.id)} />{activeBooking.can_cancel ? <button type="button" onClick={() => requestCancellation(activeBooking)} className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-lg font-black text-red-600 shadow-[var(--mb-shadow)]">Cancel Ride</button> : null}{cancellationBooking && Number(cancellationBooking.id) === Number(activeBooking.id) ? <CancellationSheet booking={cancellationBooking} reasons={cancellationReasons} reason={cancellationReason} note={cancellationNote} busy={cancellationBusy} onReasonChange={setCancellationReason} onNoteChange={setCancellationNote} onConfirm={confirmPassengerCancellation} onClose={closeCancellationSheet} /> : null}</div> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketQrCard booking={ticketBooking} compact /></div> : null}</section> : null}
 
         {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} walletSummary={walletSummary} passPlans={passPlans} onTopUp={() => topUpWallet(500)} onBuyPass={buyRidePass} actionBusy={walletBusy} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
       </main>
@@ -1241,6 +1336,78 @@ export default function PassengerHome() {
             setOccupancySeats([]);
           }}
         />
+      ) : null}
+      {headerPanel ? (
+        <div className="fixed inset-0 z-[1350] bg-[rgba(49,23,56,0.32)] px-4 pb-28 pt-24 backdrop-blur-sm" onClick={() => setHeaderPanel("")}>
+          <div className="mx-auto max-w-[28rem]" onClick={(event) => event.stopPropagation()}>
+            {headerPanel === "menu" ? (
+              <div className="rounded-[34px] bg-white p-5 shadow-[0_30px_80px_rgba(95,25,230,0.2)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Menu</p>
+                    <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Quick actions</h3>
+                  </div>
+                  <button type="button" onClick={() => setHeaderPanel("")} className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-xs font-black text-[var(--mb-purple)]">
+                    Close
+                  </button>
+                </div>
+                <div className="mt-5 grid gap-3">
+                  {[
+                    { id: "home", label: "Go to Home", note: "Book and manage your next ride" },
+                    { id: "track", label: "Open Track", note: "See your live bus movement" },
+                    { id: "rides", label: "Open My Rides", note: "Tickets, history, and payment requests" },
+                    { id: "profile", label: "Open Profile", note: "Wallet, passes, and settings" },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveView(item.id);
+                        setHeaderPanel("");
+                      }}
+                      className="rounded-[24px] border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-4 text-left"
+                    >
+                      <span className="block text-lg font-black text-[var(--mb-text)]">{item.label}</span>
+                      <span className="mt-1 block text-sm text-[var(--mb-muted)]">{item.note}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {headerPanel === "notifications" ? (
+              <div className="rounded-[34px] bg-white p-5 shadow-[0_30px_80px_rgba(95,25,230,0.2)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Notifications</p>
+                    <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Passenger alerts</h3>
+                  </div>
+                  <button type="button" onClick={() => setHeaderPanel("")} className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-xs font-black text-[var(--mb-purple)]">
+                    Close
+                  </button>
+                </div>
+                <div className="mt-5 grid gap-3">
+                  {passengerNotifications.length ? passengerNotifications.map((item) => (
+                    <div key={item.id} className="rounded-[24px] border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-4">
+                      <p className="text-lg font-black text-[var(--mb-text)]">{item.title}</p>
+                      <p className="mt-2 text-sm text-[var(--mb-muted)]">{item.body}</p>
+                      <button
+                        type="button"
+                        onClick={() => openNotificationTarget(item)}
+                        className="mt-4 rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow)]"
+                      >
+                        {item.actionLabel}
+                      </button>
+                    </div>
+                  )) : (
+                    <div className="rounded-[24px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] px-4 py-8 text-center text-sm font-medium text-[var(--mb-muted)]">
+                      No new passenger alerts right now.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
       ) : null}
       <BottomNav activeView={activeView} onChange={setActiveView} />
     </div>

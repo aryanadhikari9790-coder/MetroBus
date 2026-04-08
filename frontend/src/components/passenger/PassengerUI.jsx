@@ -152,12 +152,12 @@ export function PassengerAvatar({ user, size = "h-11 w-11" }) {
   );
 }
 
-export function HeaderBar({ user, activeView, onLogout }) {
+export function HeaderBar({ user, activeView, onLogout, onMenu, onNotifications, notificationCount = 0 }) {
   return (
     <header className="fixed inset-x-0 top-0 z-[1200] border-b border-white/60 bg-[color:var(--mb-nav)]/98 px-4 py-4 shadow-[0_12px_32px_rgba(83,33,159,0.08)] backdrop-blur-xl">
       <div className="mx-auto flex max-w-[28rem] items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <button type="button" className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+          <button type="button" onClick={onMenu} className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
             <Icon name="menu" />
           </button>
           <div>
@@ -168,8 +168,13 @@ export function HeaderBar({ user, activeView, onLogout }) {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <button type="button" className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+          <button type="button" onClick={onNotifications} className="relative grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
             <Icon name="bell" />
+            {notificationCount ? (
+              <span className="absolute -right-1 -top-1 min-w-[1.2rem] rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-1.5 py-0.5 text-[0.62rem] font-black text-white shadow-[var(--mb-shadow-strong)]">
+                {notificationCount > 9 ? "9+" : notificationCount}
+              </span>
+            ) : null}
           </button>
           <button type="button" onClick={onLogout} className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-text)] shadow-[var(--mb-shadow)]">
             <Icon name="logout" />
@@ -1022,7 +1027,7 @@ export function TrackMap({ trip, displayLine, now }) {
   );
 }
 
-export function DriverCard({ trip, onShare, onSos }) {
+export function DriverCard({ trip, onShare, onChat, onSos }) {
   return (
     <div className="rounded-[2.2rem] bg-white p-5 shadow-[var(--mb-shadow)]">
       <div className="flex items-center gap-4">
@@ -1042,7 +1047,7 @@ export function DriverCard({ trip, onShare, onSos }) {
           <Icon name="share" className="h-6 w-6" />
           <span className="text-sm font-black uppercase tracking-[0.14em]">Share Trip</span>
         </button>
-        <button type="button" className="flex flex-col items-center gap-2 rounded-[1.6rem] px-4 py-4 text-[var(--mb-text)]">
+        <button type="button" onClick={onChat} className="flex flex-col items-center gap-2 rounded-[1.6rem] px-4 py-4 text-[var(--mb-text)]">
           <Icon name="chat" className="h-6 w-6" />
           <span className="text-sm font-black uppercase tracking-[0.14em]">Chat</span>
         </button>
@@ -1065,7 +1070,7 @@ export function MetricCard({ icon, label, value }) {
   );
 }
 
-export function ReservationCard({ booking, onReschedule, onViewTicket }) {
+export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel = "Track Ride", onViewTicket }) {
   if (!booking) return null;
   return (
     <div className="rounded-[42px] bg-[var(--mb-card-strong)] p-6 shadow-[var(--mb-shadow)]">
@@ -1100,8 +1105,8 @@ export function ReservationCard({ booking, onReschedule, onViewTicket }) {
         </div>
       </div>
       <div className="mt-7 grid grid-cols-2 gap-4">
-        <button type="button" onClick={onReschedule} className="rounded-full bg-white px-6 py-4 text-lg font-black text-[var(--mb-text)]">
-          Reschedule
+        <button type="button" onClick={onPrimaryAction} className="rounded-full bg-white px-6 py-4 text-lg font-black text-[var(--mb-text)]">
+          {primaryActionLabel}
         </button>
         <button type="button" onClick={onViewTicket} className="rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] px-6 py-4 text-lg font-black text-white shadow-[var(--mb-shadow-strong)]">
           View Ticket
@@ -1143,11 +1148,12 @@ export function HistoryCard({ booking, onDownload }) {
 }
 
 export function ProfileCard({ user, profileForm, setProfileForm, onSave, profileBusy }) {
+  const nameInputRef = useRef(null);
   return (
     <div className="rounded-[40px] bg-[var(--mb-card)] p-6 text-center shadow-[var(--mb-shadow)]">
       <div className="relative mx-auto w-fit">
         <PassengerAvatar user={user} size="h-28 w-28" />
-        <button type="button" className="absolute bottom-0 right-0 grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]">
+        <button type="button" onClick={() => nameInputRef.current?.focus()} className="absolute bottom-0 right-0 grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,#8d12eb,#b641ff)] text-white shadow-[var(--mb-shadow-strong)]">
           <Icon name="edit" />
         </button>
       </div>
@@ -1158,7 +1164,7 @@ export function ProfileCard({ user, profileForm, setProfileForm, onSave, profile
         <span className="text-xl font-black text-[var(--mb-purple)]">4.9 star</span>
       </div>
       <div className="mt-6 grid gap-3 text-left md:grid-cols-2">
-        <input className="rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-text)] outline-none" value={profileForm.full_name} onChange={(event) => setProfileForm((current) => ({ ...current, full_name: event.target.value }))} placeholder="Full name" />
+        <input ref={nameInputRef} className="rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-text)] outline-none" value={profileForm.full_name} onChange={(event) => setProfileForm((current) => ({ ...current, full_name: event.target.value }))} placeholder="Full name" />
         <input className="rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-muted)] outline-none opacity-70" value={user?.phone || ""} readOnly />
         <input className="md:col-span-2 rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-text)] outline-none" value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" />
       </div>
