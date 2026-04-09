@@ -410,8 +410,8 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
         payment = getattr(obj, "payment", None)
         return bool(
             obj.status == Booking.Status.CONFIRMED
-            and obj.accepted_by_helper_at
             and not obj.completed_at
+            and not obj.checked_in_at
             and (
                 not payment
                 or payment.status in {"FAILED", "CANCELLED"}

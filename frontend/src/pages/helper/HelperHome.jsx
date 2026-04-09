@@ -518,6 +518,7 @@ export default function HelperHome() {
       const response = await api.post(`/api/bookings/${ticketLookup.id}/request-payment/`);
       setTicketLookup(response.data.booking);
       setMsg(response.data.message || "Payment request sent to the passenger.");
+      await loadDashboard({ silent: true });
     } catch (error) {
       setErr(error?.response?.data?.detail || "Unable to request payment.");
     } finally {

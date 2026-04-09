@@ -173,6 +173,7 @@ export default function PassengerHome() {
   const historyBooking = pastBookings[0] || bookings[0] || null;
   const latestPaidBooking = bookings.find((booking) => booking.payment_status === "SUCCESS") || null;
   const ticketBooking = bookings.find((booking) => booking.id === ticketBookingId) || lastBookingSummary || activeBooking || null;
+  const homeRideBooking = paymentActionBooking || paymentPendingBooking || ticketBooking || activeBooking || null;
   const checkoutBooking = useMemo(() => {
     if (paymentActionBooking) return paymentActionBooking;
     if (paymentPendingBooking) return paymentPendingBooking;
@@ -230,9 +231,11 @@ export default function PassengerHome() {
   ]);
   const homeStageMeta = useMemo(() => ({
     planner: {
-      eyebrow: activeBooking ? "Active Ride" : "Journey Planner",
-      title: activeBooking ? "Your current ride is still active" : "Where to next?",
-      description: activeBooking ? "MetroBus only allows one active passenger ride at a time." : "Plan your journey across the city.",
+      eyebrow: activeBooking ? "Ride Ticket" : "Journey Planner",
+      title: activeBooking ? "Your ride QR is ready" : "Where to next?",
+      description: activeBooking
+        ? "Show this QR to the helper when the bus arrives. Payment and boarding updates for this ride will continue from here."
+        : "Plan your journey across the city.",
     },
     matches: {
       eyebrow: "Available Buses",
@@ -1094,45 +1097,58 @@ export default function PassengerHome() {
             {homeStage === "planner" ? (
               <div className="space-y-4">
                 {activeBooking ? (
-                  <div className="rounded-[30px] border border-[var(--mb-border)] bg-white p-5 shadow-[var(--mb-shadow)]">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div>
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Booking Locked</p>
-                        <h2 className="mt-2 text-2xl font-black text-[var(--mb-text)]">
-                          {activeBooking.pickup_stop_name} to {activeBooking.destination_stop_name}
-                        </h2>
-                        <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">
-                          You can only keep one ride active at a time. Complete or cancel this ride before MetroBus opens a new booking flow.
+                  <div className="space-y-4">
+                    {homeRideBooking ? <TicketQrCard booking={homeRideBooking} title="Current Ride" /> : null}
+                    {paymentActionBooking || paymentPendingBooking ? (
+                      <PaymentRequestCard
+                        booking={paymentActionBooking || paymentPendingBooking}
+                        paymentBusy={paymentBusy}
+                        onPay={pay}
+                      />
+                    ) : (
+                      <div className="rounded-[28px] bg-white p-5 shadow-[var(--mb-shadow)]">
+                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Next Step</p>
+                        <p className="mt-3 text-base font-medium leading-7 text-[var(--mb-muted)]">
+                          Keep this QR ready. When the helper scans or loads your ticket, MetroBus will ask for payment on this same ride and you can continue with cash or Khalti checkout.
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                    )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveView("track")}
+                        className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)]"
+                      >
+                        Track Ride
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTicketBookingId(activeBooking.id);
+                          setActiveView("rides");
+                        }}
+                        className="rounded-full border border-[var(--mb-border)] bg-white px-5 py-4 text-base font-black text-[var(--mb-text)] shadow-[var(--mb-shadow)]"
+                      >
+                        Open Ticket Details
+                      </button>
+                      {(paymentActionBooking || paymentPendingBooking) ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            setTicketBookingId(activeBooking.id);
-                            setActiveView("rides");
-                          }}
-                          className="rounded-full border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-2.5 text-sm font-black text-[var(--mb-purple)]"
+                          onClick={() => openCheckout("home")}
+                          className="rounded-full border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-5 py-4 text-base font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)] sm:col-span-2"
                         >
-                          View Ticket
+                          Open Checkout
                         </button>
+                      ) : null}
+                      {activeBooking.can_cancel ? (
                         <button
                           type="button"
-                          onClick={() => setActiveView("track")}
-                          className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-2.5 text-sm font-black text-white shadow-[var(--mb-shadow)]"
+                          onClick={() => requestCancellation(activeBooking)}
+                          className={`rounded-full border border-red-200 bg-white px-5 py-4 text-base font-black text-red-600 shadow-[var(--mb-shadow)] ${(paymentActionBooking || paymentPendingBooking) ? "sm:col-span-2" : ""}`}
                         >
-                          Track Ride
+                          Cancel Ride
                         </button>
-                        {activeBooking.can_cancel ? (
-                          <button
-                            type="button"
-                            onClick={() => requestCancellation(activeBooking)}
-                            className="rounded-full border border-red-200 bg-white px-4 py-2.5 text-sm font-black text-red-600"
-                          >
-                            Cancel Ride
-                          </button>
-                        ) : null}
-                      </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
