@@ -540,12 +540,12 @@ export function StopFeatureCard({ icon, eyebrow, title, featured = false }) {
 export function LiveBusCard({ trip, index, active, onClick, now, onViewOccupancy }) {
   const tone = statusTone(trip, now);
   return (
-    <button type="button" onClick={onClick} className={`flex w-full items-center gap-4 rounded-[34px] border px-5 py-4 text-left shadow-[var(--mb-shadow)] transition ${active ? "border-transparent bg-[linear-gradient(180deg,#fff9f8,#fff0f0)] ring-2 ring-[rgba(255,107,115,0.2)]" : "border-[var(--mb-border)] bg-[var(--mb-card)]"}`}>
+    <button type="button" onClick={onClick} className={`flex w-full items-start gap-4 rounded-[34px] border px-5 py-4 text-left shadow-[var(--mb-shadow)] transition ${active ? "border-transparent bg-[linear-gradient(180deg,#fff9f8,#fff0f0)] ring-2 ring-[rgba(255,107,115,0.2)]" : "border-[var(--mb-border)] bg-[var(--mb-card)]"}`}>
       <div className="grid h-16 w-16 flex-none place-items-center rounded-full bg-white text-[2rem] font-black text-[var(--mb-purple)]">
         {routeCode(trip, index)}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-xl font-black text-[var(--mb-text)]">{trip.route_name}</p>
+        <p className="break-words text-xl font-black leading-tight text-[var(--mb-text)]">{trip.route_name}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-[var(--mb-muted)]">
           <span>Gate {trip.from_order || 1}</span>
           <span>•</span>
@@ -562,7 +562,7 @@ export function LiveBusCard({ trip, index, active, onClick, now, onViewOccupancy
           </button>
         </div>
       </div>
-      <div className="text-right">
+      <div className="shrink-0 text-right">
         <p className="text-[1.85rem] font-black leading-none text-[var(--mb-purple)]">{trip.eta?.minutes ? String(trip.eta.minutes).padStart(2, "0") : "--"}</p>
         <p className="mt-1 text-xs font-black uppercase tracking-[0.2em] text-[var(--mb-purple)]">MIN</p>
         <p className={`mt-2 text-sm font-black ${tone.color}`}>{tone.label}</p>
@@ -1031,16 +1031,16 @@ export function TrackMap({ trip, displayLine, now }) {
 export function DriverCard({ trip, onShare, onChat }) {
   return (
     <div className="rounded-[2.2rem] bg-white p-5 shadow-[var(--mb-shadow)]">
-      <div className="flex items-center gap-4">
+      <div className="flex min-w-0 items-start gap-4">
         <PassengerAvatar user={{ full_name: trip?.driver_name || "Driver" }} size="h-16 w-16" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[1.95rem] font-black leading-tight text-[var(--mb-text)]">{trip?.driver_name || "Arjun Thapa"}</p>
+          <p className="break-words text-[1.95rem] font-black leading-tight text-[var(--mb-text)]">{trip?.driver_name || "Arjun Thapa"}</p>
           <p className="mt-1 text-lg font-medium text-[var(--mb-muted)]">Certified Senior Captain</p>
           <p className="mt-2 text-lg font-semibold text-[var(--mb-text)]">4.9 <span className="text-[var(--mb-muted)]">(1.2k reviews)</span></p>
         </div>
-        <div className="rounded-[1.5rem] bg-[var(--mb-bg-alt)] px-4 py-4 text-right">
+        <div className="max-w-[9rem] rounded-[1.5rem] bg-[var(--mb-bg-alt)] px-4 py-4 text-right">
           <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-muted)]">Bus</p>
-          <p className="mt-2 text-[1.45rem] font-black leading-tight text-[var(--mb-purple)]">{trip?.bus_plate || "BA-2-KHA 4421"}</p>
+          <p className="mt-2 break-words text-[1.45rem] font-black leading-tight text-[var(--mb-purple)]">{trip?.bus_plate || "BA-2-KHA 4421"}</p>
         </div>
       </div>
       <div className="mt-5 grid grid-cols-2 gap-3 border-t border-[var(--mb-border)] pt-5">
@@ -1347,9 +1347,9 @@ export function SettingsRow({ icon, title, description, trailing }) {
         <div className="grid h-12 w-12 place-items-center rounded-full bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]">
           <Icon name={icon} />
         </div>
-        <div>
-          <p className="text-2xl font-black text-[var(--mb-text)]">{title}</p>
-          {description ? <p className="mt-1 text-sm text-[var(--mb-muted)]">{description}</p> : null}
+        <div className="min-w-0">
+          <p className="break-words text-2xl font-black leading-tight text-[var(--mb-text)]">{title}</p>
+          {description ? <p className="mt-1 break-words text-sm leading-6 text-[var(--mb-muted)]">{description}</p> : null}
         </div>
       </div>
       {trailing || <Icon name="chevron" className="h-6 w-6 text-[var(--mb-muted)]" />}
@@ -1365,20 +1365,20 @@ export function BottomNav({ activeView, onChange }) {
     { id: "profile", label: "Profile", icon: "profile" },
   ];
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[1200] bg-[color:var(--mb-nav)]/92 px-4 pb-4 pt-3 backdrop-blur-xl">
-      <div className="mx-auto max-w-[28rem] rounded-[2rem] bg-white px-3 py-3 shadow-[0_-8px_40px_rgba(95,25,230,0.12)]">
-        <div className="grid grid-cols-4 gap-2">
+    <div className="fixed inset-x-0 bottom-0 z-[1200] bg-[color:var(--mb-nav)]/92 px-3.5 pb-3 pt-2.5 backdrop-blur-xl">
+      <div className="mx-auto max-w-[26rem] rounded-[1.65rem] bg-white px-2 py-2 shadow-[0_-8px_32px_rgba(95,25,230,0.1)]">
+        <div className="grid grid-cols-4 gap-1.5">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => onChange(tab.id)}
-              className={`rounded-[1.65rem] px-2 py-3 text-center transition ${activeView === tab.id ? "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]" : "text-[var(--mb-muted)]"}`}
+              className={`rounded-[1.2rem] px-1.5 py-2 text-center transition ${activeView === tab.id ? "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]" : "text-[var(--mb-muted)]"}`}
             >
-              <div className={`mx-auto flex h-10 w-10 items-center justify-center rounded-full ${activeView === tab.id ? "bg-white shadow-[0_10px_20px_rgba(95,25,230,0.08)]" : ""}`}>
-                <Icon name={tab.icon} className="h-6 w-6" />
+              <div className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full ${activeView === tab.id ? "bg-white shadow-[0_8px_18px_rgba(95,25,230,0.08)]" : ""}`}>
+                <Icon name={tab.icon} className="h-5 w-5" />
               </div>
-              <p className={`mt-2 text-[0.78rem] font-bold ${activeView === tab.id ? "text-[var(--mb-purple)]" : ""}`}>{tab.label}</p>
+              <p className={`mt-1.5 text-[0.68rem] font-bold leading-tight ${activeView === tab.id ? "text-[var(--mb-purple)]" : ""}`}>{tab.label}</p>
             </button>
           ))}
         </div>

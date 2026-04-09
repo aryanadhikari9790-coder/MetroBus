@@ -17,7 +17,7 @@ function Btn({ children, onClick, disabled, tone = "primary", className = "" }) 
 function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
 function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "Light Mode" : "Dark Mode"}</button>; }
 function StatCard({ label, value, sub, accent = "", t }) {
-  return <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{label}</p><p className={`text-3xl font-black mt-2 leading-none ${accent || t.text}`}>{value}</p>{sub && <p className={`text-xs mt-1.5 ${t.textSub}`}>{sub}</p>}</GlassCard>;
+  return <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{label}</p><p className={`mt-2 break-words text-3xl font-black leading-tight ${accent || t.text}`}>{value}</p>{sub && <p className={`mt-1.5 break-words text-xs leading-5 ${t.textSub}`}>{sub}</p>}</GlassCard>;
 }
 function InputField({ label, value, onChange, placeholder, type = "text", t }) {
   return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[#ff6b73] transition ${t.input}`} /></div>;
@@ -587,7 +587,7 @@ export default function AdminHome() {
                   : selectedStops.map((stop, i) => (
                     <div key={stop.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 mb-2 ${rowBg}`}>
                       <span className="text-xs text-[#ff6b73] font-bold w-5 flex-shrink-0">{i + 1}</span>
-                      <span className={`text-sm flex-1 truncate ${t.text}`}>{stop.name}</span>
+                      <span className={`text-sm flex-1 break-words leading-snug ${t.text}`}>{stop.name}</span>
                       <div className="flex gap-1">
                         <button type="button" onClick={() => moveStop(i, -1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Up</button>
                         <button type="button" onClick={() => moveStop(i, 1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Down</button>
@@ -643,8 +643,8 @@ export default function AdminHome() {
                 <SLabel t={t}>Recent Routes</SLabel>
                 {recentRoutes.length === 0 ? <p className={`text-sm ${t.textSub}`}>No routes yet.</p>
                   : recentRoutes.map(r => (
-                    <div key={r.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
-                      <div><p className={`text-sm font-bold ${t.text}`}>{r.name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{r.city} | {r.stops_count} stops</p></div>
+                    <div key={r.id} className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
+                      <div className="min-w-0"><p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{r.name}</p><p className={`mt-0.5 break-words text-xs leading-5 ${t.textSub}`}>{r.city} | {r.stops_count} stops</p></div>
                       <Pill color={r.is_active ? "emerald" : "slate"} isDark={isDark}>{r.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
                     </div>
                   ))}
@@ -699,7 +699,7 @@ export default function AdminHome() {
               {dashboard?.live_trips?.length ? dashboard.live_trips.map(trip => (
                 <GlassCard key={trip.id} t={t} className="!p-4 mb-3">
                   <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>{trip.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Bus {trip.bus_plate} | {trip.driver_name} | {trip.helper_name}</p></div><Pill color={trip.deviation_mode ? "amber" : "emerald"} isDark={isDark}>{trip.deviation_mode ? "Deviation" : "Normal"}</Pill></div>
-                  <div className="mt-3 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Started {fmt(trip.started_at)}</div><div className={`rounded-xl px-3 py-2 text-xs truncate ${t.textSub} ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS yet"}</div></div>
+                  <div className="mt-3 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs leading-5 ${t.textSub} ${rowBg}`}>Started {fmt(trip.started_at)}</div><div className={`rounded-xl px-3 py-2 text-xs break-all leading-5 ${t.textSub} ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS yet"}</div></div>
                 </GlassCard>
               )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No live trips right now.</p></GlassCard>}
             </div>
@@ -825,10 +825,10 @@ export default function AdminHome() {
                     <div key={bus.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className={`text-sm font-bold ${t.text}`}>{bus.display_name || bus.plate_number}</p>
-                          <p className={`text-xs mt-0.5 ${t.textSub}`}>{bus.plate_number} | {bus.condition} | {bus.model_year || "Year N/A"}</p>
-                          <p className={`text-xs mt-1 ${t.textSub}`}>{bus.capacity} seats | layout {bus.layout_rows}x{bus.layout_columns}</p>
-                          <p className={`text-xs mt-1 ${t.textSub}`}>driver: {bus.driver_name || "--"} | helper: {bus.helper_name || "--"}</p>
+                          <p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{bus.display_name || bus.plate_number}</p>
+                          <p className={`mt-0.5 break-words text-xs leading-5 ${t.textSub}`}>{bus.plate_number} | {bus.condition} | {bus.model_year || "Year N/A"}</p>
+                          <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>{bus.capacity} seats | layout {bus.layout_rows}x{bus.layout_columns}</p>
+                          <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>driver: {bus.driver_name || "--"} | helper: {bus.helper_name || "--"}</p>
                         </div>
                         <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
                       </div>
@@ -912,10 +912,10 @@ export default function AdminHome() {
                         <div className="flex items-start gap-3 min-w-0">
                           {u.official_photo_url ? <img src={u.official_photo_url} alt={u.full_name} className="h-14 w-14 rounded-2xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fff0ef] text-sm font-black text-[#ff6b73]">{(u.full_name || "MB").slice(0, 2).toUpperCase()}</div>}
                           <div className="min-w-0">
-                            <p className={`text-sm font-bold ${t.text}`}>{u.full_name}</p>
-                            <p className={`text-xs mt-0.5 ${t.textSub}`}>{u.phone}{u.email ? ` | ${u.email}` : ""}</p>
-                            {u.address ? <p className={`text-xs mt-1 ${t.textSub}`}>{u.address}</p> : null}
-                            {u.license_number ? <p className={`text-xs mt-1 ${t.textSub}`}>License: {u.license_number}</p> : null}
+                            <p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{u.full_name}</p>
+                            <p className={`mt-0.5 break-all text-xs leading-5 ${t.textSub}`}>{u.phone}{u.email ? ` | ${u.email}` : ""}</p>
+                            {u.address ? <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>{u.address}</p> : null}
+                            {u.license_number ? <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>License: {u.license_number}</p> : null}
                           </div>
                         </div>
                         <Pill color={u.role === "ADMIN" ? "red" : u.role === "DRIVER" ? "sky" : u.role === "HELPER" ? "indigo" : "slate"} isDark={isDark}>{u.role}</Pill>

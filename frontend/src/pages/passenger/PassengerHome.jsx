@@ -1141,11 +1141,11 @@ export default function PassengerHome() {
                     <div className="space-y-4">
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--mb-purple)]">Pickup</p>
-                        <p className="mt-1 text-[1.4rem] font-black leading-tight text-[var(--mb-text)]">{pickupStop?.name || "Choose pickup"}</p>
+                        <p className="mt-1 break-words text-[1.4rem] font-black leading-tight text-[var(--mb-text)]">{pickupStop?.name || "Choose pickup"}</p>
                       </div>
                       <div>
                         <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--mb-muted)]">Drop-off</p>
-                        <p className="mt-1 text-[1.4rem] font-black leading-tight text-[var(--mb-text)]">{dropStop?.name || "Choose destination"}</p>
+                        <p className="mt-1 break-words text-[1.4rem] font-black leading-tight text-[var(--mb-text)]">{dropStop?.name || "Choose destination"}</p>
                       </div>
                     </div>
                     <button type="button" onClick={goBackHomeStage} className="grid h-14 w-14 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
@@ -1162,11 +1162,11 @@ export default function PassengerHome() {
                     return (
                       <div key={trip.id} className="rounded-[2rem] bg-white p-5 shadow-[var(--mb-shadow)]">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[2rem] font-black leading-tight text-[var(--mb-purple)]">{trip.bus_plate || `Bus ${index + 1}`}</p>
-                            <p className="mt-2 text-[1.05rem] font-medium text-[var(--mb-text)]">{trip.route_name}</p>
+                          <div className="min-w-0">
+                            <p className="break-words text-[2rem] font-black leading-tight text-[var(--mb-purple)]">{trip.bus_plate || `Bus ${index + 1}`}</p>
+                            <p className="mt-2 break-words text-[1.05rem] font-medium leading-6 text-[var(--mb-text)]">{trip.route_name}</p>
                           </div>
-                          <div className="text-right">
+                          <div className="shrink-0 text-right">
                             <p className="text-[2rem] font-black text-[var(--mb-text)]">Rs. {Number(trip.fare_estimate || 0).toLocaleString()}</p>
                             <p className="mt-2 text-sm font-black text-[var(--mb-purple)]">ETA: {trip.eta?.minutes ? `${Math.max(1, Math.round(trip.eta.minutes))} min` : "Live"}</p>
                           </div>

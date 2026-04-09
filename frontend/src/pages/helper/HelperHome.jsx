@@ -763,7 +763,7 @@ Need support with live trip operations.`;
               <span className="text-[0.6rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
             </div>
             <div className="min-w-0">
-              <p className="truncate text-[1rem] font-black tracking-[0.01em] text-[var(--hlp-purple)]">MetroBus Helper</p>
+              <p className="text-[1rem] font-black tracking-[0.01em] text-[var(--hlp-purple)]">MetroBus Helper</p>
               <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Staff Operations</p>
             </div>
           </div>
@@ -795,8 +795,8 @@ Need support with live trip operations.`;
                 <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
                 <div>
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/74">Assigned Bus</p>
-                  <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || currentTrip?.bus_plate || nextSchedule?.bus_plate || "--"}</p>
-                  <p className="mt-1 text-sm text-white/78">{assignedBus?.capacity || "--"} seats - Driver: {currentTrip?.driver_name || nextSchedule?.driver_name || assignedBus?.driver_name || "--"}</p>
+                  <p className="mt-1 break-words text-2xl font-black leading-snug">{assignedBus?.plate_number || currentTrip?.bus_plate || nextSchedule?.bus_plate || "--"}</p>
+                  <p className="mt-1 break-words text-sm leading-6 text-white/78">{assignedBus?.capacity || "--"} seats | Driver: {currentTrip?.driver_name || nextSchedule?.driver_name || assignedBus?.driver_name || "--"}</p>
                 </div>
               </div>
             </div>
@@ -822,7 +822,7 @@ Need support with live trip operations.`;
 
             <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
               <Chip tone="dark" className="bg-white/18">{activeTrip ? "Active Trip" : pendingTrip ? "Start Pending" : "Shift Ready"}</Chip>
-              <h3 className="mt-6 text-[3rem] font-black leading-[0.92]">{helperTripHeroTitle}</h3>
+              <h3 className="mt-6 break-words text-[3rem] font-black leading-[0.92]">{helperTripHeroTitle}</h3>
               <div className="mt-6 flex flex-wrap gap-3">
                 <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? `Started ${tripStarted}` : nextSchedule ? `Scheduled ${formatTime(nextSchedule.scheduled_start_time)}` : "Waiting for trip"}</span>
                 <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? "On Time" : pendingTrip ? "Confirm Start" : "Standby"}</span>
@@ -832,8 +832,8 @@ Need support with live trip operations.`;
                   <div className="grid h-14 w-14 place-items-center rounded-full bg-white/16 text-base font-black">{assignedDriverName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
                   <div>
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-white/72">Assigned Driver</p>
-                    <p className="mt-1 text-2xl font-black">{assignedDriverName}</p>
-                    <p className="mt-1 text-sm text-white/78">{driverBadgeId}</p>
+                    <p className="mt-1 break-words text-2xl font-black leading-snug">{assignedDriverName}</p>
+                    <p className="mt-1 break-all text-sm text-white/78">{driverBadgeId}</p>
                   </div>
                 </div>
               </div>
@@ -904,7 +904,7 @@ Need support with live trip operations.`;
                   <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)]"><Icon name="bus" /></div>
                   <div>
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Vehicle</p>
-                    <p className="mt-1 text-2xl font-black">{assignedBus?.plate_number || currentTrip?.bus_plate || "BA 2 PA 4567"}</p>
+                    <p className="mt-1 break-words text-2xl font-black leading-snug">{assignedBus?.plate_number || currentTrip?.bus_plate || "BA 2 PA 4567"}</p>
                     <p className="mt-1 text-sm text-[var(--hlp-muted)]">Fleet Number: 88-X</p>
                   </div>
                 </div>
@@ -1043,20 +1043,20 @@ Need support with live trip operations.`;
                 {[{ label: "Passenger", value: ticketLookup?.passenger_name || "Load a ticket" }, { label: "Route", value: ticketLookup?.route_name || "--" }, { label: "Seats", value: ticketLookup?.seat_labels?.join(", ") || "--" }, { label: "Payment", value: verifyPreview.method || "--" }, { label: "Status", value: verifyPreview.status || "--" }, { label: "Amount", value: verifyPreview.amount ? `Rs. ${verifyPreview.amount}` : "--" }].map((item) => (
                   <div key={item.label}>
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{item.label}</p>
-                    <p className={`mt-3 text-2xl font-black ${item.label === "Status" ? "text-[#b91c1c]" : item.label === "Amount" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
+                    <p className={`mt-3 break-words text-2xl font-black leading-snug ${item.label === "Status" ? "text-[#b91c1c]" : item.label === "Amount" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
                   </div>
                 ))}
               </div>
               {ticketLookup ? (
                 <div className="mt-5 rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-medium text-[var(--hlp-text)]">
-                  <p><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
-                  <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
-                  <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Ticket:</span> {ticketLookup.ticket_code}</p>
+                  <p className="break-words"><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
+                  <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
+                  <p className="mt-2 break-all"><span className="font-black text-[var(--hlp-purple)]">Ticket:</span> {ticketLookup.ticket_code}</p>
                   {ticketLookup.accepted_by_helper_at ? (
-                    <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Accepted:</span> {ticketLookup.accepted_by_helper_name || "Helper"} at {formatTime(ticketLookup.accepted_by_helper_at)}</p>
+                    <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Accepted:</span> {ticketLookup.accepted_by_helper_name || "Helper"} at {formatTime(ticketLookup.accepted_by_helper_at)}</p>
                   ) : null}
                   {ticketLookup.payment_requested_at ? (
-                    <p className="mt-2"><span className="font-black text-[var(--hlp-purple)]">Payment Request:</span> Sent {formatTime(ticketLookup.payment_requested_at)}</p>
+                    <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Payment Request:</span> Sent {formatTime(ticketLookup.payment_requested_at)}</p>
                   ) : null}
                 </div>
               ) : null}
@@ -1104,8 +1104,8 @@ Need support with live trip operations.`;
                     <SectionLabel>Needs Acceptance</SectionLabel>
                     {needsAcceptanceBookings.length ? needsAcceptanceBookings.slice(0, 3).map((booking) => (
                       <div key={`accept-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} • {booking.pickup_stop_name}</p>
+                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
+                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | {booking.pickup_stop_name}</p>
                         <div className="mt-4 flex gap-2">
                           <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
                           <PrimaryButton tone="primary" onClick={() => acceptPassengerRide(booking)} disabled={verifyBusy || !booking.can_accept} className="!flex-1 !px-4 !py-3 !text-sm">Accept Ride</PrimaryButton>
@@ -1117,8 +1117,8 @@ Need support with live trip operations.`;
                     <SectionLabel>Awaiting Payment</SectionLabel>
                     {awaitingPaymentBookings.length ? awaitingPaymentBookings.slice(0, 3).map((booking) => (
                       <div key={`awaiting-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} • {booking.pickup_stop_name}</p>
+                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
+                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | {booking.pickup_stop_name}</p>
                         <div className="mt-4 flex gap-2">
                           <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
                         </div>
@@ -1129,8 +1129,8 @@ Need support with live trip operations.`;
                     <SectionLabel>Ready To Board</SectionLabel>
                     {readyToBoardBookings.length ? readyToBoardBookings.slice(0, 3).map((booking) => (
                       <div key={`ready-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} • Pickup {booking.pickup_stop_name}</p>
+                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
+                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | Pickup {booking.pickup_stop_name}</p>
                         <div className="mt-4 flex gap-2">
                           <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
                           <PrimaryButton tone="primary" onClick={() => boardPassenger(booking)} disabled={verifyBusy || !booking.can_board} className="!flex-1 !px-4 !py-3 !text-sm">Board Now</PrimaryButton>
@@ -1142,8 +1142,8 @@ Need support with live trip operations.`;
                     <SectionLabel>Onboard Passengers</SectionLabel>
                     {onboardBookings.length ? onboardBookings.slice(0, 4).map((booking) => (
                       <div key={`onboard-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} • Drop {booking.destination_stop_name}</p>
+                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
+                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | Drop {booking.destination_stop_name}</p>
                         <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--hlp-purple)]">Boarded {formatTime(booking.checked_in_at)}</p>
                         <div className="mt-4 flex gap-2">
                           <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
@@ -1168,8 +1168,8 @@ Need support with live trip operations.`;
                   {completedRecentBookings.map((booking) => (
                     <div key={`done-${booking.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] bg-[var(--hlp-soft)] px-4 py-4">
                       <div>
-                        <p className="text-base font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 text-sm font-medium text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} • Dropped at {booking.destination_stop_name}</p>
+                        <p className="break-words text-base font-black">{booking.passenger_name}</p>
+                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | Dropped at {booking.destination_stop_name}</p>
                       </div>
                       <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--hlp-purple)]">{formatTime(booking.completed_at)}</p>
                     </div>
@@ -1186,7 +1186,7 @@ Need support with live trip operations.`;
           <div className="mt-5 space-y-5">
             <div className="px-1">
               <SectionLabel>Live Journey</SectionLabel>
-              <h2 className="mt-2 text-4xl font-black">{routeTitle}</h2>
+              <h2 className="mt-2 break-words text-4xl font-black leading-tight">{routeTitle}</h2>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <Chip tone="soft">Express</Chip>
                 <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeDestination}</p>
@@ -1217,12 +1217,12 @@ Need support with live trip operations.`;
                       <div className="flex-1 pb-5">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className={`text-2xl font-black ${isCurrent ? "text-[var(--hlp-purple)]" : ""}`}>{stop.stop?.name || "--"}</p>
+                            <p className={`break-words text-2xl font-black leading-snug ${isCurrent ? "text-[var(--hlp-purple)]" : ""}`}>{stop.stop?.name || "--"}</p>
                             <p className="mt-1 text-[0.74rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">{isCurrent ? "Current stop" : isFinal ? "Final destination" : "Upcoming stop"}</p>
                           </div>
                           <p className="text-lg font-black text-[var(--hlp-text)]">{index === currentStopIndex ? formatTime(latestLocation?.recorded_at || activeTrip?.started_at || nextSchedule?.scheduled_start_time) : `${9 + index}:${index === 0 ? "10" : `${index}5`}`}</p>
                         </div>
-                        {isCurrent ? <div className="mt-3 rounded-[1.4rem] border border-[rgba(255,107,115,0.25)] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium text-[var(--hlp-plum)]">Boarding support is active here. Next movement is toward {upcomingStop?.stop?.name || "the next stop"}.</div> : null}
+                        {isCurrent ? <div className="mt-3 rounded-[1.4rem] border border-[rgba(255,107,115,0.25)] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium leading-6 text-[var(--hlp-plum)]">Boarding support is active here. Next movement is toward {upcomingStop?.stop?.name || "the next stop"}.</div> : null}
                       </div>
                     </div>
                   );
@@ -1278,9 +1278,9 @@ Need support with live trip operations.`;
           </div>
         ) : null}
       </main>
-      <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[var(--hlp-nav)] p-2 shadow-[var(--hlp-shadow)] backdrop-blur-xl">
-        <div className="grid grid-cols-4 gap-2">
-          {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}
+      <div className="fixed bottom-3 left-1/2 z-40 w-[calc(100%-1rem)] max-w-[28rem] -translate-x-1/2 rounded-[1.65rem] border border-white/70 bg-[var(--hlp-nav)] p-1.5 shadow-[var(--hlp-shadow)] backdrop-blur-xl">
+        <div className="grid grid-cols-4 gap-1.5">
+          {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-1.5 rounded-[1.1rem] py-2 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-[1.1rem] w-[1.1rem]" /><span className="px-1 text-[0.6rem] font-black uppercase tracking-[0.1em] leading-tight">{tab.label}</span></button>)}
         </div>
       </div>
     </div>

@@ -124,7 +124,7 @@ function StopTimeline({ stops, progressIndex, liveBusPoint }) {
             </div>
             <div className="pb-4">
               <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Stop {index + 1}</p>
-              <p className={`mt-1 text-base font-black ${isDone ? "text-emerald-600" : isCurrent ? "text-[var(--drv-purple)]" : "text-[var(--drv-text)]"}`}>{item.stop?.name || "--"}</p>
+              <p className={`mt-1 break-words text-base font-black leading-snug ${isDone ? "text-emerald-600" : isCurrent ? "text-[var(--drv-purple)]" : "text-[var(--drv-text)]"}`}>{item.stop?.name || "--"}</p>
             </div>
           </div>
         );
@@ -711,7 +711,36 @@ Please review the earnings breakdown for this shift.`;
               <ActionButton tone="primary" onClick={() => (nextSchedule ? startScheduledTrip(nextSchedule.id) : startManualTrip())} disabled={busy || (!nextSchedule && (!routeId || !busId || !helperId))} className="mt-5 w-full !py-5 !text-base"><Icon name="play" />{busy ? "Starting Trip" : "Start Trip"}</ActionButton>
             </Panel>
 
-            <div className="mt-6"><div className="mb-3 flex items-center justify-between"><h2 className="text-3xl font-black">Upcoming Schedules</h2><Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>{minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Today"}</Pill></div><div className="space-y-3">{schedules.length === 0 ? <Panel><p className="text-sm text-[var(--drv-muted)]">No planned schedules right now.</p></Panel> : schedules.slice(0, 4).map((schedule, index) => <button key={schedule.id} type="button" onClick={() => startScheduledTrip(schedule.id)} disabled={busy || Boolean(currentTrip)} className={`flex w-full items-center gap-4 rounded-[1.8rem] border px-4 py-4 text-left shadow-[var(--drv-shadow)] transition ${index === 0 ? "border-transparent bg-[var(--drv-soft)]" : "border-[var(--drv-border)] bg-white/72"}`}><div className="min-w-[4.8rem] rounded-[1.4rem] bg-white/70 px-3 py-3 text-center"><p className="text-2xl font-black leading-none text-[var(--drv-purple)]">{formatTime(schedule.scheduled_start_time)}</p></div><div className="min-w-0 flex-1"><p className="truncate text-lg font-black">{schedule.route_name}</p><p className="mt-1 text-sm text-[var(--drv-muted)]">{schedule.bus_plate} - {schedule.helper_name || "Helper pending"}</p></div>{index === 0 ? <span className="rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white">Active</span> : null}</button>)}</div></div>
+            <div className="mt-6">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-3xl font-black">Upcoming Schedules</h2>
+                <Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>{minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Today"}</Pill>
+              </div>
+              <div className="space-y-3">
+                {schedules.length === 0 ? (
+                  <Panel>
+                    <p className="text-sm text-[var(--drv-muted)]">No planned schedules right now.</p>
+                  </Panel>
+                ) : schedules.slice(0, 4).map((schedule, index) => (
+                  <button
+                    key={schedule.id}
+                    type="button"
+                    onClick={() => startScheduledTrip(schedule.id)}
+                    disabled={busy || Boolean(currentTrip)}
+                    className={`flex w-full items-start gap-4 rounded-[1.8rem] border px-4 py-4 text-left shadow-[var(--drv-shadow)] transition ${index === 0 ? "border-transparent bg-[var(--drv-soft)]" : "border-[var(--drv-border)] bg-white/72"}`}
+                  >
+                    <div className="min-w-[4.8rem] rounded-[1.4rem] bg-white/70 px-3 py-3 text-center">
+                      <p className="text-2xl font-black leading-none text-[var(--drv-purple)]">{formatTime(schedule.scheduled_start_time)}</p>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-lg font-black leading-snug">{schedule.route_name}</p>
+                      <p className="mt-1 break-words text-sm leading-6 text-[var(--drv-muted)]">{schedule.bus_plate} | {schedule.helper_name || "Helper pending"}</p>
+                    </div>
+                    {index === 0 ? <span className="rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white">Active</span> : null}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <Panel className="mt-5 bg-[rgba(255,240,239,0.9)]"><div className="flex items-start gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--drv-purple)]"><Icon name="alert" /></div><div><SectionLabel>Traffic Alert</SectionLabel><p className="text-lg font-black">Heavy congestion reported near Mahendrapul.</p><p className="mt-2 text-sm leading-6 text-[var(--drv-muted)]">Consider switching to deviation mode if your next departure starts before the scheduled corridor clears.</p></div></div></Panel>
           </>
@@ -733,8 +762,8 @@ Please review the earnings breakdown for this shift.`;
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <SectionLabel>Next Scheduled Trip</SectionLabel>
-                      <p className="mt-2 text-2xl font-black">{nextSchedule.route_name}</p>
-                      <p className="mt-2 text-sm text-[var(--drv-muted)]">{nextSchedule.bus_plate} - {nextSchedule.helper_name || "Helper pending"}</p>
+                      <p className="mt-2 break-words text-2xl font-black leading-snug">{nextSchedule.route_name}</p>
+                      <p className="mt-2 break-words text-sm leading-6 text-[var(--drv-muted)]">{nextSchedule.bus_plate} | {nextSchedule.helper_name || "Helper pending"}</p>
                     </div>
                     <Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>
                       {minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Queued"}
@@ -811,8 +840,8 @@ Please review the earnings breakdown for this shift.`;
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Trip Confirmation</p>
-                    <h2 className="mt-3 text-4xl font-black leading-[1.02]">{currentRoute}</h2>
-                    <p className="mt-3 text-sm font-semibold text-white/80">{currentBus} - Helper {helperName}</p>
+                    <h2 className="mt-3 break-words text-4xl font-black leading-[1.02]">{currentRoute}</h2>
+                    <p className="mt-3 break-words text-sm font-semibold leading-6 text-white/80">{currentBus} | Helper {helperName}</p>
                   </div>
                   <span className="inline-flex items-center rounded-full bg-white/14 px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[0_10px_22px_rgba(71,39,81,0.18)]">
                     Start Pending
@@ -884,8 +913,8 @@ Please review the earnings breakdown for this shift.`;
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Current Route</p>
-                    <h2 className="mt-3 text-4xl font-black leading-[1.02]">{currentRoute}</h2>
-                    <p className="mt-3 text-sm font-semibold text-white/80">{currentBus} - Helper {helperName}</p>
+                    <h2 className="mt-3 break-words text-4xl font-black leading-[1.02]">{currentRoute}</h2>
+                    <p className="mt-3 break-words text-sm font-semibold leading-6 text-white/80">{currentBus} | Helper {helperName}</p>
                   </div>
                   <span className="inline-flex items-center rounded-full bg-white/14 px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[0_10px_22px_rgba(71,39,81,0.18)]">
                     Trip Live
@@ -900,7 +929,7 @@ Please review the earnings breakdown for this shift.`;
                       </div>
                       <div>
                         <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-white/72">Current Stop</p>
-                        <p className="mt-1 text-xl font-black">{currentStopName}</p>
+                        <p className="mt-1 break-words text-xl font-black leading-snug">{currentStopName}</p>
                       </div>
                     </div>
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -968,7 +997,7 @@ Please review the earnings breakdown for this shift.`;
                 <div className="flex items-center justify-between border-b border-[var(--drv-border)] px-5 py-4">
                   <div>
                     <SectionLabel>Live Route Map</SectionLabel>
-                    <p className="mt-1 text-lg font-black">{currentRoute}</p>
+                    <p className="mt-1 break-words text-lg font-black leading-snug">{currentRoute}</p>
                   </div>
                   <Pill tone={liveBusPoint ? "live" : "idle"}>{liveBusPoint ? "Bus Live" : "No GPS"}</Pill>
                 </div>
@@ -976,7 +1005,7 @@ Please review the earnings breakdown for this shift.`;
                 <div className="relative h-[21rem] w-full">
                   <div className="pointer-events-none absolute left-4 top-4 z-[500] max-w-[14rem] rounded-[1.5rem] bg-white/92 px-4 py-3 shadow-[var(--drv-shadow)] backdrop-blur-xl">
                     <p className="text-[0.62rem] font-black uppercase tracking-[0.24em] text-[var(--drv-purple)]">Direction</p>
-                    <p className="mt-2 text-sm font-black text-[var(--drv-text)]">{nextStop !== "--" ? `Next stop: ${nextStop}` : "Waiting for first stop update"}</p>
+                    <p className="mt-2 break-words text-sm font-black leading-6 text-[var(--drv-text)]">{nextStop !== "--" ? `Next stop: ${nextStop}` : "Waiting for first stop update"}</p>
                     <p className="mt-1 text-xs leading-5 text-[var(--drv-muted)]">
                       {liveBusPoint ? `${stopsRemaining} remaining stop${stopsRemaining === 1 ? "" : "s"} on this trip.` : "Share location to sync the live marker and route progress."}
                     </p>
@@ -984,10 +1013,10 @@ Please review the earnings breakdown for this shift.`;
                   {passengerRequests.length ? (
                     <div className="pointer-events-none absolute bottom-4 right-4 z-[500] rounded-[1.5rem] bg-white/92 px-4 py-3 text-right shadow-[var(--drv-shadow)] backdrop-blur-xl">
                       <p className="text-[0.62rem] font-black uppercase tracking-[0.22em] text-[var(--drv-purple)]">Passenger Demand</p>
-                      <p className="mt-2 text-sm font-black text-[var(--drv-text)]">
-                        {pendingPickupRequests.length} pickup{pendingPickupRequests.length === 1 ? "" : "s"} • {onboardDropRequests.length} onboard
+                      <p className="mt-2 break-words text-sm font-black leading-6 text-[var(--drv-text)]">
+                        {pendingPickupRequests.length} pickup{pendingPickupRequests.length === 1 ? "" : "s"} | {onboardDropRequests.length} onboard
                       </p>
-                      <p className="mt-1 text-xs text-[var(--drv-muted)]">Priority stop: {priorityPassengerStop}</p>
+                      <p className="mt-1 break-words text-xs leading-5 text-[var(--drv-muted)]">Priority stop: {priorityPassengerStop}</p>
                     </div>
                   ) : null}
 
@@ -1032,7 +1061,7 @@ Please review the earnings breakdown for this shift.`;
                               <p className="text-sm font-black text-[var(--drv-text)]">{request.passenger_name}</p>
                               <p className="text-xs font-semibold text-[var(--drv-purple)]">{request.stage_label}</p>
                               <p className="text-xs text-[var(--drv-muted)]">
-                                {request.pickup_stop_name} → {request.destination_stop_name}
+                                {request.pickup_stop_name} to {request.destination_stop_name}
                               </p>
                               <p className="text-xs text-[var(--drv-muted)]">
                                 Seats: {(request.seat_labels || []).join(", ") || request.seats_count}
@@ -1167,7 +1196,7 @@ Please review the earnings breakdown for this shift.`;
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
                       <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Current Stop</p>
-                      <p className="mt-2 text-lg font-black">{currentStopName}</p>
+                      <p className="mt-2 break-words text-lg font-black leading-snug">{currentStopName}</p>
                     </div>
                     <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
                       <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Remaining</p>
@@ -1192,18 +1221,18 @@ Please review the earnings breakdown for this shift.`;
                           <div key={`request-${request.booking_id}-${request.stage}`} className="rounded-[1.3rem] bg-[var(--drv-soft)] px-4 py-4">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="text-sm font-black text-[var(--drv-text)]">{request.passenger_name}</p>
+                                <p className="break-words text-sm font-black text-[var(--drv-text)]">{request.passenger_name}</p>
                                 <p className="mt-1 text-xs font-black uppercase tracking-[0.18em] text-[var(--drv-purple)]">{request.stage_label}</p>
                               </div>
                               <span className="rounded-full bg-white px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.14em] text-[var(--drv-purple)]">
                                 {(request.seat_labels || []).join(", ") || `${request.seats_count} seat`}
                               </span>
                             </div>
-                            <p className="mt-3 text-sm font-semibold text-[var(--drv-text)]">
-                              {request.pickup_stop_name} → {request.destination_stop_name}
+                            <p className="mt-3 break-words text-sm font-semibold leading-6 text-[var(--drv-text)]">
+                              {request.pickup_stop_name} to {request.destination_stop_name}
                             </p>
-                            <p className="mt-1 text-xs text-[var(--drv-muted)]">
-                              Marker stop: {request.marker_stop_name} • Payment {request.payment_status}
+                            <p className="mt-1 break-words text-xs leading-5 text-[var(--drv-muted)]">
+                              Marker stop: {request.marker_stop_name} | Payment {request.payment_status}
                             </p>
                           </div>
                         ))}
@@ -1427,14 +1456,23 @@ Please review the earnings breakdown for this shift.`;
         ) : null}
 
         {activeTab === "active" && activeTrip ? (
-          <div className="fixed bottom-[6.6rem] left-1/2 z-30 flex w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 gap-3">
+          <div className="fixed bottom-[5.5rem] left-1/2 z-30 flex w-[calc(100%-1rem)] max-w-[28rem] -translate-x-1/2 gap-3">
             <ActionButton tone="danger" onClick={endTrip} disabled={busy || activeTrip?.driver_end_confirmed} className="flex-1 !py-4">
               {busy ? "Sending..." : activeTrip?.helper_end_confirmed ? "Confirm End Trip" : activeTrip?.driver_end_confirmed ? "End Requested" : "Request End Trip"}
             </ActionButton>
           </div>
         ) : null}
 
-        <div className="fixed bottom-4 left-1/2 z-40 w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 rounded-[2rem] border border-white/70 bg-[var(--drv-nav)] p-2 shadow-[var(--drv-shadow)] backdrop-blur-xl"><div className="grid grid-cols-4 gap-2">{TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-2 rounded-[1.4rem] py-3 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] text-white shadow-[var(--drv-shadow-strong)]" : "text-[var(--drv-muted)]"}`}><Icon name={tab.icon} className="h-5 w-5" /><span className="text-[0.66rem] font-black uppercase tracking-[0.14em]">{tab.label}</span></button>)}</div></div>
+        <div className="fixed bottom-3 left-1/2 z-40 w-[calc(100%-1rem)] max-w-[28rem] -translate-x-1/2 rounded-[1.65rem] border border-white/70 bg-[var(--drv-nav)] p-1.5 shadow-[var(--drv-shadow)] backdrop-blur-xl">
+          <div className="grid grid-cols-4 gap-1.5">
+            {TABS.map((tab) => (
+              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-1.5 rounded-[1.1rem] py-2 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] text-white shadow-[var(--drv-shadow-strong)]" : "text-[var(--drv-muted)]"}`}>
+                <Icon name={tab.icon} className="h-[1.1rem] w-[1.1rem]" />
+                <span className="px-1 text-[0.6rem] font-black uppercase tracking-[0.1em] leading-tight">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </main>
     </div>
   );
