@@ -1293,9 +1293,6 @@ export default function PassengerHome() {
               trip={selectedTrip}
               onShare={shareTrip}
               onChat={contactTripSupport}
-              onSos={() => {
-                window.location.href = "tel:100";
-              }}
             />
             {activeBooking?.can_cancel ? (
               <button

@@ -1028,7 +1028,7 @@ export function TrackMap({ trip, displayLine, now }) {
   );
 }
 
-export function DriverCard({ trip, onShare, onChat, onSos }) {
+export function DriverCard({ trip, onShare, onChat }) {
   return (
     <div className="rounded-[2.2rem] bg-white p-5 shadow-[var(--mb-shadow)]">
       <div className="flex items-center gap-4">
@@ -1043,7 +1043,7 @@ export function DriverCard({ trip, onShare, onChat, onSos }) {
           <p className="mt-2 text-[1.45rem] font-black leading-tight text-[var(--mb-purple)]">{trip?.bus_plate || "BA-2-KHA 4421"}</p>
         </div>
       </div>
-      <div className="mt-5 grid grid-cols-3 gap-3 border-t border-[var(--mb-border)] pt-5">
+      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-[var(--mb-border)] pt-5">
         <button type="button" onClick={onShare} className="flex flex-col items-center gap-2 rounded-[1.6rem] px-4 py-4 text-[var(--mb-text)]">
           <Icon name="share" className="h-6 w-6" />
           <span className="text-sm font-black uppercase tracking-[0.14em]">Share Trip</span>
@@ -1051,10 +1051,6 @@ export function DriverCard({ trip, onShare, onChat, onSos }) {
         <button type="button" onClick={onChat} className="flex flex-col items-center gap-2 rounded-[1.6rem] px-4 py-4 text-[var(--mb-text)]">
           <Icon name="chat" className="h-6 w-6" />
           <span className="text-sm font-black uppercase tracking-[0.14em]">Chat</span>
-        </button>
-        <button type="button" onClick={onSos} className="flex flex-col items-center gap-2 rounded-[1.6rem] bg-[#fff4f2] px-4 py-4 text-[var(--mb-danger)]">
-          <Icon name="alert" className="h-6 w-6" />
-          <span className="text-sm font-black uppercase tracking-[0.14em]">SOS</span>
         </button>
       </div>
     </div>

@@ -641,14 +641,6 @@ Please review the earnings breakdown for this shift.`;
     setMsg(copied ? "Issue summary copied. Send it to operations support." : "Issue summary prepared for support.");
   };
 
-  const handleSOS = () => {
-    setErr("");
-    setMsg("Opening the emergency dialer.");
-    if (typeof window !== "undefined") {
-      window.location.href = "tel:100";
-    }
-  };
-
   if (loading) {
     return <div style={theme} className="flex min-h-screen items-center justify-center bg-[var(--drv-bg)] text-[var(--drv-text)]"><div className="text-center"><div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--drv-purple)] border-t-transparent" /><p className="mt-4 text-sm font-medium text-[var(--drv-muted)]">Loading driver dashboard...</p></div></div>;
   }
@@ -1438,10 +1430,6 @@ Please review the earnings breakdown for this shift.`;
           <div className="fixed bottom-[6.6rem] left-1/2 z-30 flex w-[calc(100%-1.5rem)] max-w-[31rem] -translate-x-1/2 gap-3">
             <ActionButton tone="danger" onClick={endTrip} disabled={busy || activeTrip?.driver_end_confirmed} className="flex-1 !py-4">
               {busy ? "Sending..." : activeTrip?.helper_end_confirmed ? "Confirm End Trip" : activeTrip?.driver_end_confirmed ? "End Requested" : "Request End Trip"}
-            </ActionButton>
-            <ActionButton tone="danger" onClick={handleSOS} className="min-w-[8.2rem] !bg-[linear-gradient(135deg,#8a0f2f,#c11449)] !py-4">
-              <Icon name="alert" />
-              SOS
             </ActionButton>
           </div>
         ) : null}
