@@ -18,8 +18,8 @@ const LIGHT_THEME = {
   "--hlp-plum": "#2e124f",
   "--hlp-header": "rgba(252,245,248,0.92)",
   "--hlp-nav": "rgba(252,245,248,0.94)",
-  "--hlp-shadow": "0 26px 58px rgba(46,18,79,0.12)",
-  "--hlp-shadow-strong": "0 28px 62px rgba(255,107,115,0.22)",
+  "--hlp-shadow": "0 12px 28px rgba(46,18,79,0.08)",
+  "--hlp-shadow-strong": "0 14px 30px rgba(255,107,115,0.16)",
 };
 
 const DARK_THEME = {
@@ -35,8 +35,8 @@ const DARK_THEME = {
   "--hlp-plum": "#2e124f",
   "--hlp-header": "rgba(36,16,67,0.92)",
   "--hlp-nav": "rgba(43,20,78,0.94)",
-  "--hlp-shadow": "0 26px 58px rgba(0,0,0,0.24)",
-  "--hlp-shadow-strong": "0 28px 62px rgba(255,107,115,0.26)",
+  "--hlp-shadow": "0 14px 30px rgba(0,0,0,0.2)",
+  "--hlp-shadow-strong": "0 16px 32px rgba(255,107,115,0.18)",
 };
 
 const TABS = [
@@ -74,7 +74,7 @@ function Icon({ name, className = "h-5 w-5" }) {
 }
 
 function SurfaceCard({ children, className = "" }) {
-  return <div className={`rounded-[2rem] border border-[var(--hlp-border)] bg-[var(--hlp-surface)] p-5 shadow-[var(--hlp-shadow)] backdrop-blur-xl ${className}`}>{children}</div>;
+  return <div className={`rounded-[1.5rem] border border-[var(--hlp-border)] bg-[var(--hlp-surface)] p-5 shadow-[var(--hlp-shadow)] backdrop-blur-xl ${className}`}>{children}</div>;
 }
 
 function HeaderButton({ children, className = "", ...props }) {
@@ -97,7 +97,7 @@ function PrimaryButton({ children, tone = "primary", className = "", ...props })
     danger: "bg-[var(--hlp-plum)] text-white shadow-[0_18px_40px_rgba(71,39,81,0.24)]",
     ghost: "border border-[var(--hlp-border)] bg-white/82 text-[var(--hlp-text)]",
   };
-  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
+  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-[1rem] px-5 py-3 text-sm font-bold tracking-[0.04em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
 }
 
 function SectionLabel({ children }) {
@@ -783,14 +783,14 @@ Need support with live trip operations.`;
         {msg ? <div className="mb-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
         {activeTab === "trip" ? <>
-          <section className="relative overflow-hidden rounded-[2.5rem] bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
+          <section className="relative overflow-hidden rounded-[1.9rem] bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
             <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
             <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
             <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "LIVE\nSUPPORT" : pendingTrip ? "START\nPENDING" : "READY ON\nSHIFT"}</h1>
             <p className="mt-4 text-base font-medium text-white/84">
               {activeTrip ? `${activeTrip.route_name} is ready for boarding, payment checks, and route support.` : pendingTrip ? pendingStartLabel : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
             </p>
-            <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
+            <div className="mt-6 rounded-[1.4rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
               <div className="flex items-center gap-4">
                 <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
                 <div>
@@ -999,7 +999,7 @@ Need support with live trip operations.`;
               <h2 className="mt-2 text-6xl font-black leading-[0.9]">Verify Payment</h2>
               <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Scan the passenger ticket QR or enter the ticket code to verify payment, confirm boarding, and complete the ride when the passenger gets off.</p>
             </div>
-            <SurfaceCard className="rounded-[2.4rem]">
+            <SurfaceCard className="rounded-[1.8rem]">
               <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">Ticket Code / QR Payload</label>
               <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
                 <div className="relative">
@@ -1017,7 +1017,7 @@ Need support with live trip operations.`;
             </SurfaceCard>
 
             {scannerOpen ? (
-              <SurfaceCard className="rounded-[2.4rem] overflow-hidden">
+              <SurfaceCard className="rounded-[1.8rem] overflow-hidden">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <SectionLabel>Live Scanner</SectionLabel>
@@ -1031,7 +1031,7 @@ Need support with live trip operations.`;
               </SurfaceCard>
             ) : null}
 
-            <SurfaceCard className="rounded-[2.4rem] border-[rgba(215,149,239,0.45)]">
+            <SurfaceCard className="rounded-[1.8rem] border-[rgba(215,149,239,0.45)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <Chip tone="soft">Verification Result</Chip>
@@ -1085,7 +1085,7 @@ Need support with live trip operations.`;
               </PrimaryButton>
             </div>
             {(needsAcceptanceBookings.length || onboardBookings.length || readyToBoardBookings.length || awaitingPaymentBookings.length) ? (
-              <SurfaceCard className="rounded-[2.4rem]">
+              <SurfaceCard className="rounded-[1.8rem]">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <SectionLabel>Live Passenger Flow</SectionLabel>
@@ -1156,7 +1156,7 @@ Need support with live trip operations.`;
               </SurfaceCard>
             ) : null}
             {completedRecentBookings.length ? (
-              <SurfaceCard className="rounded-[2rem]">
+              <SurfaceCard className="rounded-[1.5rem]">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <SectionLabel>Recently Completed</SectionLabel>

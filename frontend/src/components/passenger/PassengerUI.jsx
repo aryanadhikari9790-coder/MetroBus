@@ -206,14 +206,14 @@ function MapViewport({ points }) {
 
 export function SearchBar({ summary, onOpenPlanner, onSearch }) {
   return (
-    <div className="mt-6 flex items-center gap-3 rounded-[28px] bg-[var(--mb-card-soft)] p-3 shadow-[var(--mb-shadow)]">
+    <div className="mt-6 flex items-center gap-3 rounded-[20px] bg-[var(--mb-card-soft)] p-3 shadow-[var(--mb-shadow)]">
       <div className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-muted)]">
         <Icon name="search" />
       </div>
       <button type="button" onClick={onOpenPlanner} className="min-w-0 flex-1 text-left text-lg font-medium text-[var(--mb-muted)]">
         <span className="block truncate">{summary}</span>
       </button>
-      <button type="button" onClick={onSearch} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
+      <button type="button" onClick={onSearch} className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
         GO
       </button>
     </div>
@@ -312,7 +312,7 @@ export function PlannerCard({
 
   return (
     <section className="space-y-5">
-      <div className="relative overflow-hidden rounded-[2.25rem] bg-[#251d31] shadow-[var(--mb-shadow-strong)]">
+      <div className="relative overflow-hidden rounded-[1.75rem] bg-[#251d31] shadow-[var(--mb-shadow-strong)]">
         <div className="h-64">
           <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
             <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
@@ -422,7 +422,7 @@ export function PlannerCard({
         </button>
       </div>
 
-      <div className="rounded-[2rem] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
+      <div className="rounded-[1.45rem] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
         <div className="flex items-center gap-4">
           <div className="flex min-h-[7rem] w-12 flex-col items-center justify-center">
             <span className="h-3.5 w-3.5 rounded-full bg-[var(--mb-purple)]" />
@@ -442,7 +442,7 @@ export function PlannerCard({
             <p className="text-sm font-semibold text-[var(--mb-text)]">{pickupStop?.name || "Choose pickup"} to {dropStop?.name || "Choose destination"}</p>
             <p className="mt-1 text-xs text-[var(--mb-muted)]">Choose both points to see live buses and seat availability.</p>
           </div>
-          <button type="button" onClick={onFindRoutes} disabled={findingRoutes} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
+          <button type="button" onClick={onFindRoutes} disabled={findingRoutes} className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
             {findingRoutes ? "Finding..." : "Find buses"}
           </button>
         </div>
@@ -453,7 +453,7 @@ export function PlannerCard({
 
 export function QuickRouteCard({ icon, label, caption, onClick }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-[138px] flex-none flex-col items-center rounded-[36px] bg-[var(--mb-card-strong)] px-5 py-6 text-center shadow-[var(--mb-shadow)] transition hover:-translate-y-0.5">
+    <button type="button" onClick={onClick} className="flex w-[138px] flex-none flex-col items-center rounded-[24px] bg-[var(--mb-card-strong)] px-5 py-6 text-center shadow-[var(--mb-shadow)] transition hover:-translate-y-0.5">
       <div className="grid h-14 w-14 place-items-center rounded-full bg-[#f3c5ee] text-[var(--mb-purple)]">
         <Icon name={icon} className="h-6 w-6" />
       </div>
@@ -484,7 +484,7 @@ export function NearbyMapCard({ stops, displayLine, selectedTrip, matchedTrips =
   }, [displayLine, routeMatches, stops]);
 
   return (
-    <div className="overflow-hidden rounded-[38px] bg-[#24182c] shadow-[var(--mb-shadow-strong)]">
+    <div className="overflow-hidden rounded-[26px] bg-[#24182c] shadow-[var(--mb-shadow-strong)]">
       <div className="relative h-56">
         <MapContainer center={points[0]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
           <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
@@ -527,7 +527,7 @@ export function NearbyMapCard({ stops, displayLine, selectedTrip, matchedTrips =
 
 export function StopFeatureCard({ icon, eyebrow, title, featured = false }) {
   return (
-    <div className={`min-h-[158px] rounded-[36px] p-5 shadow-[var(--mb-shadow)] ${featured ? "bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] text-white" : "bg-[var(--mb-card-strong)] text-[var(--mb-text)]"}`}>
+    <div className={`min-h-[158px] rounded-[24px] p-5 shadow-[var(--mb-shadow)] ${featured ? "bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] text-white" : "bg-[var(--mb-card-strong)] text-[var(--mb-text)]"}`}>
       <div className={`grid h-10 w-10 place-items-center rounded-full ${featured ? "bg-white/18 text-white" : "bg-[var(--mb-accent-soft)] text-[var(--mb-purple)]"}`}>
         <Icon name={icon} className="h-5 w-5" />
       </div>
@@ -540,7 +540,7 @@ export function StopFeatureCard({ icon, eyebrow, title, featured = false }) {
 export function LiveBusCard({ trip, index, active, onClick, now, onViewOccupancy }) {
   const tone = statusTone(trip, now);
   return (
-    <button type="button" onClick={onClick} className={`flex w-full items-start gap-4 rounded-[34px] border px-5 py-4 text-left shadow-[var(--mb-shadow)] transition ${active ? "border-transparent bg-[linear-gradient(180deg,#fff9f8,#fff0f0)] ring-2 ring-[rgba(255,107,115,0.2)]" : "border-[var(--mb-border)] bg-[var(--mb-card)]"}`}>
+    <button type="button" onClick={onClick} className={`flex w-full items-start gap-4 rounded-[24px] border px-5 py-4 text-left shadow-[var(--mb-shadow)] transition ${active ? "border-transparent bg-[linear-gradient(180deg,#fff9f8,#fff0f0)] ring-2 ring-[rgba(255,107,115,0.2)]" : "border-[var(--mb-border)] bg-[var(--mb-card)]"}`}>
       <div className="grid h-16 w-16 flex-none place-items-center rounded-full bg-white text-[2rem] font-black text-[var(--mb-purple)]">
         {routeCode(trip, index)}
       </div>
@@ -625,7 +625,7 @@ export function OccupancySheet({ trip, seats = [], loading, onClose }) {
   return (
     <div className="fixed inset-0 z-[1400] bg-[rgba(49,23,56,0.3)] px-4 py-8 backdrop-blur-sm">
       <div className="mx-auto flex min-h-full max-w-2xl items-center justify-center">
-        <div className="w-full rounded-[36px] bg-[linear-gradient(180deg,#fffdfd,#fff4f2)] p-5 shadow-[0_36px_90px_rgba(255,107,115,0.2)]">
+        <div className="w-full rounded-[24px] bg-[linear-gradient(180deg,#fffdfd,#fff4f2)] p-5 shadow-[0_18px_42px_rgba(255,107,115,0.12)]">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Live Occupancy</p>
@@ -696,10 +696,10 @@ export function TicketQrCard({ booking, title = "Ride Ticket", compact = false }
         <p className="mt-3 text-[1.05rem] leading-8 text-[var(--mb-muted)]">Show this QR code to the driver upon boarding.</p>
       </div>
 
-      <div className="relative overflow-hidden rounded-[2.25rem] bg-white px-5 py-6 shadow-[var(--mb-shadow)]">
+      <div className="relative overflow-hidden rounded-[1.75rem] bg-white px-5 py-6 shadow-[var(--mb-shadow)]">
         <div className="absolute inset-x-6 top-10 h-px bg-[radial-gradient(circle,rgba(95,25,230,0.28)_1px,transparent_1px)] bg-[size:12px_1px] opacity-70" />
         <div className="absolute inset-x-6 bottom-40 h-px bg-[radial-gradient(circle,rgba(95,25,230,0.28)_1px,transparent_1px)] bg-[size:12px_1px] opacity-70" />
-        <div className="mx-auto max-w-[16rem] rounded-[2rem] bg-[#faf8ff] p-4 shadow-[0_18px_34px_rgba(88,43,171,0.1)]">
+        <div className="mx-auto max-w-[16rem] rounded-[1.45rem] bg-[#faf8ff] p-4 shadow-[0_12px_24px_rgba(88,43,171,0.08)]">
           <div className="overflow-hidden rounded-[1.5rem] bg-white p-4">
             {booking.ticket_qr_svg ? (
               <div className="[&_svg]:h-full [&_svg]:w-full [&_svg]:max-h-[15rem]" dangerouslySetInnerHTML={{ __html: booking.ticket_qr_svg }} />
@@ -839,7 +839,7 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
                   <p className="mt-2 text-[2.1rem] font-black leading-tight text-[var(--mb-purple)]">{fmtMoney(total)}</p>
                 </div>
               </div>
-              <button type="button" onClick={onBook} disabled={bookingBusy || !selectedSeatIds.length} className="mt-5 w-full rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
+              <button type="button" onClick={onBook} disabled={bookingBusy || !selectedSeatIds.length} className="mt-5 w-full rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
                 {bookingBusy ? "Confirming..." : "Confirm Booking"}
               </button>
             </div>
@@ -901,7 +901,7 @@ export function PaymentRequestCard({ booking, walletSummary, paymentBusy, onPay 
   const waitingForGateway = booking.payment_pending_verification && booking.payment_method && booking.payment_method !== "CASH";
 
   return (
-    <div className="rounded-[34px] bg-[linear-gradient(180deg,#fff,#f8e5fb)] p-5 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[24px] bg-[linear-gradient(180deg,#fff,#f8e5fb)] p-5 shadow-[var(--mb-shadow)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Helper Payment Request</p>
@@ -974,7 +974,7 @@ export function TrackMap({ trip, displayLine, now }) {
   const points = displayLine.length ? displayLine : (busLocation ? [busLocation.point] : [[28.2096, 83.9856]]);
   const distanceValue = trip?.pickup_point && busLocation?.point ? distKm(busLocation.point, trip.pickup_point).toFixed(1) : "3.0";
   return (
-    <div className="relative overflow-hidden rounded-[2.3rem] bg-[#2b1d30] shadow-[var(--mb-shadow-strong)]">
+    <div className="relative overflow-hidden rounded-[1.8rem] bg-[#2b1d30] shadow-[var(--mb-shadow-strong)]">
       <div className="h-[37rem]">
         <MapContainer center={points[0]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
           <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
@@ -1059,7 +1059,7 @@ export function DriverCard({ trip, onShare, onChat }) {
 
 export function MetricCard({ icon, label, value }) {
   return (
-    <div className="rounded-[34px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[24px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
       <div className="text-[var(--mb-purple)]"><Icon name={icon} className="h-7 w-7" /></div>
       <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">{label}</p>
       <p className="mt-2 text-4xl font-black text-[var(--mb-text)]">{value}</p>
@@ -1070,7 +1070,7 @@ export function MetricCard({ icon, label, value }) {
 export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel = "Track Ride", onViewTicket }) {
   if (!booking) return null;
   return (
-    <div className="rounded-[42px] bg-[var(--mb-card-strong)] p-6 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[28px] bg-[var(--mb-card-strong)] p-6 shadow-[var(--mb-shadow)]">
       <div className="flex items-start justify-between gap-4">
         <span className="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-[var(--mb-purple)]">Express Route</span>
         <div className="text-right">
@@ -1105,7 +1105,7 @@ export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel =
         <button type="button" onClick={onPrimaryAction} className="rounded-full bg-white px-6 py-4 text-lg font-black text-[var(--mb-text)]">
           {primaryActionLabel}
         </button>
-        <button type="button" onClick={onViewTicket} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-lg font-black text-white shadow-[var(--mb-shadow-strong)]">
+        <button type="button" onClick={onViewTicket} className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-lg font-black text-white shadow-[var(--mb-shadow-strong)]">
           View Ticket
         </button>
       </div>
@@ -1115,7 +1115,7 @@ export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel =
 
 export function HistoryCard({ booking, onDownload }) {
   return (
-    <div className="rounded-[32px] bg-white p-5 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[24px] bg-white p-5 shadow-[var(--mb-shadow)]">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]">
@@ -1147,10 +1147,10 @@ export function HistoryCard({ booking, onDownload }) {
 export function ProfileCard({ user, profileForm, setProfileForm, onSave, profileBusy }) {
   const nameInputRef = useRef(null);
   return (
-    <div className="rounded-[40px] bg-[var(--mb-card)] p-6 text-center shadow-[var(--mb-shadow)]">
+    <div className="rounded-[28px] bg-[var(--mb-card)] p-6 text-center shadow-[var(--mb-shadow)]">
       <div className="relative mx-auto w-fit">
         <PassengerAvatar user={user} size="h-28 w-28" />
-        <button type="button" onClick={() => nameInputRef.current?.focus()} className="absolute bottom-0 right-0 grid h-12 w-12 place-items-center rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]">
+        <button type="button" onClick={() => nameInputRef.current?.focus()} className="absolute bottom-0 right-0 grid h-12 w-12 place-items-center rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]">
           <Icon name="edit" />
         </button>
       </div>
@@ -1165,7 +1165,7 @@ export function ProfileCard({ user, profileForm, setProfileForm, onSave, profile
         <input className="rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-muted)] outline-none opacity-70" value={user?.phone || ""} readOnly />
         <input className="md:col-span-2 rounded-[22px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-text)] outline-none" value={profileForm.email} onChange={(event) => setProfileForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" />
       </div>
-      <button type="button" onClick={onSave} disabled={profileBusy} className="mt-5 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-8 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
+      <button type="button" onClick={onSave} disabled={profileBusy} className="mt-5 rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-8 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
         {profileBusy ? "Saving..." : "Save Profile"}
       </button>
     </div>
@@ -1185,7 +1185,7 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
         <h3 className="text-3xl font-black text-[var(--mb-text)]">Payment Methods</h3>
         <button type="button" onClick={onTopUp} disabled={actionBusy} className="text-lg font-black text-[var(--mb-purple)] disabled:opacity-60">Top Up +500</button>
       </div>
-      <div className="rounded-[36px] bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] p-6 text-white shadow-[var(--mb-shadow-strong)]">
+      <div className="rounded-[24px] bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] p-6 text-white shadow-[var(--mb-shadow-strong)]">
         <div className="flex items-center justify-between">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--mb-purple)]">
             <Icon name="wallet" />
@@ -1209,7 +1209,7 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-[30px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
+        <div className="rounded-[22px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
           <div className="text-[var(--mb-purple)]"><Icon name="wallet" className="h-7 w-7" /></div>
           <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Ride Pass</p>
           <p className="mt-2 text-4xl font-black text-[var(--mb-purple)]">{walletSummary?.pass_active ? (walletSummary.pass_plan_label || "Active pass") : passLabel}</p>
@@ -1255,7 +1255,7 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
             })}
           </div>
         </div>
-        <div className="rounded-[30px] bg-white p-5 shadow-[var(--mb-shadow)]">
+        <div className="rounded-[22px] bg-white p-5 shadow-[var(--mb-shadow)]">
           <div className="text-[var(--mb-purple)]"><Icon name="track" className="h-7 w-7" /></div>
           <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Free Ride Progress</p>
           <p className="mt-2 text-3xl font-black text-[var(--mb-text)]">{walletSummary?.reward_free_ride_ready ? "Ready to redeem" : `${walletSummary?.reward_points_needed || 100} pts to go`}</p>
@@ -1283,7 +1283,7 @@ export function CancellationSheet({
 }) {
   if (!booking) return null;
   return (
-    <div className="rounded-[34px] border border-[var(--mb-border)] bg-white p-5 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[24px] border border-[var(--mb-border)] bg-white p-5 shadow-[var(--mb-shadow)]">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Cancel Ride</p>

@@ -20,8 +20,8 @@ const LIGHT_THEME = {
   "--drv-plum": "#2e124f",
   "--drv-header": "rgba(252,245,248,0.92)",
   "--drv-nav": "rgba(252,245,248,0.94)",
-  "--drv-shadow": "0 24px 56px rgba(46,18,79,0.12)",
-  "--drv-shadow-strong": "0 26px 60px rgba(255,107,115,0.22)",
+  "--drv-shadow": "0 12px 28px rgba(46,18,79,0.08)",
+  "--drv-shadow-strong": "0 14px 30px rgba(255,107,115,0.16)",
 };
 
 const DARK_THEME = {
@@ -37,8 +37,8 @@ const DARK_THEME = {
   "--drv-plum": "#2e124f",
   "--drv-header": "rgba(36,16,67,0.92)",
   "--drv-nav": "rgba(43,20,78,0.94)",
-  "--drv-shadow": "0 24px 56px rgba(0,0,0,0.24)",
-  "--drv-shadow-strong": "0 26px 60px rgba(255,107,115,0.26)",
+  "--drv-shadow": "0 14px 30px rgba(0,0,0,0.2)",
+  "--drv-shadow-strong": "0 16px 32px rgba(255,107,115,0.18)",
 };
 
 function Icon({ name, className = "h-5 w-5" }) {
@@ -66,7 +66,7 @@ function Icon({ name, className = "h-5 w-5" }) {
 }
 
 function Panel({ children, className = "" }) {
-  return <div className={`rounded-[2rem] border border-[var(--drv-border)] bg-[var(--drv-surface)] p-5 shadow-[var(--drv-shadow)] backdrop-blur-xl ${className}`}>{children}</div>;
+  return <div className={`rounded-[1.5rem] border border-[var(--drv-border)] bg-[var(--drv-surface)] p-5 shadow-[var(--drv-shadow)] backdrop-blur-xl ${className}`}>{children}</div>;
 }
 
 function Pill({ children, tone = "idle" }) {
@@ -77,10 +77,10 @@ function Pill({ children, tone = "idle" }) {
 function ActionButton({ children, tone = "primary", className = "", ...props }) {
   const tones = {
     primary: "bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] text-white shadow-[var(--drv-shadow-strong)]",
-    danger: "bg-[var(--drv-plum)] text-white shadow-[0_18px_40px_rgba(71,39,81,0.24)]",
+    danger: "bg-[var(--drv-plum)] text-white shadow-[0_12px_26px_rgba(71,39,81,0.18)]",
     ghost: "border border-[var(--drv-border)] bg-white/80 text-[var(--drv-text)]",
   };
-  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
+  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-[1rem] px-5 py-3 text-sm font-bold tracking-[0.04em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
 }
 
 function SectionLabel({ children }) {
@@ -671,7 +671,7 @@ Please review the earnings breakdown for this shift.`;
           <p className="text-[0.7rem] font-black uppercase tracking-[0.28em] text-white/70">{activeTrip ? "Route In Progress" : pendingTrip ? "Trip Confirmation" : "Shift Dashboard"}</p>
           <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "ROUTE\nLIVE" : pendingTrip ? "WAITING\nTO GO" : "READY TO\nSTART"}</h1>
           <p className="mt-4 text-base font-medium text-white/84">{activeTrip ? `${currentRoute} is active now. Keep GPS sharing on and watch the next stop.` : pendingTrip ? `${currentRoute} is almost ready. ${pendingStartLabel}` : `Shift starts at ${shiftStartTime} - Current City: Pokhara.`}</p>
-          <div className="mt-6 rounded-[2rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
+          <div className="mt-6 rounded-[1.4rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
             <div className="flex items-center gap-4">
               <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
               <div>
@@ -836,7 +836,7 @@ Please review the earnings breakdown for this shift.`;
             </div>
           ) : tripAwaitingStart ? (
             <div className="mt-5 space-y-5 pb-32">
-              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)]">
+              <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Trip Confirmation</p>
@@ -909,7 +909,7 @@ Please review the earnings breakdown for this shift.`;
             </div>
           ) : (
             <div className="mt-5 space-y-5 pb-40">
-              <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)]">
+              <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)]">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Current Route</p>
@@ -1262,7 +1262,7 @@ Please review the earnings breakdown for this shift.`;
               <p className="pb-2 text-sm font-medium text-[var(--drv-muted)]">{lastShiftDate}</p>
             </div>
 
-            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-6 text-white shadow-[var(--drv-shadow-strong)]">
+            <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-6 text-white shadow-[var(--drv-shadow-strong)]">
               <div className="grid h-12 w-12 place-items-center rounded-[1.2rem] bg-white/14 text-white">
                 <Icon name="wallet" />
               </div>
@@ -1346,7 +1346,7 @@ Please review the earnings breakdown for this shift.`;
 
         {activeTab === "earnings" ? (
           <div className="mt-5 space-y-5 pb-32">
-            <div className="overflow-hidden rounded-[2.3rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-6 text-white shadow-[var(--drv-shadow-strong)]">
+            <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-6 text-white shadow-[var(--drv-shadow-strong)]">
               <p className="text-[0.72rem] font-black uppercase tracking-[0.28em] text-white/76">Today Earnings</p>
               <div className="mt-5 flex items-end justify-between gap-4">
                 <p className="text-6xl font-black leading-none">Rs. {todaysEarnings.toLocaleString()}</p>
@@ -1378,7 +1378,7 @@ Please review the earnings breakdown for this shift.`;
 
             <div className="grid grid-cols-2 gap-4">
               {earningsBreakdown.slice(1).map((card) => (
-                <div key={card.label} className={`rounded-[2rem] ${card.tint} p-5 shadow-[var(--drv-shadow)]`}>
+                <div key={card.label} className={`rounded-[1.5rem] ${card.tint} p-5 shadow-[var(--drv-shadow)]`}>
                   <div className={`grid h-12 w-12 place-items-center rounded-full bg-white/42 ${card.accent}`}>
                     <Icon name={card.icon} />
                   </div>
@@ -1440,7 +1440,7 @@ Please review the earnings breakdown for this shift.`;
               </div>
             </Panel>
 
-            <div className="flex items-center gap-4 rounded-[2rem] bg-[rgba(247,212,250,0.82)] px-5 py-5 shadow-[var(--drv-shadow)]">
+            <div className="flex items-center gap-4 rounded-[1.5rem] bg-[rgba(247,212,250,0.82)] px-5 py-5 shadow-[var(--drv-shadow)]">
               <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--drv-purple)]">
                 <Icon name="alert" />
               </div>

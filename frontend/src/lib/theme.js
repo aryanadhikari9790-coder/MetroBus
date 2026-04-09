@@ -7,11 +7,11 @@ export function themeTokens(isDark) {
     // Page background
     page:       isDark ? "bg-[#241043] text-white"            : "bg-[#f7eef4] text-[#27133f]",
     // Sticky nav
-    nav:        isDark ? "bg-[#241043]/92 border-white/5"     : "bg-[#fbf3f6]/92 border-[#ecdff0] shadow-[0_12px_28px_rgba(46,18,79,0.08)]",
+    nav:        isDark ? "bg-[#241043]/92 border-white/5"     : "bg-[#fbf3f6]/92 border-[#ecdff0] shadow-[0_8px_20px_rgba(46,18,79,0.06)]",
     // Logo chip
     logoBg:     (color) => color,   // caller passes the role color, unchanged
     // Glass card
-    card:       isDark ? "bg-white/6 border-white/10"          : "bg-white border-[#ecdff0] shadow-[0_18px_36px_rgba(46,18,79,0.08)]",
+    card:       isDark ? "bg-white/6 border-white/10"          : "bg-white border-[#ecdff0] shadow-[0_12px_28px_rgba(46,18,79,0.07)]",
     // Elevated card (hero)
     heroCard:   isDark ? "from-[#2e124f] via-[#4a1e77] to-[#ff6b73] border-white/10"
                        : "from-[#fff6f5] via-white to-[#fbf0f4] border-[#f5d9df]",
@@ -30,7 +30,7 @@ export function themeTokens(isDark) {
     // Dropdown option background
     optionBg:   isDark ? "bg-[#241043] text-white"             : "bg-white text-[#27133f]",
     // Tab bar container
-    tabBar:     isDark ? "bg-white/4 border-white/5"           : "bg-white border-[#ecdff0] shadow-[0_16px_32px_rgba(46,18,79,0.08)]",
+    tabBar:     isDark ? "bg-white/4 border-white/5"           : "bg-white border-[#ecdff0] shadow-[0_10px_24px_rgba(46,18,79,0.07)]",
     // Inactive tab
     tabInactive:isDark ? "text-[#bcaed1] hover:text-white"     : "text-[#9b8bad] hover:text-[#34155d]",
     // Divider

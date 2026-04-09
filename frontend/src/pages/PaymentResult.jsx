@@ -73,8 +73,8 @@ export default function PaymentResult() {
     <div className="min-h-screen bg-[linear-gradient(180deg,#fbf3f6_0%,#f6edf3_45%,#f1e7ef_100%)] px-4 py-8 text-[#27133f]">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center">
         <div className="text-center">
-          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[2rem] bg-white shadow-[0_24px_48px_rgba(46,18,79,0.12)]">
-            <div className="grid h-14 w-14 place-items-center rounded-[1.2rem] bg-[linear-gradient(135deg,#34155d,#ff6b73)] text-white shadow-[0_16px_32px_rgba(52,21,93,0.2)]">
+          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[1.4rem] bg-white shadow-[0_14px_30px_rgba(46,18,79,0.1)]">
+            <div className="grid h-14 w-14 place-items-center rounded-[1rem] bg-[linear-gradient(135deg,#34155d,#ff6b73)] text-white shadow-[0_10px_22px_rgba(52,21,93,0.16)]">
               <MetroBusMark className="h-8 w-8" />
             </div>
           </div>
@@ -84,7 +84,7 @@ export default function PaymentResult() {
           <p className="mt-3 text-lg font-medium text-[#6f607f]">Secure payment return</p>
         </div>
 
-        <div className="mt-8 rounded-[2.4rem] bg-white p-6 shadow-[0_30px_80px_rgba(46,18,79,0.12)]">
+        <div className="mt-8 rounded-[1.8rem] bg-white p-6 shadow-[0_18px_42px_rgba(46,18,79,0.1)]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.22em] text-[#34155d]">
@@ -100,38 +100,38 @@ export default function PaymentResult() {
           <p className="mt-4 text-base leading-7 text-[#6f607f]">{tone.body}</p>
 
           {error ? (
-            <div className="mt-4 rounded-[1.4rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            <div className="mt-4 rounded-[1rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
               {error}
             </div>
           ) : null}
 
           <div className="mt-6 grid gap-3">
-            <div className="rounded-[1.6rem] bg-[#f7f1f7] px-4 py-4">
+            <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Booking</p>
               <p className="mt-2 text-lg font-black text-[#27133f]">{resolvedBookingId ? `#${resolvedBookingId}` : "--"}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[1.6rem] bg-[#f7f1f7] px-4 py-4">
+              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Gateway Status</p>
                 <p className="mt-2 text-base font-black text-[#34155d]">{payment?.gateway_status || query.get("status") || "--"}</p>
               </div>
-              <div className="rounded-[1.6rem] bg-[#f7f1f7] px-4 py-4">
+              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Amount</p>
                 <p className="mt-2 text-base font-black text-[#27133f]">
                   {payment?.amount != null ? `NPR ${Number(payment.amount).toLocaleString()}` : "--"}
                 </p>
               </div>
             </div>
-            <div className="rounded-[1.6rem] bg-[#f7f1f7] px-4 py-4">
+            <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Khalti pidx</p>
               <p className="mt-2 break-all text-sm font-black text-[#34155d]">{payment?.reference || "--"}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[1.6rem] bg-[#f7f1f7] px-4 py-4">
+              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Order ID</p>
                 <p className="mt-2 break-all text-sm font-black text-[#27133f]">{payment?.gateway_order_id || "--"}</p>
               </div>
-              <div className="rounded-[1.6rem] bg-[#f7f1f7] px-4 py-4">
+              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Transaction ID</p>
                 <p className="mt-2 break-all text-sm font-black text-[#27133f]">{payment?.gateway_transaction_id || "--"}</p>
               </div>
@@ -144,7 +144,7 @@ export default function PaymentResult() {
                 type="button"
                 onClick={verifyKhaltiStatus}
                 disabled={busy || !paymentId}
-                className="w-full rounded-full border border-[#eddff2] bg-[#f7f1f7] px-6 py-4 text-base font-black text-[#34155d] disabled:opacity-60"
+                className="w-full rounded-[1.1rem] border border-[#eddff2] bg-[#f7f1f7] px-6 py-4 text-base font-black text-[#34155d] disabled:opacity-60"
               >
                 {busy ? "Refreshing Status..." : "Refresh Khalti Status"}
               </button>
@@ -152,7 +152,7 @@ export default function PaymentResult() {
 
             <Link
               to="/passenger"
-              className="block w-full rounded-full bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] px-6 py-4 text-center text-base font-black text-white shadow-[0_18px_36px_rgba(255,107,115,0.24)]"
+              className="block w-full rounded-[1.1rem] bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] px-6 py-4 text-center text-base font-black text-white shadow-[0_12px_24px_rgba(255,107,115,0.16)]"
             >
               Return to MetroBus
             </Link>

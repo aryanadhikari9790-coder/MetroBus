@@ -8,11 +8,11 @@ import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
 import { themeTokens, pillColor } from "../../lib/theme";
 
-function GlassCard({ children, className = "", t }) { return <div className={`rounded-2xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>{children}</div>; }
+function GlassCard({ children, className = "", t }) { return <div className={`rounded-xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>{children}</div>; }
 function Pill({ children, color = "slate", isDark }) { return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>{children}</span>; }
 function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
-  const m = { primary: "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] hover:opacity-95 text-white shadow-[0_18px_34px_rgba(255,107,115,0.22)]", success: "bg-emerald-600 hover:bg-emerald-500 text-white", danger: "bg-red-600 hover:bg-red-500 text-white", ghost: "bg-white/10 hover:bg-white/20 text-white border border-white/10" };
-  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-xl px-5 py-3 text-sm font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
+  const m = { primary: "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(255,107,115,0.16)]", success: "bg-emerald-600 hover:bg-emerald-500 text-white", danger: "bg-red-600 hover:bg-red-500 text-white", ghost: "bg-white/10 hover:bg-white/20 text-white border border-white/10" };
+  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-lg px-5 py-3 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
 function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
 function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "Light Mode" : "Dark Mode"}</button>; }

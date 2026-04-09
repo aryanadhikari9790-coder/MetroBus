@@ -139,12 +139,15 @@ export default function Login() {
   };
 
   return (
-    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),var(--mb-bg-alt)_48%,#fff7f4)] text-[var(--mb-text)]">
+    <div
+      style={PASSENGER_THEME}
+      className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),var(--mb-bg-alt)_48%,#fff7f4)] text-[var(--mb-text)]"
+    >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,107,115,0.14),transparent_36%),radial-gradient(circle_at_bottom,rgba(52,21,93,0.12),transparent_36%)]" />
 
       <div className="relative mx-auto flex min-h-screen max-w-[29rem] flex-col justify-center px-5 py-8">
         <div className="text-center">
-          <div className="mx-auto grid h-28 w-28 place-items-center rounded-[2rem] bg-[linear-gradient(180deg,var(--mb-purple),var(--mb-accent))] shadow-[var(--mb-shadow-strong)]">
+          <div className="mx-auto grid h-28 w-28 place-items-center rounded-[1.5rem] bg-[linear-gradient(180deg,var(--mb-purple),var(--mb-accent))] shadow-[var(--mb-shadow-strong)]">
             <MetroBusMark className="h-14 w-14" />
           </div>
           <div className="mt-7 flex justify-center">
@@ -153,19 +156,19 @@ export default function Login() {
           <p className="mt-3 text-[1.05rem] font-medium text-[#4e475c]">Your premium urban transit portal</p>
         </div>
 
-        <section className="mt-10 rounded-[2.75rem] bg-white/95 px-6 py-7 shadow-[0_30px_70px_rgba(125,55,193,0.14)]">
+        <section className="mt-10 rounded-[2rem] bg-white/95 px-6 py-7 shadow-[0_18px_44px_rgba(125,55,193,0.1)]">
           <h1 className="text-[2.7rem] font-black leading-[0.95] tracking-[-0.04em] text-[#17131d]">Welcome Back</h1>
           <p className="mt-4 text-[1.05rem] leading-8 text-[#544d61]">
             Please enter your credentials to continue your journey.
           </p>
 
           {err ? (
-            <div className="mt-6 rounded-[1.75rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            <div className="mt-6 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
               {err}
             </div>
           ) : null}
           {msg ? (
-            <div className="mt-6 rounded-[1.75rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            <div className="mt-6 rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
               {msg}
             </div>
           ) : null}
@@ -173,7 +176,7 @@ export default function Login() {
           <div className="mt-8 space-y-6">
             <label className="block">
               <span className="mb-3 block text-sm font-black uppercase tracking-[0.28em] text-[#241828]">Phone Number</span>
-              <div className="flex items-center gap-3 rounded-[2rem] bg-[#f3f0ff] px-5 py-4 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.05)]">
+              <div className="flex items-center gap-3 rounded-[1.35rem] bg-[#f3f0ff] px-5 py-4 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.05)]">
                 <span className="shrink-0 border-r border-[#d8d0ef] pr-4 text-[1.05rem] font-semibold text-[#3f364d]">+977</span>
                 <input
                   className="min-w-0 flex-1 bg-transparent text-[1.05rem] font-medium text-[#2b2236] outline-none placeholder:text-[#b0a8bf]"
@@ -194,7 +197,7 @@ export default function Login() {
                   Forgot Password?
                 </button>
               </div>
-              <div className="flex items-center gap-3 rounded-[2rem] bg-[#f3f0ff] px-5 py-4 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.05)]">
+              <div className="flex items-center gap-3 rounded-[1.35rem] bg-[#f3f0ff] px-5 py-4 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.05)]">
                 <Icon name="lock" className="h-6 w-6 text-[#5f566f]" />
                 <input
                   className="min-w-0 flex-1 bg-transparent text-[1.05rem] font-medium text-[#2b2236] outline-none placeholder:text-[#b0a8bf]"
@@ -212,15 +215,15 @@ export default function Login() {
             <button
               type="button"
               onClick={onLogin}
-              className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-5 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition hover:translate-y-[-1px]"
+              className="flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-5 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition hover:translate-y-[-1px]"
             >
               <span>Log In</span>
-              <span className="text-xl">→</span>
+              <Icon name="chevron" className="h-5 w-5" />
             </button>
           </div>
 
           {showReset ? (
-            <div className="mt-6 rounded-[2rem] border border-[rgba(104,13,255,0.12)] bg-[#f6f2ff] px-5 py-5">
+            <div className="mt-6 rounded-[1.5rem] border border-[rgba(104,13,255,0.12)] bg-[#f6f2ff] px-5 py-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.28em] text-[#5b20dd]">Passenger Password Reset</p>
@@ -229,7 +232,7 @@ export default function Login() {
                     This reset flow is only for passenger accounts. Staff and admin passwords are managed by MetroBus admin.
                   </p>
                 </div>
-                <button type="button" onClick={closeReset} className="rounded-full bg-white px-3 py-2 text-xs font-black text-[#4b22d3]">
+                <button type="button" onClick={closeReset} className="rounded-[0.9rem] bg-white px-3 py-2 text-xs font-black text-[#4b22d3]">
                   Close
                 </button>
               </div>
@@ -237,7 +240,7 @@ export default function Login() {
               <div className="mt-5 space-y-4">
                 <label className="block">
                   <span className="mb-2 block text-xs font-black uppercase tracking-[0.24em] text-[#241828]">Passenger Phone</span>
-                  <div className="flex items-center gap-3 rounded-[1.5rem] bg-white px-4 py-3 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.07)]">
+                  <div className="flex items-center gap-3 rounded-[1.15rem] bg-white px-4 py-3 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.07)]">
                     <span className="shrink-0 border-r border-[#ddd5f1] pr-3 text-sm font-semibold text-[#3f364d]">+977</span>
                     <input
                       className="min-w-0 flex-1 bg-transparent text-[1rem] font-medium text-[#2b2236] outline-none placeholder:text-[#b0a8bf]"
@@ -249,20 +252,20 @@ export default function Login() {
                       type="button"
                       onClick={requestResetOtp}
                       disabled={resetBusy}
-                      className="rounded-full border border-[#5b20dd] px-4 py-2 text-sm font-black text-[#5b20dd] transition disabled:opacity-60"
+                      className="rounded-[0.9rem] border border-[#5b20dd] px-4 py-2 text-sm font-black text-[#5b20dd] transition disabled:opacity-60"
                     >
                       {resetBusy && !resetRequested ? "Sending..." : "Send OTP"}
                     </button>
                   </div>
                 </label>
 
-                <div className="rounded-[1.5rem] bg-white px-4 py-4 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.06)]">
+                <div className="rounded-[1.15rem] bg-white px-4 py-4 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.06)]">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[#4b22d3]">Verify Mobile</p>
                       <p className="mt-1 text-xs leading-5 text-[#61586e]">Enter the 4-digit code sent to your passenger phone.</p>
                     </div>
-                    {resetDevCode ? <span className="rounded-full bg-[#efe5ff] px-3 py-1 text-[0.7rem] font-black text-[#5b20dd]">Dev OTP: {resetDevCode}</span> : null}
+                    {resetDevCode ? <span className="rounded-[0.85rem] bg-[#efe5ff] px-3 py-1 text-[0.7rem] font-black text-[#5b20dd]">Dev OTP: {resetDevCode}</span> : null}
                   </div>
                   <div className="mt-4 flex gap-3">
                     {resetOtp.map((digit, index) => (
@@ -272,7 +275,7 @@ export default function Login() {
                         maxLength={1}
                         value={digit}
                         onChange={(event) => updateResetOtpDigit(index, event.target.value)}
-                        className="h-14 w-14 rounded-full border border-[#d7d0eb] bg-[#fbfaff] text-center text-xl font-black text-[#2b2236] outline-none transition focus:border-[#5b20dd]"
+                        className="h-14 w-14 rounded-[0.95rem] border border-[#d7d0eb] bg-[#fbfaff] text-center text-xl font-black text-[#2b2236] outline-none transition focus:border-[#5b20dd]"
                       />
                     ))}
                   </div>
@@ -280,7 +283,7 @@ export default function Login() {
 
                 <label className="block">
                   <span className="mb-2 block text-xs font-black uppercase tracking-[0.24em] text-[#241828]">New Password</span>
-                  <div className="flex items-center gap-3 rounded-[1.5rem] bg-white px-4 py-3 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.07)]">
+                  <div className="flex items-center gap-3 rounded-[1.15rem] bg-white px-4 py-3 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.07)]">
                     <Icon name="lock" className="h-5 w-5 text-[#5f566f]" />
                     <input
                       className="min-w-0 flex-1 bg-transparent text-[1rem] font-medium text-[#2b2236] outline-none placeholder:text-[#b0a8bf]"
@@ -294,7 +297,7 @@ export default function Login() {
 
                 <label className="block">
                   <span className="mb-2 block text-xs font-black uppercase tracking-[0.24em] text-[#241828]">Confirm Password</span>
-                  <div className="flex items-center gap-3 rounded-[1.5rem] bg-white px-4 py-3 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.07)]">
+                  <div className="flex items-center gap-3 rounded-[1.15rem] bg-white px-4 py-3 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.07)]">
                     <Icon name="lock" className="h-5 w-5 text-[#5f566f]" />
                     <input
                       className="min-w-0 flex-1 bg-transparent text-[1rem] font-medium text-[#2b2236] outline-none placeholder:text-[#b0a8bf]"
@@ -310,16 +313,16 @@ export default function Login() {
                   type="button"
                   onClick={confirmResetPassword}
                   disabled={resetBusy || !resetRequested}
-                  className="flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition disabled:opacity-60"
                 >
                   <span>{resetBusy && resetRequested ? "Resetting..." : "Reset Password"}</span>
-                  <span className="text-lg">→</span>
+                  <Icon name="chevron" className="h-5 w-5" />
                 </button>
               </div>
             </div>
           ) : null}
 
-          <div className="mt-8 rounded-[2rem] bg-[#f2effa] px-5 py-5 text-left">
+          <div className="mt-8 rounded-[1.5rem] bg-[#f2effa] px-5 py-5 text-left">
             <div className="flex gap-4">
               <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[rgba(104,13,255,0.12)] text-[#5e17eb]">
                 <Icon name="info" className="h-5 w-5" />
@@ -333,7 +336,7 @@ export default function Login() {
 
           <div className="mt-8 text-center">
             <Link
-              className="inline-flex rounded-full bg-[#efe5ff] px-5 py-3 text-sm font-black text-[#6218ea] transition hover:bg-[#e4d4ff]"
+              className="inline-flex rounded-[1rem] bg-[#efe5ff] px-5 py-3 text-sm font-black text-[#6218ea] transition hover:bg-[#e4d4ff]"
               to="/auth/register"
             >
               Create passenger account

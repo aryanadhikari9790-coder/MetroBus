@@ -6,8 +6,8 @@ export const PASSENGER_THEME = {
   "--mb-bg-alt": "#f5ebf2",
   "--mb-bg-deep": "#2e124f",
   "--mb-card": "rgba(255,255,255,0.96)",
-  "--mb-card-strong": "#fff5f3",
-  "--mb-card-soft": "#fbf0f4",
+  "--mb-card-strong": "#fffaf8",
+  "--mb-card-soft": "#f8f2f6",
   "--mb-text": "#27133f",
   "--mb-muted": "#7d6b93",
   "--mb-purple": "#34155d",
@@ -19,8 +19,8 @@ export const PASSENGER_THEME = {
   "--mb-border": "rgba(52, 21, 93, 0.08)",
   "--mb-success": "#16a34a",
   "--mb-danger": "#c53b56",
-  "--mb-shadow": "0 22px 48px rgba(46, 18, 79, 0.12)",
-  "--mb-shadow-strong": "0 24px 44px rgba(255, 107, 115, 0.24)",
+  "--mb-shadow": "0 12px 28px rgba(46, 18, 79, 0.08)",
+  "--mb-shadow-strong": "0 14px 30px rgba(255, 107, 115, 0.16)",
   "--mb-nav": "rgba(252, 245, 248, 0.95)",
 };
 

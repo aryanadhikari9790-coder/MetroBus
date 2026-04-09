@@ -16,7 +16,7 @@ function OtpSlots({ value, onChange }) {
           value={digit.trim()}
           inputMode="numeric"
           maxLength={1}
-          className="h-14 w-14 rounded-[1.2rem] border border-[#dad3ec] bg-white text-center text-xl font-black text-[#26172f] outline-none transition focus:border-[#6f18f8] focus:ring-2 focus:ring-[#e8d9ff]"
+          className="h-14 w-14 rounded-[0.95rem] border border-[#dad3ec] bg-white text-center text-xl font-black text-[#26172f] outline-none transition focus:border-[#6f18f8] focus:ring-2 focus:ring-[#e8d9ff]"
           onChange={(event) => {
             const nextDigit = event.target.value.replace(/\D/g, "").slice(-1);
             const next = value.padEnd(4, " ").slice(0, 4).split("");
@@ -130,7 +130,10 @@ export default function Register() {
   };
 
   return (
-    <div style={PASSENGER_THEME} className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),var(--mb-bg-alt)_46%,#fff7f4)] text-[var(--mb-text)]">
+    <div
+      style={PASSENGER_THEME}
+      className="min-h-screen bg-[linear-gradient(180deg,var(--mb-bg),var(--mb-bg-alt)_46%,#fff7f4)] text-[var(--mb-text)]"
+    >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,107,115,0.12),transparent_38%),radial-gradient(circle_at_bottom,rgba(52,21,93,0.1),transparent_34%)]" />
 
       <div className="relative mx-auto max-w-[29rem] px-4 py-6">
@@ -138,7 +141,7 @@ export default function Register() {
           <div className="flex items-center gap-3">
             <Link
               to="/auth/login"
-              className="grid h-11 w-11 place-items-center rounded-full bg-white text-[#4f21d1] shadow-[0_14px_30px_rgba(95,59,171,0.12)]"
+              className="grid h-11 w-11 place-items-center rounded-[1rem] bg-white text-[#4f21d1] shadow-[0_12px_24px_rgba(95,59,171,0.1)]"
             >
               <Icon name="arrow-left" className="h-5 w-5" />
             </Link>
@@ -165,22 +168,22 @@ export default function Register() {
         </div>
 
         {err ? (
-          <div className="mt-5 rounded-[1.75rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          <div className="mt-5 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {err}
           </div>
         ) : null}
         {ok ? (
-          <div className="mt-5 rounded-[1.75rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+          <div className="mt-5 rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
             {ok}
           </div>
         ) : null}
 
-        <section className="mt-6 rounded-[2.5rem] bg-white/96 px-5 py-6 shadow-[0_28px_60px_rgba(123,53,190,0.12)]">
+        <section className="mt-6 rounded-[2rem] bg-white/96 px-5 py-6 shadow-[0_18px_42px_rgba(123,53,190,0.1)]">
           <div className="space-y-4">
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-[#241828]">Full Name</span>
               <input
-                className="w-full rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                className="w-full rounded-[1.25rem] bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
                 placeholder="John Doe"
                 value={fullName}
                 onChange={(event) => {
@@ -195,7 +198,7 @@ export default function Register() {
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-[#241828]">Email Address</span>
               <input
-                className="w-full rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                className="w-full rounded-[1.25rem] bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
                 placeholder="john@example.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -206,7 +209,7 @@ export default function Register() {
               <span className="mb-2 block text-sm font-semibold text-[#241828]">Phone Number</span>
               <div className="grid grid-cols-[1fr_auto] gap-3">
                 <input
-                  className="rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                  className="rounded-[1.25rem] bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
                   placeholder="+977 98XXXXXXXX"
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
@@ -215,14 +218,14 @@ export default function Register() {
                   type="button"
                   onClick={requestOtp}
                   disabled={otpBusy}
-                  className="rounded-full border-2 border-[#5021d8] px-5 py-4 text-sm font-black text-[#5021d8] transition hover:bg-[#f5f0ff] disabled:opacity-60"
+                  className="rounded-[1rem] border-2 border-[#5021d8] px-5 py-4 text-sm font-black text-[#5021d8] transition hover:bg-[#f5f0ff] disabled:opacity-60"
                 >
                   {otpBusy ? "Sending..." : otpRequested ? "Resend OTP" : "Send OTP"}
                 </button>
               </div>
             </label>
 
-            <div className="rounded-[1.9rem] border border-[#ded6ef] bg-[#f7f2ff] px-4 py-4">
+            <div className="rounded-[1.35rem] border border-[#ded6ef] bg-[#f7f2ff] px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-black text-[#4721d1]">Verify Mobile</p>
@@ -233,7 +236,7 @@ export default function Register() {
                 <button
                   type="button"
                   onClick={verifyOtpLocally}
-                  className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
+                  className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
                 >
                   Verify OTP
                 </button>
@@ -259,7 +262,7 @@ export default function Register() {
             <label className="block">
               <span className="mb-2 block text-sm font-semibold text-[#241828]">Security Password</span>
               <input
-                className="w-full rounded-full bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                className="w-full rounded-[1.25rem] bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
                 placeholder="Create a secure password"
                 type="password"
                 value={password}
@@ -267,7 +270,7 @@ export default function Register() {
               />
             </label>
 
-            <label className="flex items-start gap-4 rounded-[1.6rem] bg-[#f7f4fb] px-4 py-4">
+            <label className="flex items-start gap-4 rounded-[1.2rem] bg-[#f7f4fb] px-4 py-4">
               <input
                 type="checkbox"
                 checked={isCorporateEmployee}
@@ -284,7 +287,7 @@ export default function Register() {
           </div>
         </section>
 
-        <section className="mt-6 rounded-[2.5rem] bg-white/96 px-5 py-6 shadow-[0_28px_60px_rgba(123,53,190,0.12)]">
+        <section className="mt-6 rounded-[2rem] bg-white/96 px-5 py-6 shadow-[0_18px_42px_rgba(123,53,190,0.1)]">
           <div>
             <h2 className="text-[1.7rem] font-black text-[#1c1723]">Frequent Destinations</h2>
             <p className="mt-1 text-sm leading-6 text-[#635c73]">Pin your home, work, and study stops for faster bookings.</p>
@@ -320,7 +323,7 @@ export default function Register() {
             />
           </div>
 
-          <div className="mt-5 rounded-[1.6rem] bg-[#f8f6fd] px-4 py-4">
+          <div className="mt-5 rounded-[1.2rem] bg-[#f8f6fd] px-4 py-4">
             <div className="flex gap-3">
               <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[rgba(104,13,255,0.12)] text-[#5d17eb]">
                 <Icon name="shield" className="h-5 w-5" />
@@ -335,7 +338,7 @@ export default function Register() {
           </div>
         </section>
 
-        <section className="mt-6 rounded-[2.5rem] bg-white/96 px-5 py-6 shadow-[0_28px_60px_rgba(123,53,190,0.12)]">
+        <section className="mt-6 rounded-[2rem] bg-white/96 px-5 py-6 shadow-[0_18px_42px_rgba(123,53,190,0.1)]">
           <p className="text-center text-sm leading-6 text-[#6b647a]">
             By clicking Register, you agree to our <button type="button" className="font-bold text-[#4f21d1]">Terms of Service</button> and{" "}
             <button type="button" className="font-bold text-[#4f21d1]">Privacy Policy</button>.
@@ -345,10 +348,10 @@ export default function Register() {
             type="button"
             onClick={onRegister}
             disabled={busy}
-            className="mt-6 flex w-full items-center justify-center gap-3 rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-5 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition hover:translate-y-[-1px] disabled:opacity-60"
+            className="mt-6 flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-5 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] transition hover:translate-y-[-1px] disabled:opacity-60"
           >
             <span>{busy ? "Registering..." : "Register"}</span>
-            <span className="text-xl">→</span>
+            <Icon name="chevron" className="h-5 w-5" />
           </button>
         </section>
 
