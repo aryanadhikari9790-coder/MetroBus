@@ -28,6 +28,11 @@ class Payment(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
 
     reference = models.CharField(max_length=200, blank=True, null=True)  # gateway ref id, txn id etc.
+    gateway_order_id = models.CharField(max_length=120, blank=True, default="")
+    gateway_transaction_id = models.CharField(max_length=120, blank=True, default="")
+    gateway_status = models.CharField(max_length=40, blank=True, default="")
+    gateway_expires_at = models.DateTimeField(null=True, blank=True)
+    gateway_payload = models.JSONField(blank=True, default=dict)
 
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="payments_created")
     verified_by = models.ForeignKey(

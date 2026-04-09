@@ -1,7 +1,10 @@
 import os
 from decimal import Decimal
+from urllib.parse import urlencode
 
+from django.conf import settings
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.shortcuts import redirect
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,7 +21,16 @@ from .serializers import (
     WalletPassPurchaseSerializer,
 )
 from .permissions import IsPassenger, IsHelperOrAdmin
-from .gateways import esewa_build_form, esewa_status_check, khalti_initiate, khalti_lookup, new_uuid
+from .gateways import (
+    GatewayConfigurationError,
+    GatewayRequestError,
+    esewa_build_form,
+    esewa_status_check,
+    khalti_customer_phone,
+    khalti_initiate,
+    khalti_lookup,
+    new_uuid,
+)
 from .wallets import (
     FREE_RIDE_REWARD_POINTS,
     calculate_reward_points,
@@ -47,6 +59,64 @@ def frontend_base_url(request=None):
 
 def frontend_url(path: str, request=None):
     return f"{frontend_base_url(request)}{path}"
+
+
+def payment_result_url(request, **params):
+    query = urlencode({key: value for key, value in params.items() if value not in (None, "")})
+    suffix = f"?{query}" if query else ""
+    return frontend_url(f"/payment/result{suffix}", request)
+
+
+def _serialize_payment_result(payment, message):
+    return {
+        "message": message,
+        "payment": PaymentSerializer(payment).data,
+    }
+
+
+def _sync_khalti_payment(payment, payload, *, pidx=None, transaction_id="", fallback_status=""):
+    gateway_status = payload.get("status") or fallback_status or payment.gateway_status or ""
+    resolved_pidx = pidx or payload.get("pidx") or payment.reference or ""
+    transaction_value = transaction_id or payload.get("transaction_id") or payment.gateway_transaction_id or ""
+    order_value = payload.get("purchase_order_id") or payment.gateway_order_id or ""
+    expires_at_raw = payload.get("expires_at") or ""
+    expires_at = parse_datetime(expires_at_raw) if expires_at_raw else None
+
+    update_fields = ["reference", "gateway_status", "gateway_transaction_id", "gateway_order_id", "gateway_payload"]
+    payment.reference = resolved_pidx
+    payment.gateway_status = gateway_status
+    payment.gateway_transaction_id = transaction_value
+    payment.gateway_order_id = order_value
+    payment.gateway_payload = payload or {}
+
+    total_amount = payload.get("total_amount")
+    if total_amount not in (None, ""):
+        try:
+            payment.amount = (Decimal(str(total_amount)) / Decimal("100")).quantize(Decimal("0.01"))
+            update_fields.append("amount")
+        except Exception:
+            pass
+
+    if expires_at:
+        payment.gateway_expires_at = expires_at
+        update_fields.append("gateway_expires_at")
+
+    if gateway_status == "Completed":
+        payment.status = Payment.Status.SUCCESS
+        payment.verified_at = timezone.now()
+        update_fields.extend(["status", "verified_at"])
+    elif gateway_status in {"Initiated", "Pending"}:
+        payment.status = Payment.Status.PENDING
+        update_fields.append("status")
+    elif gateway_status == "User canceled":
+        payment.status = Payment.Status.CANCELLED
+        update_fields.append("status")
+    else:
+        payment.status = Payment.Status.FAILED
+        update_fields.append("status")
+
+    payment.save(update_fields=list(dict.fromkeys(update_fields)))
+    return payment
 
 
 def _wallet_for(user):
@@ -212,6 +282,7 @@ class CreatePaymentView(APIView):
         if method == Payment.Method.KHALTI:
             # Khalti expects amount in paisa
             amount_paisa = int(Decimal(payment.amount) * 100)
+            purchase_order_id = f"MB-{request.user.id}-{new_uuid()[:10].upper()}"
 
             return_url = request.build_absolute_uri(f"/api/payments/khalti/return/{payment.id}/")
             website_url = frontend_base_url(request)
@@ -219,21 +290,39 @@ class CreatePaymentView(APIView):
             customer = {
                 "name": getattr(request.user, "full_name", "Passenger"),
                 "email": getattr(request.user, "email", "") or "test@metrob.us",
-                "phone": getattr(request.user, "phone", "9800000000"),
+                "phone": khalti_customer_phone(getattr(request.user, "phone", "9800000000")),
             }
 
-            data = khalti_initiate(
-                amount_paisa=amount_paisa,
-                purchase_order_id=str(booking.id),
-                purchase_order_name=f"MetroBus Booking #{booking.id}",
-                return_url=return_url,
-                website_url=website_url,
-                customer_info=customer,
-            )
+            try:
+                data = khalti_initiate(
+                    amount_paisa=amount_paisa,
+                    purchase_order_id=purchase_order_id,
+                    purchase_order_name=f"MetroBus Booking #{booking.id}",
+                    return_url=return_url,
+                    website_url=website_url,
+                    customer_info=customer,
+                )
+            except GatewayConfigurationError as error:
+                payment.delete()
+                return Response({"detail": str(error)}, status=503)
+            except GatewayRequestError as error:
+                payment.delete()
+                return Response({"detail": str(error)}, status=502)
 
             # store pidx
             payment.reference = data.get("pidx")
-            payment.save(update_fields=["reference"])
+            payment.gateway_order_id = purchase_order_id
+            payment.gateway_status = data.get("status") or "Initiated"
+            expires_at_raw = data.get("expires_at")
+            update_fields = ["reference", "gateway_order_id", "gateway_status"]
+            if expires_at_raw:
+                parsed = parse_datetime(expires_at_raw)
+                if parsed:
+                    payment.gateway_expires_at = parsed
+                    update_fields.append("gateway_expires_at")
+            payment.gateway_payload = data
+            update_fields.append("gateway_payload")
+            payment.save(update_fields=update_fields)
 
             return Response(
                 {"payment": PaymentSerializer(payment).data, "redirect": {"type": "REDIRECT", "url": data.get("payment_url")}},
@@ -380,29 +469,81 @@ class KhaltiReturnCallback(APIView):
     def get(self, request, payment_id: int):
         payment = Payment.objects.filter(id=payment_id, method=Payment.Method.KHALTI).select_related("booking").first()
         if not payment:
-            return redirect(frontend_url("/payment/result?status=failed&reason=payment_not_found", request))
+            return redirect(payment_result_url(request, status="failed", method="khalti", reason="payment_not_found"))
 
         pidx = request.GET.get("pidx") or payment.reference
+        status_hint = request.GET.get("status") or payment.gateway_status or "Pending"
+        transaction_id = request.GET.get("transaction_id") or request.GET.get("transactionId") or ""
+        if pidx:
+            payment.reference = pidx
+        if transaction_id:
+            payment.gateway_transaction_id = transaction_id
+        if status_hint:
+            payment.gateway_status = status_hint
+        payment.gateway_payload = {**(payment.gateway_payload or {}), "callback": dict(request.GET.items())}
+        payment.save(update_fields=["reference", "gateway_transaction_id", "gateway_status", "gateway_payload"])
+
         try:
-            res = khalti_lookup(pidx)
-            status_val = res.get("status")
-        except Exception:
-            status_val = "Pending"
-
-        if status_val == "Completed":
-            payment.status = Payment.Status.SUCCESS
-            payment.reference = pidx
-            payment.verified_at = timezone.now()
-            payment.save(update_fields=["status", "reference", "verified_at"])
-            return redirect(frontend_url(f"/payment/result?status=success&method=khalti&booking={payment.booking.id}", request))
-
-        if status_val in ["Initiated", "Pending"]:
+            payload = khalti_lookup(pidx)
+            payment = _sync_khalti_payment(payment, payload, pidx=pidx, transaction_id=transaction_id, fallback_status=status_hint)
+        except (GatewayConfigurationError, GatewayRequestError):
             payment.status = Payment.Status.PENDING
-            payment.reference = pidx
-            payment.save(update_fields=["status", "reference"])
-            return redirect(frontend_url(f"/payment/result?status=pending&method=khalti&booking={payment.booking.id}", request))
+            payment.save(update_fields=["status"])
+            return redirect(
+                payment_result_url(
+                    request,
+                    status="pending",
+                    method="khalti",
+                    booking=payment.booking.id,
+                    payment=payment.id,
+                )
+            )
 
-        payment.status = Payment.Status.FAILED
-        payment.reference = pidx
-        payment.save(update_fields=["status", "reference"])
-        return redirect(frontend_url(f"/payment/result?status=failed&method=khalti&booking={payment.booking.id}", request))
+        status_map = {
+            Payment.Status.SUCCESS: "success",
+            Payment.Status.PENDING: "pending",
+            Payment.Status.CANCELLED: "failed",
+            Payment.Status.FAILED: "failed",
+        }
+        return redirect(
+            payment_result_url(
+                request,
+                status=status_map.get(payment.status, "failed"),
+                method="khalti",
+                booking=payment.booking.id,
+                payment=payment.id,
+            )
+        )
+
+
+class KhaltiVerifyPaymentView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def post(self, request, payment_id: int):
+        payment = (
+            Payment.objects.select_related("booking")
+            .filter(id=payment_id, method=Payment.Method.KHALTI, booking__passenger=request.user)
+            .first()
+        )
+        if not payment:
+            return Response({"detail": "Khalti payment not found."}, status=404)
+        if not payment.reference:
+            return Response({"detail": "This Khalti payment does not have a payment identifier yet."}, status=400)
+
+        try:
+            payload = khalti_lookup(payment.reference)
+            payment = _sync_khalti_payment(payment, payload, pidx=payment.reference)
+        except GatewayConfigurationError as error:
+            return Response({"detail": str(error)}, status=503)
+        except GatewayRequestError as error:
+            return Response({"detail": str(error)}, status=502)
+
+        message = "Khalti payment is still pending."
+        if payment.status == Payment.Status.SUCCESS:
+            message = "Khalti payment verified successfully."
+        elif payment.status == Payment.Status.CANCELLED:
+            message = "Khalti payment was cancelled."
+        elif payment.status == Payment.Status.FAILED:
+            message = "Khalti payment failed."
+
+        return Response(_serialize_payment_result(payment, message), status=200)

@@ -201,3 +201,7 @@ SIMPLE_JWT = {
 
 AUTH_USER_MODEL = "accounts.User"
 
+KHALTI_API_URL = os.getenv("KHALTI_API_URL", "https://dev.khalti.com/api/v2").rstrip("/")
+KHALTI_PUBLIC_KEY = os.getenv("KHALTI_PUBLIC_KEY", "").strip()
+KHALTI_SECRET_KEY = os.getenv("KHALTI_SECRET_KEY", "").strip()
+

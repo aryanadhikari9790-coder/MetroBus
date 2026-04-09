@@ -8,6 +8,7 @@ from .views import (
     EsewaSuccessCallback,
     EsewaFailureCallback,
     KhaltiReturnCallback,
+    KhaltiVerifyPaymentView,
 )
 
 urlpatterns = [
@@ -23,4 +24,5 @@ urlpatterns = [
 
     # Khalti callback
     path("khalti/return/<int:payment_id>/", KhaltiReturnCallback.as_view(), name="khalti-return"),
+    path("khalti/verify/<int:payment_id>/", KhaltiVerifyPaymentView.as_view(), name="khalti-verify"),
 ]
