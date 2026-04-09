@@ -325,6 +325,7 @@ export default function PassengerHome() {
     }
     return items;
   }, [activeBooking, paymentActionBooking, paymentPendingBooking, walletSummary?.reward_free_ride_ready]);
+  const bookingRefreshMs = activeBooking || paymentActionBooking || paymentPendingBooking ? 3000 : 15000;
 
   const ensureCtx = useCallback(async (tripList) => {
     const missing = tripList.filter((trip) => !tripContexts[trip.id]);
@@ -461,10 +462,10 @@ export default function PassengerHome() {
     loadBookings();
     loadWalletSummary();
     const tripRefresh = setInterval(() => loadBase({ silent: true }), activeView === "track" ? 1000 : 5000);
-    const bookingRefresh = setInterval(() => loadBookings({ silent: true }), 15000);
+    const bookingRefresh = setInterval(() => loadBookings({ silent: true }), bookingRefreshMs);
     const walletRefresh = setInterval(() => loadWalletSummary({ silent: true }), 30000);
     return () => { clearInterval(tripRefresh); clearInterval(bookingRefresh); clearInterval(walletRefresh); };
-  }, [activeView, loadBase, loadBookings, loadWalletSummary]);
+  }, [activeView, bookingRefreshMs, loadBase, loadBookings, loadWalletSummary]);
 
   useEffect(() => {
     if (!activeBooking?.trip_id) return;

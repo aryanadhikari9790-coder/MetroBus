@@ -579,13 +579,32 @@ export default function HelperHome() {
       }
 
       context.drawImage(bitmap, 0, 0, drawWidth, drawHeight);
-      const imageData = context.getImageData(0, 0, drawWidth, drawHeight);
-      const result = jsQR(imageData.data, drawWidth, drawHeight, { inversionAttempts: "attemptBoth" });
-      if (!result?.data) {
+      let qrValue = "";
+
+      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
+        try {
+          const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+          const results = await detector.detect(canvas);
+          if (results?.[0]?.rawValue) {
+            qrValue = results[0].rawValue;
+          }
+        } catch {
+          // Fall back to jsQR below.
+        }
+      }
+
+      if (!qrValue) {
+        const imageData = context.getImageData(0, 0, drawWidth, drawHeight);
+        const result = jsQR(imageData.data, drawWidth, drawHeight, { inversionAttempts: "attemptBoth" });
+        qrValue = result?.data || "";
+      }
+
+      if (!qrValue) {
         throw new Error("No QR code was found in that photo. Try again with the ticket centered and well lit.");
       }
 
-      await lookupTicket(result.data);
+      setVerifyBookingId(qrValue);
+      await lookupTicket(qrValue);
     } catch (error) {
       setErr(error?.message || "MetroBus could not scan that QR image.");
     } finally {
