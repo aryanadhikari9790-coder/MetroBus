@@ -141,8 +141,12 @@ class CreatePaymentView(APIView):
         if not booking:
             return Response({"detail": "Booking not found"}, status=404)
 
-        if hasattr(booking, "payment"):
-            return Response({"detail": "Payment already exists for this booking"}, status=400)
+        existing_payment = getattr(booking, "payment", None)
+        if existing_payment:
+            if existing_payment.status in {Payment.Status.FAILED, Payment.Status.CANCELLED}:
+                existing_payment.delete()
+            else:
+                return Response({"detail": "Payment already exists for this booking"}, status=400)
 
         wallet = _wallet_for(request.user)
         payment = Payment.objects.create(

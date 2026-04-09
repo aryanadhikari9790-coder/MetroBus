@@ -164,7 +164,15 @@ export function HeaderBar({ user, activeView, onLogout, onMenu, onNotifications,
           <div>
             <MetroBusWordmark compact />
             <p className="text-xs font-medium text-[var(--mb-muted)]">
-              {activeView === "home" ? "Journey Planner" : activeView === "track" ? "Live Tracking" : activeView === "rides" ? "My Tickets" : "Passenger Profile"}
+              {activeView === "home"
+                ? "Journey Planner"
+                : activeView === "track"
+                  ? "Live Tracking"
+                  : activeView === "rides"
+                    ? "My Tickets"
+                    : activeView === "checkout"
+                      ? "Passenger Checkout"
+                      : "Passenger Profile"}
             </p>
           </div>
         </div>
@@ -588,8 +596,8 @@ export function SeatButton({ seat, selected, onClick }) {
 function buildPaymentOptions(total, walletSummary) {
   const options = [
     { label: "Cash", method: "CASH", note: "Pay onboard", disabled: false },
+    { label: "Khalti", method: "KHALTI", note: "Fast mobile checkout", disabled: false, featured: true },
     { label: "eSewa", method: "ESEWA", note: "Online payment", disabled: false },
-    { label: "Khalti", method: "KHALTI", note: "Online payment", disabled: false },
     {
       label: "Metro Wallet",
       method: "WALLET",
@@ -894,11 +902,21 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
   );
 }
 
-export function PaymentRequestCard({ booking, walletSummary, paymentBusy, onPay }) {
+export function PaymentRequestCard({ booking, paymentBusy, onPay }) {
   if (!booking) return null;
-  const paymentOptions = buildPaymentOptions(booking.fare_total, walletSummary);
   const waitingForCash = booking.payment_method === "CASH" && booking.payment_pending_verification;
   const waitingForGateway = booking.payment_pending_verification && booking.payment_method && booking.payment_method !== "CASH";
+  const paymentReady = booking.needs_payment_selection;
+  const actionLabel = paymentReady ? "Open Checkout" : "Review Payment";
+  const summaryText = paymentReady
+    ? booking.payment_requested_by_name
+      ? `${booking.payment_requested_by_name} scanned or loaded your ticket and is waiting for your payment choice.`
+      : "Your helper scanned or loaded the ticket and is waiting for your payment choice."
+    : waitingForCash
+      ? "Cash was selected. Please hand the fare to the helper so they can verify the collection."
+      : waitingForGateway
+        ? `${paymentHandle(booking)} is processing. Keep MetroBus open while the payment status updates.`
+        : "MetroBus will show your latest payment status here.";
 
   return (
     <div className="rounded-[24px] bg-[linear-gradient(180deg,#fff,#f8e5fb)] p-5 shadow-[var(--mb-shadow)]">
@@ -906,11 +924,7 @@ export function PaymentRequestCard({ booking, walletSummary, paymentBusy, onPay 
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Helper Payment Request</p>
           <h3 className="mt-2 text-2xl font-black text-[var(--mb-text)]">Booking #{booking.id} is ready for payment</h3>
-          <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">
-            {booking.payment_requested_by_name
-              ? `${booking.payment_requested_by_name} scanned or loaded your ticket and is waiting for your payment choice.`
-              : "Your helper scanned or loaded the ticket and is waiting for your payment choice."}
-          </p>
+          <p className="mt-2 text-sm font-medium text-[var(--mb-muted)]">{summaryText}</p>
         </div>
         <div className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
           {fmtMoney(booking.fare_total)}
@@ -932,27 +946,21 @@ export function PaymentRequestCard({ booking, walletSummary, paymentBusy, onPay 
         </div>
       </div>
 
-      {booking.needs_payment_selection ? (
-        <>
-          <p className="mt-5 text-sm font-medium text-[var(--mb-muted)]">
-            Choose how you want to pay before boarding. Cash stays pending until the helper confirms collection.
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            {paymentOptions.map((option) => (
-              <button
-                key={option.method}
-                type="button"
-                onClick={() => onPay(option.method, booking.id)}
-                disabled={paymentBusy || option.disabled}
-                className={`rounded-[24px] border px-4 py-4 text-left text-sm font-black shadow-[var(--mb-shadow)] disabled:opacity-60 ${option.disabled ? "border-[var(--mb-border)] bg-[#f5edf7] text-[var(--mb-muted)]" : "border-[var(--mb-border)] bg-white text-[var(--mb-purple)]"}`}
-              >
-                <span className="block text-base">{paymentBusy ? "Processing..." : option.label}</span>
-                <span className="mt-1 block text-xs font-semibold text-[var(--mb-muted)]">{option.note}</span>
-              </button>
-            ))}
-          </div>
-        </>
-      ) : null}
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm font-medium text-[var(--mb-muted)]">
+          {paymentReady
+            ? "Open the passenger checkout page to choose Cash, Khalti, eSewa, wallet, pass, or reward payment."
+            : "Open checkout to review the current payment state for this booking."}
+        </p>
+        <button
+          type="button"
+          onClick={() => onPay?.("OPEN_CHECKOUT", booking.id)}
+          disabled={paymentBusy}
+          className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60"
+        >
+          {actionLabel}
+        </button>
+      </div>
 
       {waitingForCash ? (
         <div className="mt-5 rounded-[24px] bg-white px-4 py-4 text-sm font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
@@ -966,6 +974,197 @@ export function PaymentRequestCard({ booking, walletSummary, paymentBusy, onPay 
         </div>
       ) : null}
     </div>
+  );
+}
+
+export function CheckoutPage({
+  booking,
+  walletSummary,
+  paymentBusy,
+  onPay,
+  onBack,
+  onTrack,
+  onViewTicket,
+}) {
+  if (!booking) {
+    return (
+      <section className="space-y-4">
+        <div className="rounded-[28px] bg-white p-6 shadow-[var(--mb-shadow)]">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Checkout</p>
+          <h2 className="mt-3 text-[2.2rem] font-black leading-tight text-[var(--mb-text)]">No payment request is active</h2>
+          <p className="mt-3 text-base font-medium leading-7 text-[var(--mb-muted)]">
+            MetroBus will open checkout here when a helper scans or loads your ticket and requests payment for the current booking.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="rounded-[1rem] border border-[var(--mb-border)] bg-white px-5 py-4 text-base font-black text-[var(--mb-text)] shadow-[var(--mb-shadow)]"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onTrack}
+            className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)]"
+          >
+            Open Track
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const paymentOptions = buildPaymentOptions(booking.fare_total, walletSummary);
+  const waitingForCash = booking.payment_method === "CASH" && booking.payment_pending_verification;
+  const waitingForGateway = booking.payment_pending_verification && booking.payment_method && booking.payment_method !== "CASH";
+  const paymentComplete = booking.payment_status === "SUCCESS";
+
+  return (
+    <section className="space-y-5">
+      <div className="rounded-[30px] bg-white p-6 shadow-[var(--mb-shadow)]">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Checkout</p>
+            <h2 className="mt-3 text-[2.35rem] font-black leading-[0.95] tracking-[-0.04em] text-[var(--mb-text)]">
+              {booking.needs_payment_selection
+                ? "Choose your payment method"
+                : waitingForCash
+                  ? "Cash is waiting for helper confirmation"
+                  : waitingForGateway
+                    ? `${paymentHandle(booking)} is processing`
+                    : paymentComplete
+                      ? "Payment confirmed"
+                      : "Review this booking payment"}
+            </h2>
+          </div>
+          <div className="rounded-full bg-[var(--mb-bg-alt)] px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+            {fmtMoney(booking.fare_total)}
+          </div>
+        </div>
+        <p className="mt-4 text-base leading-7 text-[var(--mb-muted)]">
+          {booking.needs_payment_selection
+            ? booking.payment_requested_by_name
+              ? `${booking.payment_requested_by_name} scanned or loaded your QR ticket and asked you to finish payment before boarding.`
+              : "Your helper scanned or loaded your QR ticket and asked you to finish payment before boarding."
+            : waitingForCash
+              ? "You selected cash. Hand the fare to the helper so they can verify and board you."
+              : waitingForGateway
+                ? "Keep this page open while MetroBus waits for the gateway confirmation to come back."
+                : "This booking already has a completed payment attached to it."}
+        </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="rounded-[24px] bg-white p-5 shadow-[var(--mb-shadow)]">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Trip</p>
+          <p className="mt-2 text-[1.55rem] font-black leading-tight text-[var(--mb-text)]">{booking.route_name}</p>
+          <p className="mt-3 text-sm font-medium leading-6 text-[var(--mb-muted)]">
+            {booking.pickup_stop_name} to {booking.destination_stop_name}
+          </p>
+        </div>
+        <div className="rounded-[24px] bg-white p-5 shadow-[var(--mb-shadow)]">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Ticket Summary</p>
+          <p className="mt-2 text-[1.55rem] font-black leading-tight text-[var(--mb-purple)]">
+            {(booking.seat_labels || []).join(", ") || "--"}
+          </p>
+          <p className="mt-3 text-sm font-medium leading-6 text-[var(--mb-muted)]">
+            Booking #{booking.id} • {booking.ticket_code || "QR ticket ready"}
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-[28px] bg-white p-5 shadow-[var(--mb-shadow)]">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-purple)]">Payment Methods</p>
+            <p className="mt-2 text-sm font-medium leading-6 text-[var(--mb-muted)]">
+              Khalti and eSewa open secure online payment. Wallet, pass, and reward payment stay inside MetroBus.
+            </p>
+          </div>
+          <div className="rounded-full bg-[var(--mb-bg-alt)] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">
+            {booking.payment_status}
+          </div>
+        </div>
+
+        {booking.needs_payment_selection ? (
+          <div className="mt-5 grid gap-3">
+            {paymentOptions.map((option) => (
+              <button
+                key={option.method}
+                type="button"
+                onClick={() => onPay(option.method, booking.id)}
+                disabled={paymentBusy || option.disabled}
+                className={`flex items-start justify-between gap-4 rounded-[22px] border px-4 py-4 text-left shadow-[var(--mb-shadow)] transition disabled:opacity-60 ${
+                  option.disabled
+                    ? "border-[var(--mb-border)] bg-[#f5edf7] text-[var(--mb-muted)]"
+                    : option.featured
+                      ? "border-transparent bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] text-white shadow-[var(--mb-shadow-strong)]"
+                      : "border-[var(--mb-border)] bg-white text-[var(--mb-text)]"
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="text-base font-black">{paymentBusy ? "Processing..." : option.label}</p>
+                  <p className={`mt-1 text-sm font-medium ${option.featured && !option.disabled ? "text-white/80" : "text-[var(--mb-muted)]"}`}>{option.note}</p>
+                </div>
+                <div className={`rounded-full px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] ${
+                  option.featured && !option.disabled
+                    ? "bg-white/18 text-white"
+                    : option.disabled
+                      ? "bg-white/60 text-[var(--mb-muted)]"
+                      : "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]"
+                }`}>
+                  {option.method === "KHALTI" ? "Fast" : option.method === "CASH" ? "Onboard" : "Select"}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {waitingForCash ? (
+          <div className="mt-5 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium leading-6 text-amber-800">
+            Cash was selected for this ride. Please hand the fare to the helper so they can verify the payment and board you.
+          </div>
+        ) : null}
+
+        {waitingForGateway ? (
+          <div className="mt-5 rounded-[22px] border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-4 text-sm font-medium leading-6 text-[var(--mb-muted)]">
+            {paymentHandle(booking)} is still pending. If you already completed the payment in the gateway, MetroBus will refresh the booking automatically.
+          </div>
+        ) : null}
+
+        {paymentComplete ? (
+          <div className="mt-5 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium leading-6 text-emerald-800">
+            Payment is completed for this booking. You can keep the QR ready and move back to Track while waiting for the bus.
+          </div>
+        ) : null}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <button
+          type="button"
+          onClick={onViewTicket}
+          className="rounded-[1rem] border border-[var(--mb-border)] bg-white px-5 py-4 text-base font-black text-[var(--mb-text)] shadow-[var(--mb-shadow)]"
+        >
+          View QR
+        </button>
+        <button
+          type="button"
+          onClick={onTrack}
+          className="rounded-[1rem] border border-[var(--mb-border)] bg-white px-5 py-4 text-base font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]"
+        >
+          Track Bus
+        </button>
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)]"
+        >
+          Back
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -1364,6 +1563,7 @@ export function BottomNav({ activeView, onChange }) {
     { id: "rides", label: "My Rides", icon: "rides" },
     { id: "profile", label: "Profile", icon: "profile" },
   ];
+  const currentTab = activeView === "checkout" ? "rides" : activeView;
   return (
     <div className="fixed inset-x-0 bottom-0 z-[1200] bg-[color:var(--mb-nav)]/92 px-3.5 pb-3 pt-2.5 backdrop-blur-xl">
       <div className="mx-auto max-w-[26rem] rounded-[1.65rem] bg-white px-2 py-2 shadow-[0_-8px_32px_rgba(95,25,230,0.1)]">
@@ -1373,12 +1573,12 @@ export function BottomNav({ activeView, onChange }) {
               key={tab.id}
               type="button"
               onClick={() => onChange(tab.id)}
-              className={`rounded-[1.2rem] px-1.5 py-2 text-center transition ${activeView === tab.id ? "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]" : "text-[var(--mb-muted)]"}`}
+              className={`rounded-[1.2rem] px-1.5 py-2 text-center transition ${currentTab === tab.id ? "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]" : "text-[var(--mb-muted)]"}`}
             >
-              <div className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full ${activeView === tab.id ? "bg-white shadow-[0_8px_18px_rgba(95,25,230,0.08)]" : ""}`}>
+              <div className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full ${currentTab === tab.id ? "bg-white shadow-[0_8px_18px_rgba(95,25,230,0.08)]" : ""}`}>
                 <Icon name={tab.icon} className="h-5 w-5" />
               </div>
-              <p className={`mt-1.5 text-[0.68rem] font-bold leading-tight ${activeView === tab.id ? "text-[var(--mb-purple)]" : ""}`}>{tab.label}</p>
+              <p className={`mt-1.5 text-[0.68rem] font-bold leading-tight ${currentTab === tab.id ? "text-[var(--mb-purple)]" : ""}`}>{tab.label}</p>
             </button>
           ))}
         </div>
