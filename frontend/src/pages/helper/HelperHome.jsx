@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import jsQR from "jsqr";
 import { api } from "../../api";
 import { clearToken } from "../../auth";
 import { useTheme } from "../../ThemeContext";
@@ -189,6 +190,7 @@ export default function HelperHome() {
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [offlineBusy, setOfflineBusy] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
   const [verifyBookingId, setVerifyBookingId] = useState("");
   const [ticketLookup, setTicketLookup] = useState(null);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -198,6 +200,7 @@ export default function HelperHome() {
   const scannerVideoRef = useRef(null);
   const scannerStreamRef = useRef(null);
   const scannerFrameRef = useRef(null);
+  const scannerCaptureInputRef = useRef(null);
 
   const activeTrip = dashboard?.active_trip ?? null;
   const pendingTrip = dashboard?.pending_trip ?? null;
@@ -249,7 +252,10 @@ export default function HelperHome() {
   const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
   const routeCondition = livePoint ? "Live movement on route" : tripAwaitingStart ? "Waiting for both start confirmations" : "Waiting for GPS ping";
   const verifyPreview = ticketLookup?.payment || { method: "Cash", status: "Pending", amount: 450 };
-  const scanSupported = typeof window !== "undefined" && "BarcodeDetector" in window && Boolean(navigator.mediaDevices?.getUserMedia);
+  const liveScanSupported = typeof window !== "undefined"
+    && window.isSecureContext
+    && "BarcodeDetector" in window
+    && Boolean(navigator.mediaDevices?.getUserMedia);
   const helperTripHeroTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A: Downtown Express";
   const vehicleCapacity = assignedBus?.capacity || seats.length || 32;
   const occupancyPercent = vehicleCapacity ? Math.round((occupiedCount / vehicleCapacity) * 100) : 56;
@@ -528,6 +534,84 @@ export default function HelperHome() {
 
   const helperPaymentActionLabel = ticketLookup?.can_accept ? "Accept & Request Payment" : "Request Payment";
 
+  const decodeTicketFromImage = useCallback(async (file) => {
+    if (!file) return;
+    setScanBusy(true);
+    setErr("");
+    setMsg("Processing the passenger QR image...");
+
+    let bitmap = null;
+    try {
+      if (typeof window !== "undefined" && "createImageBitmap" in window) {
+        bitmap = await window.createImageBitmap(file);
+      } else {
+        bitmap = await new Promise((resolve, reject) => {
+          const image = new Image();
+          const objectUrl = URL.createObjectURL(file);
+          image.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(image);
+          };
+          image.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error("MetroBus could not open that image."));
+          };
+          image.src = objectUrl;
+        });
+      }
+
+      const width = Number(bitmap.width || bitmap.naturalWidth || 0);
+      const height = Number(bitmap.height || bitmap.naturalHeight || 0);
+      if (!width || !height) {
+        throw new Error("MetroBus could not read the captured QR image.");
+      }
+
+      const maxSide = 1600;
+      const scale = Math.min(1, maxSide / Math.max(width, height));
+      const drawWidth = Math.max(1, Math.round(width * scale));
+      const drawHeight = Math.max(1, Math.round(height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = drawWidth;
+      canvas.height = drawHeight;
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        throw new Error("MetroBus could not prepare the QR scan canvas.");
+      }
+
+      context.drawImage(bitmap, 0, 0, drawWidth, drawHeight);
+      const imageData = context.getImageData(0, 0, drawWidth, drawHeight);
+      const result = jsQR(imageData.data, drawWidth, drawHeight, { inversionAttempts: "attemptBoth" });
+      if (!result?.data) {
+        throw new Error("No QR code was found in that photo. Try again with the ticket centered and well lit.");
+      }
+
+      await lookupTicket(result.data);
+    } catch (error) {
+      setErr(error?.message || "MetroBus could not scan that QR image.");
+    } finally {
+      if (bitmap && typeof bitmap.close === "function") bitmap.close();
+      if (scannerCaptureInputRef.current) scannerCaptureInputRef.current.value = "";
+      setScanBusy(false);
+    }
+  }, [lookupTicket]);
+
+  const openQrScanner = useCallback(() => {
+    setErr("");
+    setMsg("");
+    if (liveScanSupported) {
+      setScannerOpen(true);
+      return;
+    }
+    scannerCaptureInputRef.current?.click();
+  }, [liveScanSupported]);
+
+  const handleScannerCapture = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setScannerOpen(false);
+    await decodeTicketFromImage(file);
+  }, [decodeTicketFromImage]);
+
   const acceptPassengerRide = async (bookingOverride) => {
     const booking = bookingOverride || ticketLookup;
     if (!booking?.id) {
@@ -603,7 +687,7 @@ export default function HelperHome() {
   };
 
   useEffect(() => {
-    if (!scannerOpen || !scanSupported) return undefined;
+    if (!scannerOpen || !liveScanSupported) return undefined;
 
     let active = true;
     const BarcodeDetectorCtor = window.BarcodeDetector;
@@ -663,7 +747,7 @@ export default function HelperHome() {
       active = false;
       stopScanner();
     };
-  }, [lookupTicket, scanSupported, scannerOpen]);
+  }, [liveScanSupported, lookupTicket, scannerOpen]);
 
   const copyToClipboard = useCallback(async (text) => {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
@@ -1002,19 +1086,31 @@ Need support with live trip operations.`;
             </div>
             <SurfaceCard className="rounded-[1.8rem]">
               <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">Ticket Code / QR Payload</label>
+              <input
+                ref={scannerCaptureInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleScannerCapture}
+              />
               <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
                 <div className="relative">
                   <input type="text" value={verifyBookingId} onChange={(event) => setVerifyBookingId(event.target.value)} placeholder="METROBUS:TICKET:MBT-XXXX" className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold text-[var(--hlp-text)] outline-none" />
                   <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--hlp-purple)]"><Icon name="qr" className="h-6 w-6" /></span>
                 </div>
-                <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy} className="!px-8 !py-4">
+                <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy || scanBusy} className="!px-8 !py-4">
                   {verifyBusy ? "Loading" : "Load Ticket"}
                 </PrimaryButton>
-                <PrimaryButton tone="ghost" onClick={() => setScannerOpen(true)} disabled={!scanSupported || verifyBusy} className="!px-8 !py-4">
-                  Scan QR
+                <PrimaryButton tone="ghost" onClick={openQrScanner} disabled={verifyBusy || scanBusy} className="!px-8 !py-4">
+                  {scanBusy ? "Reading QR" : "Scan QR"}
                 </PrimaryButton>
               </div>
-              {!scanSupported ? <p className="mt-3 text-sm text-[var(--hlp-muted)]">Live QR scanning is not supported in this browser, so use the ticket code or pasted QR value.</p> : null}
+              <p className="mt-3 text-sm text-[var(--hlp-muted)]">
+                {liveScanSupported
+                  ? "Use Scan QR to open the live camera and load the passenger ticket instantly."
+                  : "Use Scan QR to open the phone camera, capture the passenger ticket, and let MetroBus read the QR from the image."}
+              </p>
             </SurfaceCard>
 
             {scannerOpen ? (
@@ -1024,7 +1120,10 @@ Need support with live trip operations.`;
                     <SectionLabel>Live Scanner</SectionLabel>
                     <p className="mt-2 text-2xl font-black">Point the camera at the passenger QR</p>
                   </div>
-                  <PrimaryButton tone="ghost" onClick={() => setScannerOpen(false)} className="!px-5 !py-3">Close</PrimaryButton>
+                  <div className="flex items-center gap-2">
+                    <PrimaryButton tone="ghost" onClick={() => scannerCaptureInputRef.current?.click()} className="!px-5 !py-3">Use Photo</PrimaryButton>
+                    <PrimaryButton tone="ghost" onClick={() => setScannerOpen(false)} className="!px-5 !py-3">Close</PrimaryButton>
+                  </div>
                 </div>
                 <div className="mt-4 overflow-hidden rounded-[1.8rem] bg-[var(--hlp-soft)]">
                   <video ref={scannerVideoRef} className="h-72 w-full object-cover" muted playsInline />
