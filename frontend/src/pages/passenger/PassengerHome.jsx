@@ -4,6 +4,7 @@ import { clearToken } from "../../auth";
 import { useAuth } from "../../AuthContext";
 import { api } from "../../api";
 import { snapRouteToRoad } from "../../lib/mapRoute";
+import { buildWsUrl } from "../../lib/ws";
 import {
   BottomNav,
   CancellationSheet,
@@ -75,10 +76,32 @@ export default function PassengerHome() {
   const [loadingSeats, setLoadingSeats] = useState(false);
   const [bookingBusy, setBookingBusy] = useState(false);
   const [paymentBusy, setPaymentBusy] = useState(false);
+  const [bookingSocketState, setBookingSocketState] = useState("disconnected");
+  const [bookingEventLog, setBookingEventLog] = useState([]);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [now, setNow] = useState(Date.now());
   const lastPaymentRequestKeyRef = useRef("");
+  const activeViewRef = useRef("home");
+  const checkoutOriginViewRef = useRef("home");
+
+  useEffect(() => {
+    activeViewRef.current = activeView;
+  }, [activeView]);
+
+  useEffect(() => {
+    checkoutOriginViewRef.current = checkoutOriginView;
+  }, [checkoutOriginView]);
+
+  const pushBookingLog = useCallback((text) => {
+    setBookingEventLog((current) => [
+      {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        text,
+      },
+      ...current,
+    ].slice(0, 8));
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 10000);
@@ -506,9 +529,8 @@ export default function PassengerHome() {
     if (!selectedTripId || !settings.liveTracking) return undefined;
     let socket = null;
     let subscribed = true;
-    const wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
     const connect = () => {
-      socket = new WebSocket(`${wsProtocol}://${window.location.hostname}:8000/ws/transport/trips/${selectedTripId}/`);
+      socket = new WebSocket(buildWsUrl(`/ws/transport/trips/${selectedTripId}/`));
       socket.onmessage = (event) => {
         if (!subscribed) return;
         const data = JSON.parse(event.data);
@@ -545,6 +567,79 @@ export default function PassengerHome() {
   const closeCheckout = useCallback(() => {
     setActiveView(checkoutOriginView || (activeBooking ? "track" : "home"));
   }, [activeBooking, checkoutOriginView]);
+
+  useEffect(() => {
+    let subscribed = true;
+    let reconnectTimer = null;
+    let socket = null;
+
+    const connect = () => {
+      setBookingSocketState("connecting");
+      socket = new WebSocket(buildWsUrl("/ws/bookings/stream/"));
+
+      socket.onopen = () => {
+        setBookingSocketState("connected");
+        pushBookingLog("Passenger booking socket connected.");
+      };
+
+      socket.onerror = () => {
+        pushBookingLog("Passenger booking socket error detected.");
+      };
+
+      socket.onmessage = async (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === "SOCKET_CONNECTED") {
+            pushBookingLog("Realtime payment channel is ready.");
+            return;
+          }
+
+          pushBookingLog(`Realtime event: ${payload.type} for booking #${payload.booking_id}.`);
+          await Promise.all([loadBookings({ silent: true }), loadWalletSummary({ silent: true })]);
+
+          if (payload.type === "PAYMENT_REQUESTED") {
+            const origin = activeViewRef.current === "checkout"
+              ? checkoutOriginViewRef.current || "home"
+              : activeViewRef.current;
+            setCheckoutOriginView(origin || "home");
+            setHeaderPanel("");
+            setActiveView("checkout");
+            setMsg(payload.message || `Payment requested for Booking #${payload.booking_id}.`);
+          }
+
+          if (payload.type === "BOOKING_SCANNED") {
+            setMsg(payload.message || `Helper scanned Booking #${payload.booking_id}.`);
+          }
+
+          if (payload.type === "PAYMENT_CONFIRMED") {
+            setMsg(payload.message || `Payment confirmed for Booking #${payload.booking_id}.`);
+            setActiveView("track");
+          }
+
+          if (payload.type === "BOARDING_COMPLETED") {
+            setMsg(payload.message || `Ride completed for Booking #${payload.booking_id}.`);
+          }
+        } catch {
+          pushBookingLog("Received an unreadable passenger booking event.");
+        }
+      };
+
+      socket.onclose = () => {
+        setBookingSocketState("disconnected");
+        if (subscribed) {
+          pushBookingLog("Passenger booking socket disconnected. Reconnecting...");
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      };
+    };
+
+    connect();
+    return () => {
+      subscribed = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (socket) socket.close();
+    };
+  }, [loadBookings, loadWalletSummary, pushBookingLog]);
 
   useEffect(() => {
     const requestKey = paymentActionBooking
@@ -748,11 +843,13 @@ export default function PassengerHome() {
 
   const pay = async (method, bookingId = lastBookingId) => {
     if (method === "OPEN_CHECKOUT") {
+      pushBookingLog("Passenger opened the checkout screen.");
       openCheckout();
       return;
     }
     if (!bookingId) { setErr("Create a booking first."); return; }
     setPaymentBusy(true); setErr(""); setMsg("");
+    pushBookingLog(`Passenger selected ${method} for booking #${bookingId}.`);
     try {
       const response = await api.post("/api/payments/create/", { booking_id: bookingId, method });
       const { redirect, payment } = response.data;
@@ -766,9 +863,11 @@ export default function PassengerHome() {
       if (redirect?.type === "FORM_POST" && redirect.url) { buildFormPost(redirect); return; }
       await Promise.all([loadBookings({ silent: true }), loadWalletSummary({ silent: true })]);
       if (payment?.status === "SUCCESS") {
+        pushBookingLog(`Payment confirmed immediately with ${method}.`);
         setMsg("Payment completed for this booking.");
         setActiveView("track");
       } else if (payment?.status === "PENDING") {
+        pushBookingLog(`Payment is pending after selecting ${method}.`);
         if (method === "CASH") {
           setMsg("Cash selected. Hand the fare to the helper so they can verify the payment.");
         } else {
@@ -998,6 +1097,30 @@ export default function PassengerHome() {
       <main className="mx-auto max-w-[28rem] px-4 pb-36 pt-24">
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
+        {(activeBooking || paymentActionBooking || paymentPendingBooking || activeView === "checkout") ? (
+          <div className="mb-4 rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Realtime Status</p>
+                <p className="mt-1 text-sm font-medium text-[var(--mb-muted)]">Socket: {bookingSocketState}</p>
+              </div>
+              <span className="rounded-full bg-[var(--mb-card-soft)] px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[var(--mb-purple)]">
+                {bookingEventLog.length} events
+              </span>
+            </div>
+            <div className="mt-3 space-y-2">
+              {bookingEventLog.length ? bookingEventLog.map((item) => (
+                <div key={item.id} className="rounded-[18px] bg-[var(--mb-card-soft)] px-3 py-3 text-sm font-medium text-[var(--mb-text)]">
+                  {item.text}
+                </div>
+              )) : (
+                <div className="rounded-[18px] border border-dashed border-[var(--mb-border)] px-3 py-3 text-sm text-[var(--mb-muted)]">
+                  Waiting for helper scan and payment events.
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
         {paymentActionBooking && activeView !== "checkout" ? (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-3 shadow-[var(--mb-shadow)]">
             <div>

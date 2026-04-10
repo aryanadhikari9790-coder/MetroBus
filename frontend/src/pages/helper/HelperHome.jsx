@@ -5,6 +5,7 @@ import jsQR from "jsqr";
 import { api } from "../../api";
 import { clearToken } from "../../auth";
 import { useTheme } from "../../ThemeContext";
+import { buildWsUrl } from "../../lib/ws";
 
 const LIGHT_THEME = {
   "--hlp-bg": "#fbf3f6",
@@ -194,6 +195,8 @@ export default function HelperHome() {
   const [verifyBookingId, setVerifyBookingId] = useState("");
   const [ticketLookup, setTicketLookup] = useState(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanLogItems, setScanLogItems] = useState([]);
+  const [bookingSocketState, setBookingSocketState] = useState("disconnected");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [activeTab, setActiveTab] = useState("trip");
@@ -201,6 +204,8 @@ export default function HelperHome() {
   const scannerStreamRef = useRef(null);
   const scannerFrameRef = useRef(null);
   const scannerCaptureInputRef = useRef(null);
+  const bookingSocketRef = useRef(null);
+  const ticketLookupRef = useRef(null);
 
   const activeTrip = dashboard?.active_trip ?? null;
   const pendingTrip = dashboard?.pending_trip ?? null;
@@ -280,6 +285,20 @@ export default function HelperHome() {
   const onboardBookings = helperBookingGroups.onboard ?? [];
   const completedRecentBookings = helperBookingGroups.completed_recent ?? [];
   const helperBookingSummary = helperBookingGroups.summary ?? {};
+
+  const pushScanLog = useCallback((text) => {
+    setScanLogItems((current) => {
+      const entry = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        text,
+      };
+      return [entry, ...current].slice(0, 8);
+    });
+  }, []);
+
+  useEffect(() => {
+    ticketLookupRef.current = ticketLookup;
+  }, [ticketLookup]);
 
   const loadDashboard = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoadingTrips(true);
@@ -361,6 +380,61 @@ export default function HelperHome() {
     const intervalId = setInterval(() => loadDashboard({ silent: true }), 3000);
     return () => clearInterval(intervalId);
   }, [loadDashboard, loadAssignedBus]);
+
+  useEffect(() => {
+    let subscribed = true;
+    let reconnectTimer = null;
+
+    const connect = () => {
+      setBookingSocketState("connecting");
+      const socket = new WebSocket(buildWsUrl("/ws/bookings/stream/"));
+      bookingSocketRef.current = socket;
+
+      socket.onopen = () => {
+        setBookingSocketState("connected");
+        pushScanLog("Booking socket connected.");
+      };
+
+      socket.onerror = () => {
+        pushScanLog("Booking socket error detected.");
+      };
+
+      socket.onmessage = async (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === "SOCKET_CONNECTED") {
+            pushScanLog("Real-time booking channel is ready.");
+            return;
+          }
+          pushScanLog(`Realtime event: ${payload.type} for booking #${payload.booking_id}.`);
+          await loadDashboard({ silent: true });
+          if (payload.booking_id && ticketLookupRef.current?.id === payload.booking_id) {
+            const updated = await refreshBookingDetail(payload.booking_id, { silent: true });
+            if (updated && payload.type === "PAYMENT_CONFIRMED") {
+              setMsg(`Payment confirmed for ${updated.passenger_name}.`);
+            }
+          }
+        } catch {
+          pushScanLog("Received an unreadable realtime booking message.");
+        }
+      };
+
+      socket.onclose = () => {
+        setBookingSocketState("disconnected");
+        if (subscribed) {
+          pushScanLog("Booking socket disconnected. Reconnecting...");
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      };
+    };
+
+    connect();
+    return () => {
+      subscribed = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (bookingSocketRef.current) bookingSocketRef.current.close();
+    };
+  }, [loadDashboard, pushScanLog, refreshBookingDetail]);
 
   useEffect(() => {
     loadTripContext(contextTripId);
@@ -471,6 +545,25 @@ export default function HelperHome() {
     );
   };
 
+  const refreshBookingDetail = useCallback(async (bookingId, { silent = true } = {}) => {
+    if (!bookingId) return null;
+    if (!silent) {
+      setVerifyBusy(true);
+      setErr("");
+      setMsg("");
+    }
+    try {
+      const response = await api.get(`/api/bookings/${bookingId}/`);
+      setTicketLookup(response.data.booking);
+      return response.data.booking;
+    } catch (error) {
+      if (!silent) setErr(error?.response?.data?.detail || "Booking refresh failed.");
+      return null;
+    } finally {
+      if (!silent) setVerifyBusy(false);
+    }
+  }, []);
+
   const lookupTicket = useCallback(async (referenceOverride) => {
     const reference = String(referenceOverride ?? verifyBookingId).trim();
     if (!reference) {
@@ -480,19 +573,22 @@ export default function HelperHome() {
     setVerifyBusy(true);
     setErr("");
     setMsg("");
+    pushScanLog(`Verify request sent for ${reference.slice(0, 28)}${reference.length > 28 ? "..." : ""}.`);
     try {
-      const response = await api.post("/api/bookings/lookup/", { reference });
+      const response = await api.post("/api/bookings/qr/verify/", { reference });
       setVerifyBookingId(reference);
       setTicketLookup(response.data.booking);
+      pushScanLog(`Booking #${response.data.booking.id} loaded for ${response.data.booking.passenger_name}.`);
       setMsg(`Ticket loaded for ${response.data.booking.passenger_name}.`);
       return response.data.booking;
     } catch (error) {
+      pushScanLog(`QR verification failed: ${error?.response?.data?.detail || "unknown error"}.`);
       setErr(error?.response?.data?.detail || "Ticket lookup failed.");
       return null;
     } finally {
       setVerifyBusy(false);
     }
-  }, [verifyBookingId]);
+  }, [pushScanLog, verifyBookingId]);
 
   const verifyCash = async () => {
     const booking = ticketLookup || await lookupTicket();
@@ -503,6 +599,7 @@ export default function HelperHome() {
     try {
       const response = await api.post(`/api/payments/cash/verify/${booking.id}/`);
       setTicketLookup(response.data.booking);
+      pushScanLog(`Cash payment confirmed for booking #${booking.id}.`);
       setMsg(response.data.message || `Payment verified for booking #${booking.id}.`);
       await loadDashboard({ silent: true });
     } catch (error) {
@@ -512,7 +609,7 @@ export default function HelperHome() {
     }
   };
 
-  const requestPassengerPayment = async () => {
+  const requestPassengerPayment = useCallback(async () => {
     if (!ticketLookup?.id) {
       setErr("Load a ticket before requesting passenger payment.");
       return;
@@ -520,17 +617,19 @@ export default function HelperHome() {
     setVerifyBusy(true);
     setErr("");
     setMsg("");
+    pushScanLog(`Payment request sent for booking #${ticketLookup.id}.`);
     try {
       const response = await api.post(`/api/bookings/${ticketLookup.id}/request-payment/`);
       setTicketLookup(response.data.booking);
       setMsg(response.data.message || "Payment request sent to the passenger.");
       await loadDashboard({ silent: true });
     } catch (error) {
+      pushScanLog(`Payment request failed for booking #${ticketLookup.id}.`);
       setErr(error?.response?.data?.detail || "Unable to request payment.");
     } finally {
       setVerifyBusy(false);
     }
-  };
+  }, [loadDashboard, pushScanLog, ticketLookup]);
 
   const helperPaymentActionLabel = ticketLookup?.can_accept ? "Accept & Request Payment" : "Request Payment";
 
@@ -539,6 +638,7 @@ export default function HelperHome() {
     setScanBusy(true);
     setErr("");
     setMsg("Processing the passenger QR image...");
+    pushScanLog("QR image received from helper camera.");
 
     let bitmap = null;
     try {
@@ -603,33 +703,38 @@ export default function HelperHome() {
         throw new Error("No QR code was found in that photo. Try again with the ticket centered and well lit.");
       }
 
+      pushScanLog(`QR decoded: ${qrValue.slice(0, 40)}${qrValue.length > 40 ? "..." : ""}`);
       setVerifyBookingId(qrValue);
       await lookupTicket(qrValue);
     } catch (error) {
+      pushScanLog(`QR photo scan failed: ${error?.message || "unknown error"}.`);
       setErr(error?.message || "MetroBus could not scan that QR image.");
     } finally {
       if (bitmap && typeof bitmap.close === "function") bitmap.close();
       if (scannerCaptureInputRef.current) scannerCaptureInputRef.current.value = "";
       setScanBusy(false);
     }
-  }, [lookupTicket]);
+  }, [lookupTicket, pushScanLog]);
 
   const openQrScanner = useCallback(() => {
     setErr("");
     setMsg("");
     if (liveScanSupported) {
+      pushScanLog("Starting live helper camera scanner.");
       setScannerOpen(true);
       return;
     }
+    pushScanLog("Live scanner unavailable on this device. Opening camera/photo fallback.");
     scannerCaptureInputRef.current?.click();
-  }, [liveScanSupported]);
+  }, [liveScanSupported, pushScanLog]);
 
   const handleScannerCapture = useCallback(async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setScannerOpen(false);
+    pushScanLog("Captured helper QR photo. Starting decode.");
     await decodeTicketFromImage(file);
-  }, [decodeTicketFromImage]);
+  }, [decodeTicketFromImage, pushScanLog]);
 
   const acceptPassengerRide = async (bookingOverride) => {
     const booking = bookingOverride || ticketLookup;
@@ -643,6 +748,7 @@ export default function HelperHome() {
     try {
       const response = await api.post(`/api/bookings/${booking.id}/accept/`);
       setTicketLookup(response.data.booking);
+      pushScanLog(`Helper accepted booking #${booking.id}.`);
       setMsg(response.data.message || "Passenger ride accepted.");
       await loadDashboard({ silent: true });
     } catch (error) {
@@ -673,6 +779,7 @@ export default function HelperHome() {
     try {
       const response = await api.post(`/api/bookings/${booking.id}/board/`);
       setTicketLookup(response.data.booking);
+      pushScanLog(`Passenger boarded on booking #${booking.id}.`);
       setMsg(response.data.message || "Passenger marked as boarded.");
       await loadDashboard({ silent: true });
       if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder);
@@ -695,6 +802,7 @@ export default function HelperHome() {
     try {
       const response = await api.post(`/api/bookings/${booking.id}/complete/`);
       setTicketLookup(response.data.booking);
+      pushScanLog(`Ride completed for booking #${booking.id}.`);
       setMsg(response.data.message || "Ride completed.");
       await loadDashboard({ silent: true });
       if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder);
@@ -728,6 +836,7 @@ export default function HelperHome() {
         const results = await detector.detect(scannerVideoRef.current);
         const rawValue = results?.[0]?.rawValue;
         if (rawValue) {
+          pushScanLog(`Live QR decoded: ${rawValue.slice(0, 40)}${rawValue.length > 40 ? "..." : ""}`);
           setScannerOpen(false);
           stopScanner();
           await lookupTicket(rawValue);
@@ -745,6 +854,7 @@ export default function HelperHome() {
           video: { facingMode: { ideal: "environment" } },
           audio: false,
         });
+        pushScanLog("Camera permission granted. Live scanner started.");
         if (!active) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -757,6 +867,7 @@ export default function HelperHome() {
         scannerFrameRef.current = requestAnimationFrame(scanFrame);
       } catch (error) {
         setScannerOpen(false);
+        pushScanLog(`Camera permission denied or unavailable: ${error?.message || "unknown error"}.`);
         setErr(error?.message || "Camera access is required to scan the passenger QR.");
       }
     };
@@ -766,7 +877,7 @@ export default function HelperHome() {
       active = false;
       stopScanner();
     };
-  }, [liveScanSupported, lookupTicket, scannerOpen]);
+  }, [liveScanSupported, lookupTicket, pushScanLog, scannerOpen]);
 
   const copyToClipboard = useCallback(async (text) => {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
@@ -1115,7 +1226,7 @@ Need support with live trip operations.`;
               />
               <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
                 <div className="relative">
-                  <input type="text" value={verifyBookingId} onChange={(event) => setVerifyBookingId(event.target.value)} placeholder="METROBUS:TICKET:MBT-XXXX" className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold text-[var(--hlp-text)] outline-none" />
+                  <input type="text" value={verifyBookingId} onChange={(event) => setVerifyBookingId(event.target.value)} placeholder="METROBUS:BOOKING:123:QR_TOKEN" className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold text-[var(--hlp-text)] outline-none" />
                   <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--hlp-purple)]"><Icon name="qr" className="h-6 w-6" /></span>
                 </div>
                 <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy || scanBusy} className="!px-8 !py-4">
@@ -1130,6 +1241,10 @@ Need support with live trip operations.`;
                   ? "Use Scan QR to open the live camera and load the passenger ticket instantly."
                   : "Use Scan QR to open the phone camera, capture the passenger ticket, and let MetroBus read the QR from the image."}
               </p>
+              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--hlp-muted)]">
+                <span className="rounded-full bg-[var(--hlp-soft)] px-3 py-2">Socket: {bookingSocketState}</span>
+                <span className="rounded-full bg-[var(--hlp-soft)] px-3 py-2">{liveScanSupported ? "Live Camera Ready" : "Photo Fallback Mode"}</span>
+              </div>
             </SurfaceCard>
 
             {scannerOpen ? (
@@ -1150,6 +1265,27 @@ Need support with live trip operations.`;
               </SurfaceCard>
             ) : null}
 
+            <SurfaceCard className="rounded-[1.8rem]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <SectionLabel>Debug Status</SectionLabel>
+                  <p className="mt-2 text-2xl font-black">Helper scan and payment log</p>
+                </div>
+                <Chip tone="soft">{scanLogItems.length} events</Chip>
+              </div>
+              <div className="mt-4 space-y-2">
+                {scanLogItems.length ? scanLogItems.map((item) => (
+                  <div key={item.id} className="rounded-[1.1rem] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium text-[var(--hlp-text)]">
+                    {item.text}
+                  </div>
+                )) : (
+                  <div className="rounded-[1.1rem] border border-dashed border-[var(--hlp-border)] px-4 py-4 text-sm text-[var(--hlp-muted)]">
+                    No helper scan events yet. Start the camera or load a QR to see each step here.
+                  </div>
+                )}
+              </div>
+            </SurfaceCard>
+
             <SurfaceCard className="rounded-[1.8rem] border-[rgba(215,149,239,0.45)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -1168,9 +1304,14 @@ Need support with live trip operations.`;
               </div>
               {ticketLookup ? (
                 <div className="mt-5 rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-medium text-[var(--hlp-text)]">
+                  <p className="break-words"><span className="font-black text-[var(--hlp-purple)]">Booking ID:</span> #{ticketLookup.id}</p>
+                  <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Journey Status:</span> {ticketLookup.journey_status_label || ticketLookup.journey_status}</p>
                   <p className="break-words"><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
                   <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
                   <p className="mt-2 break-all"><span className="font-black text-[var(--hlp-purple)]">Ticket:</span> {ticketLookup.ticket_code}</p>
+                  {ticketLookup.scanned_at ? (
+                    <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Scanned:</span> {ticketLookup.scanned_by_name || "Helper"} at {formatTime(ticketLookup.scanned_at)}</p>
+                  ) : null}
                   {ticketLookup.accepted_by_helper_at ? (
                     <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Accepted:</span> {ticketLookup.accepted_by_helper_name || "Helper"} at {formatTime(ticketLookup.accepted_by_helper_at)}</p>
                   ) : null}
