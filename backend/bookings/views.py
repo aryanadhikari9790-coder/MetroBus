@@ -18,7 +18,8 @@ from .serializers import (
     PassengerCancelBookingSerializer,
 )
 from .permissions import IsPassenger, IsHelper
-from .services import validate_seats_available, get_fare_for_segment, get_taken_seat_ids_for_trip
+from .services import advance_booking_journey_status, validate_seats_available, get_fare_for_segment, get_taken_seat_ids_for_trip
+from .realtime import emit_booking_event
 from .tickets import parse_ticket_reference
 
 
@@ -29,14 +30,21 @@ def _booking_queryset():
     )
 
 
-def _resolve_ticket_booking(reference):
+def _resolve_ticket_booking(reference, *, require_qr_token=False):
     parsed = parse_ticket_reference(reference)
     queryset = _booking_queryset()
     if parsed["booking_id"]:
-        return queryset.filter(id=parsed["booking_id"]).first()
+        booking = queryset.filter(id=parsed["booking_id"]).first()
+        if not booking:
+            return None, parsed
+        if parsed.get("qr_token") and booking.qr_token != parsed["qr_token"]:
+            return None, parsed
+        if require_qr_token and not parsed.get("qr_token"):
+            return None, parsed
+        return booking, parsed
     if parsed["ticket_code"]:
-        return queryset.filter(ticket_code=parsed["ticket_code"]).first()
-    return None
+        return queryset.filter(ticket_code=parsed["ticket_code"]).first(), parsed
+    return None, parsed
 
 
 def _can_manage_booking(user, booking):
@@ -84,6 +92,7 @@ class PassengerCancelBookingView(APIView):
         booking.cancelled_by = request.user
         booking.cancellation_reason = serializer.validated_data["reason"]
         booking.cancellation_note = serializer.validated_data.get("note", "")
+        booking.journey_status = Booking.JourneyStatus.CANCELLED
         booking.save(
             update_fields=[
                 "status",
@@ -91,6 +100,7 @@ class PassengerCancelBookingView(APIView):
                 "cancelled_by",
                 "cancellation_reason",
                 "cancellation_note",
+                "journey_status",
             ]
         )
 
@@ -100,6 +110,12 @@ class PassengerCancelBookingView(APIView):
             payment.save(update_fields=["status"])
 
         booking = _booking_queryset().filter(id=booking.id).first()
+        emit_booking_event(
+            booking,
+            "BOOKING_CANCELLED",
+            actor=request.user,
+            message="This ride was cancelled and the reserved seat is available again.",
+        )
         return Response(
             {
                 "message": "Your ride was cancelled and the reserved seat is now available again.",
@@ -204,6 +220,7 @@ class CreateBookingView(APIView):
             to_stop_order=to_order,
             seats_count=len(seat_ids),
             status=Booking.Status.CONFIRMED,
+            journey_status=Booking.JourneyStatus.BOOKED,
             fare_total=total,
             discount_applied_amount=0,
         )
@@ -211,6 +228,12 @@ class CreateBookingView(APIView):
             BookingSeat.objects.create(booking=booking, seat_id=sid)
 
         booking = _booking_queryset().filter(id=booking.id).first()
+        emit_booking_event(
+            booking,
+            "BOOKING_CREATED",
+            actor=request.user,
+            message=f"Booking #{booking.id} was created and QR is ready.",
+        )
         return Response(BookingSerializer(booking).data, status=201)
 
 
@@ -261,13 +284,80 @@ class HelperBookingLookupView(APIView):
         ser = HelperLookupSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
 
-        booking = _resolve_ticket_booking(ser.validated_data["reference"])
+        booking, _parsed = _resolve_ticket_booking(ser.validated_data["reference"])
         if not booking:
             return Response({"detail": "Booking ticket not found."}, status=404)
         if not _can_manage_booking(request.user, booking):
             return Response({"detail": "This ticket does not belong to your assigned trip."}, status=403)
 
         return Response({"booking": HelperBookingTicketSerializer(booking).data})
+
+
+class BookingDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, booking_id: int):
+        booking = _booking_queryset().filter(id=booking_id).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=404)
+
+        if request.user.is_superuser or request.user.role == "ADMIN":
+            serializer = BookingSerializer(booking)
+        elif request.user.role == "PASSENGER":
+            if booking.passenger_id != request.user.id:
+                return Response({"detail": "This booking does not belong to you."}, status=403)
+            serializer = PassengerBookingListSerializer(booking)
+        elif request.user.role == "HELPER":
+            if not _can_manage_booking(request.user, booking):
+                return Response({"detail": "This booking does not belong to your assigned trip."}, status=403)
+            serializer = HelperBookingTicketSerializer(booking)
+        else:
+            return Response({"detail": "You do not have access to this booking."}, status=403)
+
+        return Response({"booking": serializer.data})
+
+
+class HelperVerifyBookingQrView(APIView):
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request):
+        ser = HelperLookupSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        reference = ser.validated_data["reference"]
+        booking, parsed = _resolve_ticket_booking(reference)
+        if not booking:
+            if parsed.get("booking_id") and not parsed.get("qr_token"):
+                return Response({"detail": "This QR is missing its secure token. Try the saved ticket code instead."}, status=400)
+            return Response({"detail": "Booking ticket not found or QR token is invalid."}, status=404)
+        if not _can_manage_booking(request.user, booking):
+            return Response({"detail": "This ticket does not belong to your assigned trip."}, status=403)
+        if booking.status == Booking.Status.CANCELLED:
+            return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
+        if booking.status in {Booking.Status.COMPLETED, Booking.Status.NO_SHOW} or booking.completed_at:
+            return Response({"detail": "This ticket has already been completed and cannot be reused."}, status=400)
+        if booking.checked_in_at:
+            return Response({"detail": "This ticket has already been used for boarding."}, status=400)
+
+        booking.scanned_at = timezone.now()
+        booking.scanned_by = request.user
+        advance_booking_journey_status(booking, Booking.JourneyStatus.SCANNED)
+        booking.save(update_fields=["scanned_at", "scanned_by", "journey_status"])
+        booking = _booking_queryset().filter(id=booking.id).first()
+        emit_booking_event(
+            booking,
+            "BOOKING_SCANNED",
+            actor=request.user,
+            message=f"Booking #{booking.id} was verified by the helper scanner.",
+        )
+
+        return Response(
+            {
+                "message": "QR verified. Passenger booking loaded successfully.",
+                "booking": HelperBookingTicketSerializer(booking).data,
+            },
+            status=200,
+        )
 
 
 class HelperAcceptBookingView(APIView):
@@ -294,8 +384,15 @@ class HelperAcceptBookingView(APIView):
 
         booking.accepted_by_helper_at = timezone.now()
         booking.accepted_by_helper = request.user
-        booking.save(update_fields=["accepted_by_helper_at", "accepted_by_helper"])
+        advance_booking_journey_status(booking, Booking.JourneyStatus.SCANNED)
+        booking.save(update_fields=["accepted_by_helper_at", "accepted_by_helper", "journey_status"])
         booking = _booking_queryset().filter(id=booking.id).first()
+        emit_booking_event(
+            booking,
+            "BOOKING_ACCEPTED",
+            actor=request.user,
+            message="A helper accepted your ride details and is ready to handle payment.",
+        )
         return Response(
             {"message": "Passenger ride accepted. You can now request payment or board the passenger when ready.", "booking": HelperBookingTicketSerializer(booking).data},
             status=200,
@@ -330,8 +427,15 @@ class HelperBoardBookingView(APIView):
         if not booking.checked_in_at:
             booking.checked_in_at = timezone.now()
             booking.checked_in_by = request.user
-            booking.save(update_fields=["checked_in_at", "checked_in_by"])
+            advance_booking_journey_status(booking, Booking.JourneyStatus.BOARDED)
+            booking.save(update_fields=["checked_in_at", "checked_in_by", "journey_status"])
             booking = _booking_queryset().filter(id=booking.id).first()
+            emit_booking_event(
+                booking,
+                "BOARDING_CONFIRMED",
+                actor=request.user,
+                message="Boarding confirmed. Your ride is now marked as boarded.",
+            )
 
         return Response(
             {"message": "Passenger marked as boarded.", "booking": HelperBookingTicketSerializer(booking).data},
@@ -362,7 +466,8 @@ class HelperRequestBookingPaymentView(APIView):
         payment = getattr(booking, "payment", None)
         if payment and payment.status == "SUCCESS":
             if accepted_during_request:
-                booking.save(update_fields=["accepted_by_helper_at", "accepted_by_helper"])
+                advance_booking_journey_status(booking, Booking.JourneyStatus.PAID)
+                booking.save(update_fields=["accepted_by_helper_at", "accepted_by_helper", "journey_status"])
                 booking = _booking_queryset().filter(id=booking.id).first()
             return Response(
                 {
@@ -374,7 +479,8 @@ class HelperRequestBookingPaymentView(APIView):
 
         booking.payment_requested_at = timezone.now()
         booking.payment_requested_by = request.user
-        update_fields = ["payment_requested_at", "payment_requested_by"]
+        advance_booking_journey_status(booking, Booking.JourneyStatus.PAYMENT_REQUESTED)
+        update_fields = ["payment_requested_at", "payment_requested_by", "journey_status"]
         if accepted_during_request:
             update_fields.extend(["accepted_by_helper_at", "accepted_by_helper"])
         booking.save(update_fields=update_fields)
@@ -384,6 +490,12 @@ class HelperRequestBookingPaymentView(APIView):
         if accepted_during_request:
             message = "Ride accepted and payment request sent to the passenger. Ask them to choose a payment option in MetroBus."
 
+        emit_booking_event(
+            booking,
+            "PAYMENT_REQUESTED",
+            actor=request.user,
+            message=message,
+        )
         return Response(
             {
                 "message": message,
@@ -417,8 +529,15 @@ class HelperCompleteBookingView(APIView):
         booking.status = Booking.Status.COMPLETED
         booking.completed_at = timezone.now()
         booking.completed_by = request.user
-        booking.save(update_fields=["status", "completed_at", "completed_by"])
+        booking.journey_status = Booking.JourneyStatus.COMPLETED
+        booking.save(update_fields=["status", "completed_at", "completed_by", "journey_status"])
         booking = _booking_queryset().filter(id=booking.id).first()
+        emit_booking_event(
+            booking,
+            "BOARDING_COMPLETED",
+            actor=request.user,
+            message="Ride completed and the seat is now free for the next segment.",
+        )
 
         return Response(
             {"message": "Ride completed and the seat is now free for the next segment.", "booking": HelperBookingTicketSerializer(booking).data},

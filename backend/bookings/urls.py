@@ -5,7 +5,9 @@ from .views import (
     TripSeatAvailabilityView,
     CreateBookingView,
     CreateOfflineBoardingView,
+    BookingDetailView,
     HelperBookingLookupView,
+    HelperVerifyBookingQrView,
     HelperAcceptBookingView,
     HelperBoardBookingView,
     HelperRequestBookingPaymentView,
@@ -14,8 +16,10 @@ from .views import (
 
 urlpatterns = [
     path("my/", PassengerBookingsView.as_view(), name="passenger-bookings"),
+    path("<int:booking_id>/", BookingDetailView.as_view(), name="booking-detail"),
     path("<int:booking_id>/cancel/", PassengerCancelBookingView.as_view(), name="booking-cancel"),
     path("lookup/", HelperBookingLookupView.as_view(), name="booking-lookup"),
+    path("qr/verify/", HelperVerifyBookingQrView.as_view(), name="booking-qr-verify"),
     path("trips/<int:trip_id>/availability/", TripSeatAvailabilityView.as_view(), name="trip-seat-availability"),
     path("trips/<int:trip_id>/book/", CreateBookingView.as_view(), name="trip-book"),
     path("trips/<int:trip_id>/offline/", CreateOfflineBoardingView.as_view(), name="trip-offline"),

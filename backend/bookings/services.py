@@ -3,6 +3,16 @@ from decimal import Decimal
 from transport.models import RouteFare
 from .models import Booking, BookingSeat, OfflineSeat
 
+JOURNEY_STATUS_ORDER = {
+    Booking.JourneyStatus.BOOKED: 1,
+    Booking.JourneyStatus.SCANNED: 2,
+    Booking.JourneyStatus.PAYMENT_REQUESTED: 3,
+    Booking.JourneyStatus.PAID: 4,
+    Booking.JourneyStatus.BOARDED: 5,
+    Booking.JourneyStatus.COMPLETED: 6,
+    Booking.JourneyStatus.CANCELLED: 99,
+}
+
 
 def intervals_overlap(a_from: int, a_to: int, b_from: int, b_to: int) -> bool:
     # overlap if max(from) < min(to) using half-open interval [from,to)
@@ -58,3 +68,21 @@ def validate_seats_available(trip_id: int, from_order: int, to_order: int, seat_
     conflict = [sid for sid in seat_ids if sid in taken]
     if conflict:
         raise ValueError(f"Seats not available: {conflict}")
+
+
+def advance_booking_journey_status(booking: Booking, next_status: str) -> str:
+    if booking.status == Booking.Status.CANCELLED:
+        booking.journey_status = Booking.JourneyStatus.CANCELLED
+        return booking.journey_status
+    if booking.status == Booking.Status.COMPLETED:
+        booking.journey_status = Booking.JourneyStatus.COMPLETED
+        return booking.journey_status
+
+    current = booking.journey_status or Booking.JourneyStatus.BOOKED
+    if next_status == Booking.JourneyStatus.CANCELLED:
+        booking.journey_status = Booking.JourneyStatus.CANCELLED
+        return booking.journey_status
+
+    if JOURNEY_STATUS_ORDER.get(next_status, 0) >= JOURNEY_STATUS_ORDER.get(current, 0):
+        booking.journey_status = next_status
+    return booking.journey_status

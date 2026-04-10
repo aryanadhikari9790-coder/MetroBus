@@ -2,10 +2,19 @@ from django.db import models
 from django.conf import settings
 from trips.models import Trip
 from transport.models import Seat
-from .tickets import build_ticket_payload, generate_ticket_code
+from .tickets import build_ticket_payload, generate_qr_token, generate_ticket_code
 
 
 class Booking(models.Model):
+    class JourneyStatus(models.TextChoices):
+        BOOKED = "BOOKED", "Booked"
+        SCANNED = "SCANNED", "Scanned"
+        PAYMENT_REQUESTED = "PAYMENT_REQUESTED", "Payment requested"
+        PAID = "PAID", "Paid"
+        BOARDED = "BOARDED", "Boarded"
+        COMPLETED = "COMPLETED", "Completed"
+        CANCELLED = "CANCELLED", "Cancelled"
+
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="bookings")
     passenger = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="bookings")
 
@@ -33,8 +42,18 @@ class Booking(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.CONFIRMED)
 
     ticket_code = models.CharField(max_length=20, unique=True, default=generate_ticket_code, editable=False)
+    qr_token = models.CharField(max_length=32, unique=True, default=generate_qr_token, editable=False)
+    journey_status = models.CharField(max_length=24, choices=JourneyStatus.choices, default=JourneyStatus.BOOKED)
     fare_total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     discount_applied_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    scanned_at = models.DateTimeField(null=True, blank=True)
+    scanned_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="scanned_bookings",
+    )
     payment_requested_at = models.DateTimeField(null=True, blank=True)
     payment_requested_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -99,7 +118,7 @@ class Booking(models.Model):
 
     @property
     def ticket_payload(self):
-        return build_ticket_payload(self.ticket_code)
+        return build_ticket_payload(self.id, self.qr_token)
 
 
 class BookingSeat(models.Model):

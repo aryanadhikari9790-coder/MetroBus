@@ -11,6 +11,8 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 
 from bookings.models import Booking
 from bookings.serializers import HelperBookingTicketSerializer
+from bookings.realtime import emit_booking_event
+from bookings.services import advance_booking_journey_status
 from .models import Payment, PassengerWallet
 from .serializers import (
     CreatePaymentSerializer,
@@ -71,6 +73,28 @@ def _serialize_payment_result(payment, message):
         "message": message,
         "payment": PaymentSerializer(payment).data,
     }
+
+
+def _sync_booking_payment_state(booking, *, event_type=None, message="", actor=None):
+    payment = getattr(booking, "payment", None)
+    if booking.status == Booking.Status.CANCELLED:
+        booking.journey_status = Booking.JourneyStatus.CANCELLED
+        booking.save(update_fields=["journey_status"])
+        if event_type:
+            emit_booking_event(booking, event_type, message=message, actor=actor)
+        return booking
+
+    if payment and payment.status == Payment.Status.SUCCESS:
+        advance_booking_journey_status(booking, Booking.JourneyStatus.PAID)
+    elif booking.payment_requested_at:
+        advance_booking_journey_status(booking, Booking.JourneyStatus.PAYMENT_REQUESTED)
+    else:
+        advance_booking_journey_status(booking, Booking.JourneyStatus.BOOKED)
+    booking.save(update_fields=["journey_status"])
+
+    if event_type:
+        emit_booking_event(booking, event_type, message=message, actor=actor)
+    return booking
 
 
 def _sync_khalti_payment(payment, payload, *, pidx=None, transaction_id="", fallback_status=""):
@@ -165,10 +189,22 @@ class CreatePaymentView(APIView):
             payment.verified_by = request.user
             payment.verified_at = timezone.now()
             payment.save(update_fields=["status", "reference", "verified_by", "verified_at"])
+            _sync_booking_payment_state(
+                booking,
+                event_type="PAYMENT_CONFIRMED",
+                message="Payment confirmed successfully.",
+                actor=request.user,
+            )
             return Response({"payment": PaymentSerializer(payment).data, "redirect": None}, status=201)
 
         # ----- CASH (pending)
         if method == Payment.Method.CASH:
+            _sync_booking_payment_state(
+                booking,
+                event_type="PAYMENT_PENDING",
+                message="Cash selected. Please hand the fare to the helper for verification.",
+                actor=request.user,
+            )
             return Response({"payment": PaymentSerializer(payment).data, "redirect": None}, status=201)
 
         if method == Payment.Method.WALLET:
@@ -193,6 +229,12 @@ class CreatePaymentView(APIView):
             payment.verified_by = request.user
             payment.verified_at = timezone.now()
             payment.save(update_fields=["status", "reference", "verified_by", "verified_at"])
+            _sync_booking_payment_state(
+                booking,
+                event_type="PAYMENT_CONFIRMED",
+                message="Payment confirmed successfully through MetroBus wallet.",
+                actor=request.user,
+            )
             return Response(
                 {
                     "payment": PaymentSerializer(payment).data,
@@ -226,6 +268,12 @@ class CreatePaymentView(APIView):
             payment.verified_by = request.user
             payment.verified_at = timezone.now()
             payment.save(update_fields=["amount", "status", "reference", "verified_by", "verified_at"])
+            _sync_booking_payment_state(
+                booking,
+                event_type="PAYMENT_CONFIRMED",
+                message="Ride pass accepted and payment confirmed.",
+                actor=request.user,
+            )
             return Response(
                 {
                     "payment": PaymentSerializer(payment).data,
@@ -255,6 +303,12 @@ class CreatePaymentView(APIView):
             payment.verified_by = request.user
             payment.verified_at = timezone.now()
             payment.save(update_fields=["amount", "status", "reference", "verified_by", "verified_at"])
+            _sync_booking_payment_state(
+                booking,
+                event_type="PAYMENT_CONFIRMED",
+                message="Reward ride redeemed successfully.",
+                actor=request.user,
+            )
             return Response(
                 {
                     "payment": PaymentSerializer(payment).data,
@@ -275,6 +329,12 @@ class CreatePaymentView(APIView):
             # callbacks to backend, then backend redirects to frontend
             fields["success_url"] = request.build_absolute_uri(f"/api/payments/esewa/success/{payment.id}/")
             fields["failure_url"] = request.build_absolute_uri(f"/api/payments/esewa/failure/{payment.id}/")
+            _sync_booking_payment_state(
+                booking,
+                event_type="PAYMENT_PENDING",
+                message="eSewa checkout opened. Complete the payment to continue boarding.",
+                actor=request.user,
+            )
 
             return Response(
                 {"payment": PaymentSerializer(payment).data, "redirect": {"type": "FORM_POST", "url": form_url, "fields": fields}},
@@ -326,6 +386,12 @@ class CreatePaymentView(APIView):
             payment.gateway_payload = data
             update_fields.append("gateway_payload")
             payment.save(update_fields=update_fields)
+            _sync_booking_payment_state(
+                booking,
+                event_type="PAYMENT_PENDING",
+                message="Khalti checkout opened. Complete the payment to continue boarding.",
+                actor=request.user,
+            )
 
             return Response(
                 {"payment": PaymentSerializer(payment).data, "redirect": {"type": "REDIRECT", "url": data.get("payment_url")}},
@@ -405,6 +471,12 @@ class VerifyCashPaymentView(APIView):
         payment.verified_by = request.user
         payment.verified_at = timezone.now()
         payment.save(update_fields=["status", "verified_by", "verified_at"])
+        _sync_booking_payment_state(
+            booking,
+            event_type="PAYMENT_CONFIRMED",
+            message=f"Cash payment verified for booking #{booking.id}.",
+            actor=request.user,
+        )
 
         booking = (
             Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by", "accepted_by_helper")
@@ -443,10 +515,20 @@ class EsewaSuccessCallback(APIView):
             payment.status = Payment.Status.SUCCESS
             payment.verified_at = timezone.now()
             payment.save(update_fields=["status", "verified_at"])
+            _sync_booking_payment_state(
+                payment.booking,
+                event_type="PAYMENT_CONFIRMED",
+                message="eSewa payment confirmed successfully.",
+            )
             return redirect(frontend_url(f"/payment/result?status=success&method=esewa&booking={payment.booking.id}", request))
 
         payment.status = Payment.Status.PENDING
         payment.save(update_fields=["status"])
+        _sync_booking_payment_state(
+            payment.booking,
+            event_type="PAYMENT_PENDING",
+            message="eSewa payment is still pending.",
+        )
         return redirect(frontend_url(f"/payment/result?status=pending&method=esewa&booking={payment.booking.id}", request))
 
 
@@ -460,6 +542,11 @@ class EsewaFailureCallback(APIView):
 
         payment.status = Payment.Status.FAILED
         payment.save(update_fields=["status"])
+        _sync_booking_payment_state(
+            payment.booking,
+            event_type="PAYMENT_FAILED",
+            message="eSewa payment failed.",
+        )
         return redirect(frontend_url(f"/payment/result?status=failed&method=esewa&booking={payment.booking.id}", request))
 
 
@@ -492,6 +579,11 @@ class KhaltiReturnCallback(APIView):
         except (GatewayConfigurationError, GatewayRequestError):
             payment.status = Payment.Status.PENDING
             payment.save(update_fields=["status"])
+            _sync_booking_payment_state(
+                payment.booking,
+                event_type="PAYMENT_PENDING",
+                message="Khalti payment is still pending.",
+            )
             return redirect(
                 payment_result_url(
                     request,
@@ -508,6 +600,11 @@ class KhaltiReturnCallback(APIView):
             Payment.Status.CANCELLED: "failed",
             Payment.Status.FAILED: "failed",
         }
+        _sync_booking_payment_state(
+            payment.booking,
+            event_type="PAYMENT_CONFIRMED" if payment.status == Payment.Status.SUCCESS else "PAYMENT_PENDING" if payment.status == Payment.Status.PENDING else "PAYMENT_FAILED",
+            message="Khalti payment confirmed successfully." if payment.status == Payment.Status.SUCCESS else "Khalti payment is still pending." if payment.status == Payment.Status.PENDING else "Khalti payment did not complete.",
+        )
         return redirect(
             payment_result_url(
                 request,
@@ -540,6 +637,13 @@ class KhaltiVerifyPaymentView(APIView):
             return Response({"detail": str(error)}, status=503)
         except GatewayRequestError as error:
             return Response({"detail": str(error)}, status=502)
+
+        _sync_booking_payment_state(
+            payment.booking,
+            event_type="PAYMENT_CONFIRMED" if payment.status == Payment.Status.SUCCESS else "PAYMENT_PENDING" if payment.status == Payment.Status.PENDING else "PAYMENT_FAILED",
+            message="Khalti payment verified successfully." if payment.status == Payment.Status.SUCCESS else "Khalti payment is still pending." if payment.status == Payment.Status.PENDING else "Khalti payment failed.",
+            actor=request.user,
+        )
 
         message = "Khalti payment is still pending."
         if payment.status == Payment.Status.SUCCESS:
