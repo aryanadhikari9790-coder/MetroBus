@@ -20,7 +20,7 @@ from .serializers import (
 from .permissions import IsPassenger, IsHelper
 from .services import advance_booking_journey_status, validate_seats_available, get_fare_for_segment, get_taken_seat_ids_for_trip
 from .realtime import emit_booking_event
-from .tickets import parse_ticket_reference
+from .tickets import generate_boarding_otp, parse_ticket_reference
 
 
 def _booking_queryset():
@@ -51,6 +51,42 @@ def _can_manage_booking(user, booking):
     if not booking:
         return False
     return bool(user.is_superuser or booking.trip.helper_id == user.id)
+
+
+def _generate_trip_boarding_otp(trip):
+    for _ in range(50):
+        otp = generate_boarding_otp()
+        conflict = (
+            Booking.objects.filter(
+                trip=trip,
+                boarding_otp=otp,
+                status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED],
+            )
+            .exclude(completed_at__isnull=False)
+            .exists()
+        )
+        if not conflict:
+            return otp
+    return generate_boarding_otp()
+
+
+def _resolve_helper_booking_by_otp(user, reference):
+    otp = "".join(character for character in str(reference or "") if character.isdigit())
+    if len(otp) != 4:
+        return None, otp
+
+    queryset = _booking_queryset().filter(boarding_otp=otp).exclude(
+        status__in=[Booking.Status.CANCELLED, Booking.Status.COMPLETED, Booking.Status.NO_SHOW]
+    )
+    if not user.is_superuser:
+        queryset = queryset.filter(trip__helper_id=user.id)
+
+    booking = queryset.filter(trip__status=Trip.Status.LIVE).order_by("-created_at").first()
+    if not booking:
+        booking = queryset.filter(trip__status=Trip.Status.NOT_STARTED).order_by("-created_at").first()
+    if not booking:
+        booking = queryset.order_by("-created_at").first()
+    return booking, otp
 
 
 class PassengerBookingsView(APIView):
@@ -220,6 +256,7 @@ class CreateBookingView(APIView):
             to_stop_order=to_order,
             seats_count=len(seat_ids),
             status=Booking.Status.CONFIRMED,
+            boarding_otp=_generate_trip_boarding_otp(trip),
             journey_status=Booking.JourneyStatus.BOOKED,
             fare_total=total,
             discount_applied_amount=0,
@@ -232,7 +269,7 @@ class CreateBookingView(APIView):
             booking,
             "BOOKING_CREATED",
             actor=request.user,
-            message=f"Booking #{booking.id} was created and QR is ready.",
+            message=f"Booking #{booking.id} was created and your 4-digit ride OTP is ready.",
         )
         return Response(BookingSerializer(booking).data, status=201)
 
@@ -317,7 +354,7 @@ class BookingDetailView(APIView):
         return Response({"booking": serializer.data})
 
 
-class HelperVerifyBookingQrView(APIView):
+class HelperVerifyBookingOtpView(APIView):
     permission_classes = [IsAuthenticated, IsHelper]
 
     def post(self, request):
@@ -325,13 +362,11 @@ class HelperVerifyBookingQrView(APIView):
         ser.is_valid(raise_exception=True)
 
         reference = ser.validated_data["reference"]
-        booking, parsed = _resolve_ticket_booking(reference)
+        booking, parsed_otp = _resolve_helper_booking_by_otp(request.user, reference)
+        if len(parsed_otp) != 4:
+            return Response({"detail": "Enter the passenger 4-digit ride OTP."}, status=400)
         if not booking:
-            if parsed.get("booking_id") and not parsed.get("qr_token"):
-                return Response({"detail": "This QR is missing its secure token. Try the saved ticket code instead."}, status=400)
-            return Response({"detail": "Booking ticket not found or QR token is invalid."}, status=404)
-        if not _can_manage_booking(request.user, booking):
-            return Response({"detail": "This ticket does not belong to your assigned trip."}, status=403)
+            return Response({"detail": "No active passenger ride matches that 4-digit OTP."}, status=404)
         if booking.status == Booking.Status.CANCELLED:
             return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
         if booking.status in {Booking.Status.COMPLETED, Booking.Status.NO_SHOW} or booking.completed_at:
@@ -348,12 +383,12 @@ class HelperVerifyBookingQrView(APIView):
             booking,
             "BOOKING_SCANNED",
             actor=request.user,
-            message=f"Booking #{booking.id} was verified by the helper scanner.",
+            message=f"Booking #{booking.id} was verified with the helper OTP check.",
         )
 
         return Response(
             {
-                "message": "QR verified. Passenger booking loaded successfully.",
+                "message": "Ride OTP verified. Passenger booking loaded successfully.",
                 "booking": HelperBookingTicketSerializer(booking).data,
             },
             status=200,

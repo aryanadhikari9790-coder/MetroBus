@@ -1,8 +1,5 @@
 from rest_framework import serializers
 from .models import Booking, BookingSeat, OfflineBoarding, OfflineSeat
-from .tickets import build_ticket_qr_svg
-
-
 class BookingSeatSerializer(serializers.ModelSerializer):
     seat_no = serializers.CharField(source="seat.seat_no", read_only=True)
 
@@ -45,8 +42,7 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     pickup_stop_name = serializers.SerializerMethodField()
     destination_stop_name = serializers.SerializerMethodField()
     seat_labels = serializers.SerializerMethodField()
-    ticket_payload = serializers.CharField(read_only=True)
-    ticket_qr_svg = serializers.SerializerMethodField()
+    boarding_otp = serializers.CharField(read_only=True)
     journey_status_label = serializers.SerializerMethodField()
     payment_requested_by_name = serializers.CharField(source="payment_requested_by.full_name", read_only=True)
     accepted_by_helper_name = serializers.CharField(source="accepted_by_helper.full_name", read_only=True)
@@ -72,8 +68,7 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
             "seats_count",
             "status",
             "ticket_code",
-            "ticket_payload",
-            "ticket_qr_svg",
+            "boarding_otp",
             "journey_status",
             "journey_status_label",
             "fare_total",
@@ -108,7 +103,6 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
             "passenger",
             "status",
             "ticket_code",
-            "ticket_payload",
             "fare_total",
             "discount_applied_amount",
             "journey_status",
@@ -137,9 +131,6 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
 
     def get_seat_labels(self, obj):
         return [seat.seat.seat_no for seat in obj.booking_seats.all()]
-
-    def get_ticket_qr_svg(self, obj):
-        return build_ticket_qr_svg(obj.ticket_payload)
 
     def get_journey_status_label(self, obj):
         return obj.get_journey_status_display()
@@ -172,8 +163,7 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
     seat_labels = serializers.SerializerMethodField()
     passenger_name = serializers.CharField(source="passenger.full_name", read_only=True)
     passenger_phone = serializers.CharField(source="passenger.phone", read_only=True)
-    ticket_payload = serializers.CharField(read_only=True)
-    ticket_qr_svg = serializers.SerializerMethodField()
+    boarding_otp = serializers.CharField(read_only=True)
     journey_status_label = serializers.SerializerMethodField()
     started_at = serializers.DateTimeField(source="trip.started_at", read_only=True)
     ended_at = serializers.DateTimeField(source="trip.ended_at", read_only=True)
@@ -199,8 +189,7 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
             "passenger_name",
             "passenger_phone",
             "ticket_code",
-            "ticket_payload",
-            "ticket_qr_svg",
+            "boarding_otp",
             "journey_status",
             "journey_status_label",
             "trip_status",
@@ -250,9 +239,6 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
 
     def get_seat_labels(self, obj):
         return [seat.seat.seat_no for seat in obj.booking_seats.all()]
-
-    def get_ticket_qr_svg(self, obj):
-        return build_ticket_qr_svg(obj.ticket_payload)
 
     def get_journey_status_label(self, obj):
         return obj.get_journey_status_display()
@@ -342,7 +328,7 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     pickup_stop_name = serializers.SerializerMethodField()
     destination_stop_name = serializers.SerializerMethodField()
     seat_labels = serializers.SerializerMethodField()
-    ticket_payload = serializers.CharField(read_only=True)
+    boarding_otp = serializers.CharField(read_only=True)
     journey_status_label = serializers.SerializerMethodField()
     can_accept = serializers.SerializerMethodField()
     can_verify_cash = serializers.SerializerMethodField()
@@ -362,7 +348,7 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
             "journey_status",
             "journey_status_label",
             "ticket_code",
-            "ticket_payload",
+            "boarding_otp",
             "route_name",
             "bus_plate",
             "passenger_name",

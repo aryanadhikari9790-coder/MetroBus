@@ -1,12 +1,10 @@
-from io import BytesIO
+from random import SystemRandom
 from uuid import uuid4
-
-import qrcode
-from qrcode.image.svg import SvgPathImage
 
 
 LEGACY_QR_PREFIX = "METROBUS:TICKET:"
 QR_PREFIX = "METROBUS:BOOKING:"
+_OTP_RANDOM = SystemRandom()
 
 
 def generate_ticket_code():
@@ -15,6 +13,10 @@ def generate_ticket_code():
 
 def generate_qr_token():
     return uuid4().hex.upper()
+
+
+def generate_boarding_otp():
+    return f"{_OTP_RANDOM.randrange(0, 10000):04d}"
 
 
 def build_ticket_payload(booking_id, qr_token):
@@ -48,19 +50,3 @@ def parse_ticket_reference(value):
         return {"ticket_code": None, "booking_id": int(digits_only), "qr_token": None}
 
     return {"ticket_code": normalized, "booking_id": None, "qr_token": None}
-
-
-def build_ticket_qr_svg(payload):
-    qr = qrcode.QRCode(
-        version=None,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=8,
-        border=1,
-    )
-    qr.add_data(payload)
-    qr.make(fit=True)
-
-    image = qr.make_image(image_factory=SvgPathImage)
-    buffer = BytesIO()
-    image.save(buffer)
-    return buffer.getvalue().decode("utf-8")
