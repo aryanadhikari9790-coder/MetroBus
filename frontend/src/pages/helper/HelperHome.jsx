@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
-import jsQR from "jsqr";
 import { api } from "../../api";
 import { clearToken } from "../../auth";
 import { useTheme } from "../../ThemeContext";
@@ -69,7 +68,6 @@ function Icon({ name, className = "h-5 w-5" }) {
     case "pin": return <svg {...common}><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z" /><circle cx="12" cy="10" r="2.3" /></svg>;
     case "clock": return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg>;
     case "alert": return <svg {...common}><path d="M12 4 3.5 18h17L12 4Z" /><path d="M12 9v4" /><path d="M12 16h.01" /></svg>;
-    case "qr": return <svg {...common}><path d="M4 4h5v5H4z" /><path d="M15 4h5v5h-5z" /><path d="M4 15h5v5H4z" /><path d="M15 15h2" /><path d="M18 15v5" /><path d="M15 18h3" /></svg>;
     case "thermo": return <svg {...common}><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0Z" /><path d="M12 11v5" /></svg>;
     default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>;
   }
@@ -191,19 +189,13 @@ export default function HelperHome() {
   const [loadingAvail, setLoadingAvail] = useState(false);
   const [offlineBusy, setOfflineBusy] = useState(false);
   const [verifyBusy, setVerifyBusy] = useState(false);
-  const [scanBusy, setScanBusy] = useState(false);
   const [verifyBookingId, setVerifyBookingId] = useState("");
   const [ticketLookup, setTicketLookup] = useState(null);
-  const [scannerOpen, setScannerOpen] = useState(false);
   const [scanLogItems, setScanLogItems] = useState([]);
   const [bookingSocketState, setBookingSocketState] = useState("disconnected");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [activeTab, setActiveTab] = useState("trip");
-  const scannerVideoRef = useRef(null);
-  const scannerStreamRef = useRef(null);
-  const scannerFrameRef = useRef(null);
-  const scannerCaptureInputRef = useRef(null);
   const bookingSocketRef = useRef(null);
   const ticketLookupRef = useRef(null);
 
@@ -257,10 +249,6 @@ export default function HelperHome() {
   const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
   const routeCondition = livePoint ? "Live movement on route" : tripAwaitingStart ? "Waiting for both start confirmations" : "Waiting for GPS ping";
   const verifyPreview = ticketLookup?.payment || { method: "Cash", status: "Pending", amount: 450 };
-  const liveScanSupported = typeof window !== "undefined"
-    && window.isSecureContext
-    && "BarcodeDetector" in window
-    && Boolean(navigator.mediaDevices?.getUserMedia);
   const helperTripHeroTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A: Downtown Express";
   const vehicleCapacity = assignedBus?.capacity || seats.length || 32;
   const occupancyPercent = vehicleCapacity ? Math.round((occupiedCount / vehicleCapacity) * 100) : 56;
@@ -565,25 +553,25 @@ export default function HelperHome() {
   };
 
   const lookupTicket = useCallback(async (referenceOverride) => {
-    const reference = String(referenceOverride ?? verifyBookingId).trim();
-    if (!reference) {
-      setErr("Enter or scan a booking ticket first.");
+    const reference = String(referenceOverride ?? verifyBookingId).replace(/\D/g, "").slice(0, 4);
+    if (reference.length !== 4) {
+      setErr("Enter the passenger 4-digit ride OTP first.");
       return null;
     }
     setVerifyBusy(true);
     setErr("");
     setMsg("");
-    pushScanLog(`Verify request sent for ${reference.slice(0, 28)}${reference.length > 28 ? "..." : ""}.`);
+    pushScanLog(`Ride OTP verification requested for ${reference}.`);
     try {
-      const response = await api.post("/api/bookings/qr/verify/", { reference });
+      const response = await api.post("/api/bookings/otp/verify/", { reference });
       setVerifyBookingId(reference);
       setTicketLookup(response.data.booking);
-      pushScanLog(`Booking #${response.data.booking.id} loaded for ${response.data.booking.passenger_name}.`);
-      setMsg(`Ticket loaded for ${response.data.booking.passenger_name}.`);
+      pushScanLog(`Booking #${response.data.booking.id} loaded from OTP ${reference}.`);
+      setMsg(response.data.message || `Ride loaded for ${response.data.booking.passenger_name}.`);
       return response.data.booking;
     } catch (error) {
-      pushScanLog(`QR verification failed: ${error?.response?.data?.detail || "unknown error"}.`);
-      setErr(error?.response?.data?.detail || "Ticket lookup failed.");
+      pushScanLog(`Ride OTP verification failed: ${error?.response?.data?.detail || "unknown error"}.`);
+      setErr(error?.response?.data?.detail || "Ride OTP lookup failed.");
       return null;
     } finally {
       setVerifyBusy(false);
@@ -611,7 +599,7 @@ export default function HelperHome() {
 
   const requestPassengerPayment = useCallback(async () => {
     if (!ticketLookup?.id) {
-      setErr("Load a ticket before requesting passenger payment.");
+      setErr("Load a ride OTP before requesting passenger payment.");
       return;
     }
     setVerifyBusy(true);
@@ -622,6 +610,7 @@ export default function HelperHome() {
       const response = await api.post(`/api/bookings/${ticketLookup.id}/request-payment/`);
       setTicketLookup(response.data.booking);
       setMsg(response.data.message || "Payment request sent to the passenger.");
+      pushScanLog(`Passenger payment request is active for booking #${response.data.booking.id}.`);
       await loadDashboard({ silent: true });
     } catch (error) {
       pushScanLog(`Payment request failed for booking #${ticketLookup.id}.`);
@@ -633,113 +622,10 @@ export default function HelperHome() {
 
   const helperPaymentActionLabel = ticketLookup?.can_accept ? "Accept & Request Payment" : "Request Payment";
 
-  const decodeTicketFromImage = useCallback(async (file) => {
-    if (!file) return;
-    setScanBusy(true);
-    setErr("");
-    setMsg("Processing the passenger QR image...");
-    pushScanLog("QR image received from helper camera.");
-
-    let bitmap = null;
-    try {
-      if (typeof window !== "undefined" && "createImageBitmap" in window) {
-        bitmap = await window.createImageBitmap(file);
-      } else {
-        bitmap = await new Promise((resolve, reject) => {
-          const image = new Image();
-          const objectUrl = URL.createObjectURL(file);
-          image.onload = () => {
-            URL.revokeObjectURL(objectUrl);
-            resolve(image);
-          };
-          image.onerror = () => {
-            URL.revokeObjectURL(objectUrl);
-            reject(new Error("MetroBus could not open that image."));
-          };
-          image.src = objectUrl;
-        });
-      }
-
-      const width = Number(bitmap.width || bitmap.naturalWidth || 0);
-      const height = Number(bitmap.height || bitmap.naturalHeight || 0);
-      if (!width || !height) {
-        throw new Error("MetroBus could not read the captured QR image.");
-      }
-
-      const maxSide = 1600;
-      const scale = Math.min(1, maxSide / Math.max(width, height));
-      const drawWidth = Math.max(1, Math.round(width * scale));
-      const drawHeight = Math.max(1, Math.round(height * scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = drawWidth;
-      canvas.height = drawHeight;
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) {
-        throw new Error("MetroBus could not prepare the QR scan canvas.");
-      }
-
-      context.drawImage(bitmap, 0, 0, drawWidth, drawHeight);
-      let qrValue = "";
-
-      if (typeof window !== "undefined" && "BarcodeDetector" in window) {
-        try {
-          const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-          const results = await detector.detect(canvas);
-          if (results?.[0]?.rawValue) {
-            qrValue = results[0].rawValue;
-          }
-        } catch {
-          // Fall back to jsQR below.
-        }
-      }
-
-      if (!qrValue) {
-        const imageData = context.getImageData(0, 0, drawWidth, drawHeight);
-        const result = jsQR(imageData.data, drawWidth, drawHeight, { inversionAttempts: "attemptBoth" });
-        qrValue = result?.data || "";
-      }
-
-      if (!qrValue) {
-        throw new Error("No QR code was found in that photo. Try again with the ticket centered and well lit.");
-      }
-
-      pushScanLog(`QR decoded: ${qrValue.slice(0, 40)}${qrValue.length > 40 ? "..." : ""}`);
-      setVerifyBookingId(qrValue);
-      await lookupTicket(qrValue);
-    } catch (error) {
-      pushScanLog(`QR photo scan failed: ${error?.message || "unknown error"}.`);
-      setErr(error?.message || "MetroBus could not scan that QR image.");
-    } finally {
-      if (bitmap && typeof bitmap.close === "function") bitmap.close();
-      if (scannerCaptureInputRef.current) scannerCaptureInputRef.current.value = "";
-      setScanBusy(false);
-    }
-  }, [lookupTicket, pushScanLog]);
-
-  const openQrScanner = useCallback(() => {
-    setErr("");
-    setMsg("");
-    if (liveScanSupported) {
-      pushScanLog("Starting live helper camera scanner.");
-      setScannerOpen(true);
-      return;
-    }
-    pushScanLog("Live scanner unavailable on this device. Opening camera/photo fallback.");
-    scannerCaptureInputRef.current?.click();
-  }, [liveScanSupported, pushScanLog]);
-
-  const handleScannerCapture = useCallback(async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setScannerOpen(false);
-    pushScanLog("Captured helper QR photo. Starting decode.");
-    await decodeTicketFromImage(file);
-  }, [decodeTicketFromImage, pushScanLog]);
-
   const acceptPassengerRide = async (bookingOverride) => {
     const booking = bookingOverride || ticketLookup;
     if (!booking?.id) {
-      setErr("Load a ticket before accepting the passenger ride.");
+      setErr("Load a ride OTP before accepting the passenger ride.");
       return;
     }
     setVerifyBusy(true);
@@ -761,7 +647,7 @@ export default function HelperHome() {
   const openBookingInVerify = (booking) => {
     if (!booking) return;
     setTicketLookup(booking);
-    setVerifyBookingId(booking.ticket_code || booking.ticket_payload || String(booking.id));
+    setVerifyBookingId(String(booking.boarding_otp || "").slice(0, 4));
     setActiveTab("verify");
     setErr("");
     setMsg("");
@@ -770,7 +656,7 @@ export default function HelperHome() {
   const boardPassenger = async (bookingOverride) => {
     const booking = bookingOverride || ticketLookup;
     if (!booking?.id) {
-      setErr("Load a ticket before boarding the passenger.");
+      setErr("Load a ride OTP before boarding the passenger.");
       return;
     }
     setVerifyBusy(true);
@@ -793,7 +679,7 @@ export default function HelperHome() {
   const completePassengerRide = async (bookingOverride) => {
     const booking = bookingOverride || ticketLookup;
     if (!booking?.id) {
-      setErr("Load a ticket before completing the ride.");
+      setErr("Load a ride OTP before completing the ride.");
       return;
     }
     setVerifyBusy(true);
@@ -812,72 +698,6 @@ export default function HelperHome() {
       setVerifyBusy(false);
     }
   };
-
-  useEffect(() => {
-    if (!scannerOpen || !liveScanSupported) return undefined;
-
-    let active = true;
-    const BarcodeDetectorCtor = window.BarcodeDetector;
-    const detector = new BarcodeDetectorCtor({ formats: ["qr_code"] });
-
-    const stopScanner = () => {
-      if (scannerFrameRef.current) cancelAnimationFrame(scannerFrameRef.current);
-      scannerFrameRef.current = null;
-      if (scannerStreamRef.current) {
-        scannerStreamRef.current.getTracks().forEach((track) => track.stop());
-        scannerStreamRef.current = null;
-      }
-      if (scannerVideoRef.current) scannerVideoRef.current.srcObject = null;
-    };
-
-    const scanFrame = async () => {
-      if (!active || !scannerVideoRef.current) return;
-      try {
-        const results = await detector.detect(scannerVideoRef.current);
-        const rawValue = results?.[0]?.rawValue;
-        if (rawValue) {
-          pushScanLog(`Live QR decoded: ${rawValue.slice(0, 40)}${rawValue.length > 40 ? "..." : ""}`);
-          setScannerOpen(false);
-          stopScanner();
-          await lookupTicket(rawValue);
-          return;
-        }
-      } catch {
-        // Continue scanning silently when the browser reports no frame yet.
-      }
-      if (active) scannerFrameRef.current = requestAnimationFrame(scanFrame);
-    };
-
-    const startScanner = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" } },
-          audio: false,
-        });
-        pushScanLog("Camera permission granted. Live scanner started.");
-        if (!active) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        scannerStreamRef.current = stream;
-        if (scannerVideoRef.current) {
-          scannerVideoRef.current.srcObject = stream;
-          await scannerVideoRef.current.play();
-        }
-        scannerFrameRef.current = requestAnimationFrame(scanFrame);
-      } catch (error) {
-        setScannerOpen(false);
-        pushScanLog(`Camera permission denied or unavailable: ${error?.message || "unknown error"}.`);
-        setErr(error?.message || "Camera access is required to scan the passenger QR.");
-      }
-    };
-
-    startScanner();
-    return () => {
-      active = false;
-      stopScanner();
-    };
-  }, [liveScanSupported, lookupTicket, pushScanLog, scannerOpen]);
 
   const copyToClipboard = useCallback(async (text) => {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
@@ -1212,64 +1032,39 @@ Need support with live trip operations.`;
             <div className="px-1">
               <SectionLabel>Transit Verification</SectionLabel>
               <h2 className="mt-2 text-[2.9rem] font-black leading-[0.92] sm:text-6xl">Verify Payment</h2>
-              <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Scan the passenger ticket QR or enter the ticket code to verify payment, confirm boarding, and complete the ride when the passenger gets off.</p>
+              <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Enter the passenger 4-digit ride OTP to load the booking, request payment, confirm boarding, and complete the ride when the passenger gets off.</p>
             </div>
             <SurfaceCard className="rounded-[1.8rem]">
-              <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">Ticket Code / QR Payload</label>
-              <input
-                ref={scannerCaptureInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleScannerCapture}
-              />
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+              <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">4-Digit Ride OTP</label>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
                 <div className="relative">
-                  <input type="text" value={verifyBookingId} onChange={(event) => setVerifyBookingId(event.target.value)} placeholder="METROBUS:BOOKING:123:QR_TOKEN" className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold text-[var(--hlp-text)] outline-none" />
-                  <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--hlp-purple)]"><Icon name="qr" className="h-6 w-6" /></span>
+                  <input
+                    type="text"
+                    value={verifyBookingId}
+                    onChange={(event) => setVerifyBookingId(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="1234"
+                    className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold tracking-[0.22em] text-[var(--hlp-text)] outline-none"
+                  />
+                  <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--hlp-purple)]"><Icon name="shield" className="h-6 w-6" /></span>
                 </div>
-                <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy || scanBusy} className="!px-8 !py-4">
-                  {verifyBusy ? "Loading" : "Load Ticket"}
-                </PrimaryButton>
-                <PrimaryButton tone="ghost" onClick={openQrScanner} disabled={verifyBusy || scanBusy} className="!px-8 !py-4">
-                  {scanBusy ? "Reading QR" : "Scan QR"}
+                <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy} className="!px-8 !py-4">
+                  {verifyBusy ? "Loading Ride" : "Load Ride"}
                 </PrimaryButton>
               </div>
-              <p className="mt-3 text-sm text-[var(--hlp-muted)]">
-                {liveScanSupported
-                  ? "Use Scan QR to open the live camera and load the passenger ticket instantly."
-                  : "Use Scan QR to open the phone camera, capture the passenger ticket, and let MetroBus read the QR from the image."}
-              </p>
+              <p className="mt-3 text-sm text-[var(--hlp-muted)]">The passenger shares this OTP after booking. MetroBus verifies it against the live booking before payment and boarding actions are unlocked.</p>
               <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--hlp-muted)]">
                 <span className="rounded-full bg-[var(--hlp-soft)] px-3 py-2">Socket: {bookingSocketState}</span>
-                <span className="rounded-full bg-[var(--hlp-soft)] px-3 py-2">{liveScanSupported ? "Live Camera Ready" : "Photo Fallback Mode"}</span>
+                <span className="rounded-full bg-[var(--hlp-soft)] px-3 py-2">Lookup: OTP verification</span>
               </div>
             </SurfaceCard>
-
-            {scannerOpen ? (
-              <SurfaceCard className="rounded-[1.8rem] overflow-hidden">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <SectionLabel>Live Scanner</SectionLabel>
-                    <p className="mt-2 text-2xl font-black">Point the camera at the passenger QR</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <PrimaryButton tone="ghost" onClick={() => scannerCaptureInputRef.current?.click()} className="!px-5 !py-3">Use Photo</PrimaryButton>
-                    <PrimaryButton tone="ghost" onClick={() => setScannerOpen(false)} className="!px-5 !py-3">Close</PrimaryButton>
-                  </div>
-                </div>
-                <div className="mt-4 overflow-hidden rounded-[1.8rem] bg-[var(--hlp-soft)]">
-                  <video ref={scannerVideoRef} className="h-72 w-full object-cover" muted playsInline />
-                </div>
-              </SurfaceCard>
-            ) : null}
 
             <SurfaceCard className="rounded-[1.8rem]">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <SectionLabel>Debug Status</SectionLabel>
-                  <p className="mt-2 text-2xl font-black">Helper scan and payment log</p>
+                  <p className="mt-2 text-2xl font-black">Helper OTP and payment log</p>
                 </div>
                 <Chip tone="soft">{scanLogItems.length} events</Chip>
               </div>
@@ -1280,7 +1075,7 @@ Need support with live trip operations.`;
                   </div>
                 )) : (
                   <div className="rounded-[1.1rem] border border-dashed border-[var(--hlp-border)] px-4 py-4 text-sm text-[var(--hlp-muted)]">
-                    No helper scan events yet. Start the camera or load a QR to see each step here.
+                    No helper OTP events yet. Load a passenger ride OTP to see each verification and payment step here.
                   </div>
                 )}
               </div>
@@ -1295,16 +1090,17 @@ Need support with live trip operations.`;
                 <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="shield" className="h-8 w-8" /></div>
               </div>
               <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                {[{ label: "Passenger", value: ticketLookup?.passenger_name || "Load a ticket" }, { label: "Route", value: ticketLookup?.route_name || "--" }, { label: "Seats", value: ticketLookup?.seat_labels?.join(", ") || "--" }, { label: "Payment", value: verifyPreview.method || "--" }, { label: "Status", value: verifyPreview.status || "--" }, { label: "Amount", value: verifyPreview.amount ? `Rs. ${verifyPreview.amount}` : "--" }].map((item) => (
+                {[{ label: "Passenger", value: ticketLookup?.passenger_name || "Load a ride" }, { label: "Route", value: ticketLookup?.route_name || "--" }, { label: "Seats", value: ticketLookup?.seat_labels?.join(", ") || "--" }, { label: "Ride OTP", value: ticketLookup?.boarding_otp || "--" }, { label: "Payment", value: verifyPreview.method || "--" }, { label: "Amount", value: verifyPreview.amount ? `Rs. ${verifyPreview.amount}` : "--" }].map((item) => (
                   <div key={item.label}>
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{item.label}</p>
-                    <p className={`mt-3 break-words text-2xl font-black leading-snug ${item.label === "Status" ? "text-[#b91c1c]" : item.label === "Amount" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
+                    <p className={`mt-3 break-words text-2xl font-black leading-snug ${item.label === "Amount" || item.label === "Ride OTP" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
                   </div>
                 ))}
               </div>
               {ticketLookup ? (
                 <div className="mt-5 rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-medium text-[var(--hlp-text)]">
                   <p className="break-words"><span className="font-black text-[var(--hlp-purple)]">Booking ID:</span> #{ticketLookup.id}</p>
+                  <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Ride OTP:</span> {ticketLookup.boarding_otp}</p>
                   <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Journey Status:</span> {ticketLookup.journey_status_label || ticketLookup.journey_status}</p>
                   <p className="break-words"><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
                   <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
@@ -1437,7 +1233,7 @@ Need support with live trip operations.`;
                 </div>
               </SurfaceCard>
             ) : null}
-            <p className="text-center text-sm text-[var(--hlp-muted)]">Scan the QR, accept the passenger ride details, request or verify payment, then mark the rider boarded. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
+            <p className="text-center text-sm text-[var(--hlp-muted)]">Verify the ride OTP, accept the passenger ride details, request or verify payment, then mark the rider boarded. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
             <div className="h-48 rounded-[2.6rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(244,232,247,0.42))] shadow-[var(--hlp-shadow)]" />
           </div>
         ) : null}
@@ -1491,7 +1287,7 @@ Need support with live trip operations.`;
             </SurfaceCard>
             <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
               <div className="flex items-start justify-between gap-4">
-                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/14"><Icon name="qr" className="h-7 w-7" /></div>
+                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/14"><Icon name="ticket" className="h-7 w-7" /></div>
                 <Chip tone="dark" className="bg-white/18">Active Pass</Chip>
               </div>
               <p className="mt-6 text-sm font-medium text-white/76">Registered user</p>

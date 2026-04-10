@@ -132,8 +132,6 @@ export function Icon({ name, className = "h-5 w-5" }) {
       return <svg {...common}><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8.5A4 4 0 0 1 12 4.5a4 4 0 0 1 4 4V11" /></svg>;
     case "plus":
       return <svg {...common}><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
-    case "qr":
-      return <svg {...common}><path d="M4 4h5v5H4z" /><path d="M15 4h5v5h-5z" /><path d="M4 15h5v5H4z" /><path d="M15 15h2" /><path d="M18 15v5" /><path d="M15 18h3" /></svg>;
     case "edit":
       return <svg {...common}><path d="m4 20 4.5-1 9-9a2.2 2.2 0 0 0-3.1-3.1l-9 9L4 20Z" /></svg>;
     case "download":
@@ -691,34 +689,49 @@ export function OccupancySheet({ trip, seats = [], loading, onClose }) {
   );
 }
 
-export function TicketQrCard({ booking, title = "Ride Ticket", compact = false }) {
+export function TicketOtpCard({ booking, title = "Ride Ticket", compact = false }) {
   if (!booking) return null;
   const paymentLabel = booking.payment_method || booking.payment?.method || "UNPAID";
   const paymentStatus = booking.payment_status || booking.payment?.status || "UNPAID";
   const boardingStatus = booking.completed_at ? "Completed" : booking.checked_in_at ? "Onboard" : "Ready to board";
+  const boardingOtp = String(booking.boarding_otp || "").padStart(4, "0").slice(-4);
+  const otpDigits = boardingOtp.length === 4 ? boardingOtp.split("") : ["-", "-", "-", "-"];
   return (
     <div className={`space-y-5 ${compact ? "" : ""}`}>
       <div>
         <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">{title}</p>
         <h3 className="mt-3 text-[2.35rem] font-black leading-[0.96] tracking-[-0.04em] text-[var(--mb-text)]">Your Ride Ticket</h3>
-        <p className="mt-3 text-[1.05rem] leading-8 text-[var(--mb-muted)]">Show this QR code to the driver upon boarding.</p>
+        <p className="mt-3 text-[1.05rem] leading-8 text-[var(--mb-muted)]">Share this 4-digit ride OTP with the helper when the bus arrives.</p>
       </div>
 
       <div className="relative overflow-hidden rounded-[1.75rem] bg-white px-5 py-6 shadow-[var(--mb-shadow)]">
         <div className="absolute inset-x-6 top-10 h-px bg-[radial-gradient(circle,rgba(95,25,230,0.28)_1px,transparent_1px)] bg-[size:12px_1px] opacity-70" />
         <div className="absolute inset-x-6 bottom-40 h-px bg-[radial-gradient(circle,rgba(95,25,230,0.28)_1px,transparent_1px)] bg-[size:12px_1px] opacity-70" />
-        <div className="mx-auto max-w-[16rem] rounded-[1.45rem] bg-[#faf8ff] p-4 shadow-[0_12px_24px_rgba(88,43,171,0.08)]">
-          <div className="overflow-hidden rounded-[1.5rem] bg-white p-4">
-            {booking.ticket_qr_svg ? (
-              <div className="[&_svg]:h-full [&_svg]:w-full [&_svg]:max-h-[15rem]" dangerouslySetInnerHTML={{ __html: booking.ticket_qr_svg }} />
-            ) : (
-              <div className="grid h-52 place-items-center rounded-[20px] bg-[var(--mb-bg-alt)] text-sm font-medium text-[var(--mb-muted)]">
-                QR is being prepared.
-              </div>
-            )}
+        <div className="mx-auto max-w-[18rem] rounded-[1.45rem] bg-[#faf8ff] p-5 shadow-[0_12px_24px_rgba(88,43,171,0.08)]">
+          <div className="rounded-[1.5rem] bg-white p-5">
+            <p className="text-center text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Boarding OTP</p>
+            <div className="mt-4 grid grid-cols-4 gap-3">
+              {otpDigits.map((digit, index) => (
+                <div key={`${digit}-${index}`} className="grid h-16 place-items-center rounded-[1rem] bg-[var(--mb-bg-alt)] text-[1.75rem] font-black text-[var(--mb-purple)] shadow-[inset_0_0_0_1px_rgba(109,62,193,0.08)]">
+                  {digit}
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-center text-xs font-medium uppercase tracking-[0.2em] text-[var(--mb-muted)]">
+              Tell this code to the helper to load your ride
+            </p>
           </div>
         </div>
-        <p className="mt-6 text-center text-[1.05rem] font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">{booking.ticket_code}</p>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-[1rem] bg-[var(--mb-card-strong)] px-4 py-4">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Ticket Code</p>
+            <p className="mt-2 text-base font-black text-[var(--mb-purple)]">{booking.ticket_code}</p>
+          </div>
+          <div className="rounded-[1rem] bg-[var(--mb-card-strong)] px-4 py-4 sm:text-right">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--mb-muted)]">Bus Plate</p>
+            <p className="mt-2 text-base font-black text-[var(--mb-text)]">{booking.bus_plate}</p>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-[2.2rem] bg-white px-6 py-6 shadow-[var(--mb-shadow)]">
@@ -857,7 +870,7 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
 
       {lastBookingId ? (
         <div className="mt-4 space-y-3">
-          <TicketQrCard booking={lastBookingSummary} title="Step 2" />
+          <TicketOtpCard booking={lastBookingSummary} title="Step 2" />
           <div className="rounded-[24px] bg-[linear-gradient(135deg,#fff,#f8e5fb)] p-4">
             <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Choose Payment</p>
             <p className="mt-2 text-sm text-[var(--mb-muted)]">
@@ -909,9 +922,9 @@ export function PaymentRequestCard({ booking, paymentBusy, onPay }) {
   const paymentReady = booking.needs_payment_selection;
   const actionLabel = paymentReady ? "Open Checkout" : "Review Payment";
   const summaryText = paymentReady
-    ? booking.payment_requested_by_name
-      ? `${booking.payment_requested_by_name} scanned or loaded your ticket and is waiting for your payment choice.`
-      : "Your helper scanned or loaded the ticket and is waiting for your payment choice."
+      ? booking.payment_requested_by_name
+        ? `${booking.payment_requested_by_name} entered your ride OTP and is waiting for your payment choice.`
+        : "Your helper entered your ride OTP and is waiting for your payment choice."
     : waitingForCash
       ? "Cash was selected. Please hand the fare to the helper so they can verify the collection."
       : waitingForGateway
@@ -993,7 +1006,7 @@ export function CheckoutPage({
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Checkout</p>
             <h2 className="mt-3 text-[1.85rem] font-black leading-tight text-[var(--mb-text)] sm:text-[2.2rem]">No payment request is active</h2>
           <p className="mt-3 text-base font-medium leading-7 text-[var(--mb-muted)]">
-            MetroBus will open checkout here when a helper scans or loads your ticket and requests payment for the current booking.
+            MetroBus will open checkout here when a helper enters your ride OTP and requests payment for the current booking.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -1046,8 +1059,8 @@ export function CheckoutPage({
         <p className="mt-4 text-base leading-7 text-[var(--mb-muted)]">
           {booking.needs_payment_selection
             ? booking.payment_requested_by_name
-              ? `${booking.payment_requested_by_name} scanned or loaded your QR ticket and asked you to finish payment before boarding.`
-              : "Your helper scanned or loaded your QR ticket and asked you to finish payment before boarding."
+              ? `${booking.payment_requested_by_name} entered your ride OTP and asked you to finish payment before boarding.`
+              : "Your helper entered your ride OTP and asked you to finish payment before boarding."
             : waitingForCash
               ? "You selected cash. Hand the fare to the helper so they can verify and board you."
               : waitingForGateway
@@ -1070,7 +1083,7 @@ export function CheckoutPage({
             {(booking.seat_labels || []).join(", ") || "--"}
           </p>
           <p className="mt-3 text-sm font-medium leading-6 text-[var(--mb-muted)]">
-            Booking #{booking.id} • {booking.ticket_code || "QR ticket ready"}
+            Booking #{booking.id} • OTP {booking.boarding_otp || "----"}
           </p>
         </div>
       </div>
@@ -1136,7 +1149,7 @@ export function CheckoutPage({
 
         {paymentComplete ? (
           <div className="mt-5 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium leading-6 text-emerald-800">
-            Payment is completed for this booking. You can keep the QR ready and move back to Track while waiting for the bus.
+            Payment is completed for this booking. Keep the ride OTP ready and move back to Track while waiting for the bus.
           </div>
         ) : null}
       </div>
@@ -1147,7 +1160,7 @@ export function CheckoutPage({
           onClick={onViewTicket}
           className="rounded-[1rem] border border-[var(--mb-border)] bg-white px-5 py-4 text-base font-black text-[var(--mb-text)] shadow-[var(--mb-shadow)]"
         >
-          View QR
+          View Ride OTP
         </button>
         <button
           type="button"
