@@ -422,55 +422,55 @@ export default function AdminHome() {
   const rowBg = isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-200";
 
   return (
-    <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
-      <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-4 py-3 ${t.nav}`}>
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-sm font-black text-white">MB</div>
-            <div><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus Admin</p><p className={`text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Admin"}</p></div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Pill color="emerald" isDark={isDark}>{trips.live || 0} live</Pill>
-            <Pill color="amber" isDark={isDark}>{payments.pending || 0} pending</Pill>
-            <ThemeToggle isDark={isDark} toggle={toggle} />
+      <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
+        <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-3 py-3 sm:px-4 ${t.nav}`}>
+          <div className="mx-auto flex max-w-[76rem] flex-wrap items-center justify-between gap-3 sm:gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-sm font-black text-white">MB</div>
+              <div className="min-w-0"><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus Admin</p><p className={`truncate text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Admin"}</p></div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Pill color="emerald" isDark={isDark}>{trips.live || 0} live</Pill>
+              <Pill color="amber" isDark={isDark}>{payments.pending || 0} pending</Pill>
+              <ThemeToggle isDark={isDark} toggle={toggle} />
             <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); loadSched(); }} className="!py-2 !px-3 text-xs">Reload</Btn>
             <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
           </div>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-5">
+        <div className="mx-auto max-w-[76rem] px-3 py-4 sm:px-4 sm:py-5">
         {err && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
         {stopMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {stopMsg}</div>}
         {routeMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>Saved: {routeMsg}</div>}
         {scheduleMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>Saved: {scheduleMsg}</div>}
 
         {/* Tabs */}
-        <div className={`flex gap-1.5 rounded-2xl border p-1.5 mb-6 backdrop-blur ${t.tabBar}`}>
-          {TABS.map(tab => (
-            <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-              className={`flex flex-1 items-center justify-center rounded-xl px-1 py-2.5 text-[0.72rem] font-bold leading-tight transition-all ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white shadow-[0_18px_34px_rgba(255,107,115,0.24)]" : t.tabInactive}`}>
-              <span>{tab.label}</span>
-            </button>
-          ))}
-        </div>
+          <div className={`enterprise-inline-scroll mb-6 flex gap-1.5 rounded-2xl border p-1.5 backdrop-blur ${t.tabBar}`}>
+            {TABS.map(tab => (
+              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white shadow-[0_18px_34px_rgba(255,107,115,0.24)]" : t.tabInactive}`}>
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
 
         {/* OVERVIEW */}
         {activeTab === "overview" && (
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers | ${roleCounts.DRIVER || 0} drivers`} accent="text-[#ff6b73]" t={t} />
               <StatCard label="Live Trips" value={trips.live ?? 0} sub={`${trips.total || 0} total`} accent="text-emerald-500" t={t} />
               <StatCard label="Bookings" value={bookings.total ?? 0} sub={`${bookings.confirmed || 0} confirmed`} accent="text-amber-500" t={t} />
               <StatCard label="Revenue" value={fmtMoney(payments.revenue_success ?? 0)} sub={`${payments.success || 0} successful`} t={t} />
             </div>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Wallet Float" value={fmtMoney(wallets.total_balance ?? 0)} sub="Passenger balance held" accent="text-fuchsia-500" t={t} />
               <StatCard label="Active Passes" value={wallets.active_passes ?? 0} sub={`${wallets.weekly_passes || 0} weekly | ${wallets.monthly_passes || 0} monthly`} accent="text-sky-500" t={t} />
               <StatCard label="Reward Ready" value={wallets.reward_ready ?? 0} sub={`${wallets.reward_threshold || 100} points unlock a free ride`} accent="text-violet-500" t={t} />
               <StatCard label="Free Rides Used" value={wallets.free_rides_redeemed ?? 0} sub={`${wallets.total_reward_points || 0} live points across wallets`} accent="text-emerald-500" t={t} />
             </div>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <StatCard label="Await Accept" value={rideOps.awaiting_acceptance ?? 0} sub="Helper has not accepted yet" accent="text-amber-500" t={t} />
               <StatCard label="Await Payment" value={rideOps.awaiting_payment ?? 0} sub="Accepted but not paid" accent="text-rose-500" t={t} />
               <StatCard label="Ready To Board" value={rideOps.ready_to_board ?? 0} sub="Paid and waiting" accent="text-sky-500" t={t} />
@@ -489,7 +489,7 @@ export default function AdminHome() {
                   </div>
                 ))}
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {[{ label: "Success", v: payments.success || 0, a: "text-emerald-500" }, { label: "Pending", v: payments.pending || 0, a: "text-amber-500" }, { label: "Failed", v: payments.failed || 0, a: "text-red-500" }].map(r => (
                   <div key={r.label} className={`rounded-xl border px-4 py-3 ${rowBg}`}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{r.label}</p><p className={`text-2xl font-black mt-1 ${r.a}`}>{r.v}</p></div>
                 ))}
@@ -551,7 +551,7 @@ export default function AdminHome() {
                 <p className={`text-xs mb-4 ${t.textSub}`}>Tap the map on the right to pin a new stop, then save it so the whole MetroBus system can use it.</p>
                 <div className="space-y-3">
                   <InputField label="Stop Name" value={stopName} onChange={setStopName} placeholder="Bindhyabasini Gate" t={t} />
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <InputField label="Latitude" value={stopLat} onChange={setStopLat} placeholder="28.233421" t={t} />
                     <InputField label="Longitude" value={stopLng} onChange={setStopLng} placeholder="83.996812" t={t} />
                   </div>
@@ -565,7 +565,7 @@ export default function AdminHome() {
                       {stopActive ? "Active For Routes" : "Saved As Inactive"}
                     </button>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Btn tone="ghost" onClick={clearStopForm} className="w-full !py-4">Clear</Btn>
                     <Btn tone="success" onClick={createStop} disabled={stopBusy} className="w-full !py-4">{stopBusy ? "Saving..." : "Add Stop"}</Btn>
                   </div>
@@ -575,7 +575,7 @@ export default function AdminHome() {
                 <SLabel t={t}>Route Builder</SLabel>
                 <div className="space-y-3">
                   <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" t={t} />
-                  <div className="grid grid-cols-[1fr_auto] gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
                     <InputField label="City" value={routeCity} onChange={setRouteCity} placeholder="Pokhara" t={t} />
                     <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
                   </div>
@@ -776,11 +776,11 @@ export default function AdminHome() {
                 <div className="space-y-3">
                   <InputField label="Bus Name / Identifier" value={busName} onChange={setBusName} placeholder="MetroBus Lakeside Express" t={t} />
                   <InputField label="Plate Number" value={busPlate} onChange={setBusPlate} placeholder="BA 1 CHA 2233" t={t} />
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <InputField label="Model Year" value={busYear} onChange={setBusYear} type="number" placeholder="2024" t={t} />
                     <SelectField label="Condition" value={busCondition} onChange={setBusCondition} t={t} options={[{ value: "NEW", label: "New" }, { value: "NORMAL", label: "Normal" }, { value: "OLD", label: "Old" }]} />
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <InputField label="Seat Rows" value={busRows} onChange={setBusRows} type="number" placeholder="9" t={t} />
                     <InputField label="Seat Columns" value={busCols} onChange={setBusCols} type="number" placeholder="4" t={t} />
                   </div>
@@ -839,7 +839,7 @@ export default function AdminHome() {
                         </Btn>
                       </div>
                       {(bus.exterior_photo_url || bus.interior_photo_url || bus.seat_photo_url) ? (
-                        <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                           {[bus.exterior_photo_url, bus.interior_photo_url, bus.seat_photo_url].filter(Boolean).map((url, index) => (
                             <img key={`${bus.id}-${index}`} src={url} alt={`${bus.display_name || bus.plate_number} view ${index + 1}`} className="h-20 w-full rounded-xl object-cover" />
                           ))}
@@ -867,7 +867,7 @@ export default function AdminHome() {
                 </div>
                 {uMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>OK: {uMgmtMsg}</div>}
                 <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {["DRIVER", "HELPER", "ADMIN"].map(role => (
                       <button key={role} type="button" onClick={() => setURole(role)} className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
                         {role}
@@ -926,7 +926,7 @@ export default function AdminHome() {
                         {!u.is_active ? <Pill color="slate" isDark={isDark}>Inactive</Pill> : null}
                       </div>
                       {(u.official_photo_url || u.license_photo_url) ? (
-                        <div className="mt-3 grid grid-cols-2 gap-2">
+                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                           {u.official_photo_url ? <img src={u.official_photo_url} alt={`${u.full_name} official`} className="h-24 w-full rounded-xl object-cover" /> : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>No official photo</div>}
                           {u.role === "DRIVER" ? (u.license_photo_url ? <img src={u.license_photo_url} alt={`${u.full_name} license`} className="h-24 w-full rounded-xl object-cover" /> : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>No license photo</div>) : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>License not required</div>}
                         </div>

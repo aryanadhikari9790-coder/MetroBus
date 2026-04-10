@@ -72,7 +72,7 @@ export function MetroBusMark({ className = "h-12 w-12" }) {
 
 export function MetroBusWordmark({ compact = false }) {
   return (
-    <div className={`font-black tracking-[-0.05em] ${compact ? "text-[1.45rem]" : "text-[3rem]"}`}>
+    <div className={`font-black tracking-[-0.05em] ${compact ? "text-[1.2rem] sm:text-[1.45rem]" : "text-[2.35rem] sm:text-[3rem]"}`}>
       <span className="text-[var(--mb-purple)]">Metro</span>
       <span className="text-[var(--mb-accent)]">Bus</span>
     </div>
@@ -155,15 +155,15 @@ export function PassengerAvatar({ user, size = "h-11 w-11" }) {
 
 export function HeaderBar({ user, activeView, onLogout, onMenu, onNotifications, notificationCount = 0 }) {
   return (
-    <header className="fixed inset-x-0 top-0 z-[1200] border-b border-white/60 bg-[color:var(--mb-nav)]/98 px-4 py-4 shadow-[0_12px_32px_rgba(83,33,159,0.08)] backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[28rem] items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={onMenu} className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+    <header className="enterprise-mobile-topbar fixed inset-x-0 top-0 z-[1200] border-b border-white/60 bg-[color:var(--mb-nav)]/98 shadow-[0_12px_32px_rgba(83,33,159,0.08)] backdrop-blur-xl">
+      <div className="enterprise-mobile-shell flex items-center justify-between gap-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <button type="button" onClick={onMenu} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)] sm:h-11 sm:w-11">
             <Icon name="menu" />
           </button>
-          <div>
+          <div className="min-w-0">
             <MetroBusWordmark compact />
-            <p className="text-xs font-medium text-[var(--mb-muted)]">
+            <p className="truncate text-[0.7rem] font-medium text-[var(--mb-muted)] sm:text-xs">
               {activeView === "home"
                 ? "Journey Planner"
                 : activeView === "track"
@@ -176,8 +176,8 @@ export function HeaderBar({ user, activeView, onLogout, onMenu, onNotifications,
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button type="button" onClick={onNotifications} className="relative grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={onNotifications} className="relative grid h-10 w-10 place-items-center rounded-full bg-white text-[var(--mb-purple)] shadow-[var(--mb-shadow)] sm:h-11 sm:w-11">
             <Icon name="bell" />
             {notificationCount ? (
               <span className="absolute -right-1 -top-1 min-w-[1.2rem] rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-1.5 py-0.5 text-[0.62rem] font-black text-white shadow-[var(--mb-shadow-strong)]">
@@ -185,10 +185,10 @@ export function HeaderBar({ user, activeView, onLogout, onMenu, onNotifications,
               </span>
             ) : null}
           </button>
-          <button type="button" onClick={onLogout} className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-text)] shadow-[var(--mb-shadow)]">
+          <button type="button" onClick={onLogout} className="grid h-10 w-10 place-items-center rounded-full bg-white text-[var(--mb-text)] shadow-[var(--mb-shadow)] sm:h-11 sm:w-11">
             <Icon name="logout" />
           </button>
-          <PassengerAvatar user={user} size="h-12 w-12" />
+          <PassengerAvatar user={user} size="h-10 w-10 sm:h-11 sm:w-11" />
         </div>
       </div>
     </header>
@@ -214,14 +214,14 @@ function MapViewport({ points }) {
 
 export function SearchBar({ summary, onOpenPlanner, onSearch }) {
   return (
-    <div className="mt-6 flex items-center gap-3 rounded-[20px] bg-[var(--mb-card-soft)] p-3 shadow-[var(--mb-shadow)]">
-      <div className="grid h-11 w-11 place-items-center rounded-full bg-white text-[var(--mb-muted)]">
+    <div className="mt-5 flex items-center gap-2.5 rounded-[18px] bg-[var(--mb-card-soft)] p-2.5 shadow-[var(--mb-shadow)] sm:mt-6 sm:gap-3 sm:rounded-[20px] sm:p-3">
+      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-[var(--mb-muted)] sm:h-11 sm:w-11">
         <Icon name="search" />
       </div>
-      <button type="button" onClick={onOpenPlanner} className="min-w-0 flex-1 text-left text-lg font-medium text-[var(--mb-muted)]">
+      <button type="button" onClick={onOpenPlanner} className="min-w-0 flex-1 text-left text-base font-medium text-[var(--mb-muted)] sm:text-lg">
         <span className="block truncate">{summary}</span>
       </button>
-      <button type="button" onClick={onSearch} className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
+      <button type="button" onClick={onSearch} className="rounded-[0.95rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)] sm:px-6">
         GO
       </button>
     </div>
@@ -785,33 +785,33 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
   const total = lastBookingSummary?.fare_total || ((trip?.fare_estimate || 50) * selectedSeatIds.length);
   const paymentOptions = buildPaymentOptions(total, walletSummary);
   if (!trip) return null;
-  return (
-    <section className="space-y-5">
-      <div className="rounded-[2.2rem] bg-white px-5 py-5 shadow-[var(--mb-shadow)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Selected Route</p>
-            <h3 className="mt-2 text-[2.1rem] font-black leading-[0.96] text-[var(--mb-text)]">{trip.route_name || trip.bus_plate || "MetroBus"}</h3>
+    return (
+      <section className="space-y-5">
+        <div className="rounded-[1.75rem] bg-white px-4 py-4 shadow-[var(--mb-shadow)] sm:rounded-[2.2rem] sm:px-5 sm:py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Selected Route</p>
+              <h3 className="mt-2 text-[1.55rem] font-black leading-[1] text-[var(--mb-text)] sm:text-[2.1rem]">{trip.route_name || trip.bus_plate || "MetroBus"}</h3>
+            </div>
+            <div className="shrink-0 rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-sm font-black text-[var(--mb-purple)] sm:px-4 sm:text-base">
+              ETA: {trip.eta?.minutes ? `${trip.eta.minutes} Mins` : "Live"}
+            </div>
           </div>
-          <div className="rounded-full bg-[var(--mb-bg-alt)] px-4 py-2 text-base font-black text-[var(--mb-purple)]">
-            ETA: {trip.eta?.minutes ? `${trip.eta.minutes} Mins` : "Live"}
+          <div className="mt-5 grid grid-cols-[auto_minmax(0,1fr)] gap-2 text-base font-medium text-[var(--mb-text)] sm:grid-cols-[auto_1fr_auto_1fr] sm:items-center sm:gap-3 sm:text-[1.1rem]">
+            <Icon name="track" className="h-5 w-5 text-[var(--mb-purple)]" />
+            <span className="min-w-0">{pickupStop?.name || "Pickup"}</span>
+            <span className="hidden text-[var(--mb-muted)] sm:inline">→</span>
+            <span className="min-w-0 sm:text-left">{dropStop?.name || "Drop"}</span>
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-[auto_1fr_auto_1fr] items-center gap-3 text-[1.1rem] font-medium text-[var(--mb-text)]">
-          <Icon name="track" className="h-5 w-5 text-[var(--mb-purple)]" />
-          <span>{pickupStop?.name || "Pickup"}</span>
-          <span className="text-[var(--mb-muted)]">→</span>
-          <span>{dropStop?.name || "Drop"}</span>
-        </div>
-      </div>
 
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-5">
-          <h3 className="text-[2rem] font-black tracking-[-0.03em] text-[var(--mb-text)]">Select Seats</h3>
-          <div className="flex flex-wrap items-center gap-4 text-sm font-medium text-[var(--mb-text)]">
-            <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded border border-[var(--mb-border)] bg-white" />Open</span>
-            <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded bg-[#e3e0ee]" />Taken</span>
-            <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded bg-[var(--mb-purple)]" />Selected</span>
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-5">
+            <h3 className="text-[1.7rem] font-black tracking-[-0.03em] text-[var(--mb-text)] sm:text-[2rem]">Select Seats</h3>
+            <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-[var(--mb-text)] sm:gap-4 sm:text-sm">
+              <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded border border-[var(--mb-border)] bg-white" />Open</span>
+              <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded bg-[#e3e0ee]" />Taken</span>
+              <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded bg-[var(--mb-purple)]" />Selected</span>
           </div>
         </div>
 
@@ -822,12 +822,12 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
           </div>
         ) : null}
         {!loadingSeats && seats.length ? (
-          <div className="overflow-hidden rounded-[2.2rem] bg-[var(--mb-card-strong)] px-4 pt-6 shadow-[var(--mb-shadow)]">
-            <div className="mx-auto mb-5 h-2 w-20 rounded-full bg-[rgba(145,123,194,0.18)]" />
-            <div className="grid grid-cols-5 gap-3">
-              {seats.map((seat, index) => (
-                <div key={seat.seat_id} className={index % 5 === 2 ? "pl-2" : ""}>
-                  <SeatButton seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => onSeatToggle(seat.seat_id)} />
+            <div className="overflow-hidden rounded-[1.8rem] bg-[var(--mb-card-strong)] px-3 pt-5 shadow-[var(--mb-shadow)] sm:rounded-[2.2rem] sm:px-4 sm:pt-6">
+              <div className="mx-auto mb-5 h-2 w-20 rounded-full bg-[rgba(145,123,194,0.18)]" />
+              <div className="grid grid-cols-5 gap-2 sm:gap-3">
+                {seats.map((seat, index) => (
+                  <div key={seat.seat_id} className={index % 5 === 2 ? "pl-2" : ""}>
+                    <SeatButton seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => onSeatToggle(seat.seat_id)} />
                 </div>
               ))}
             </div>
@@ -836,18 +836,18 @@ export function ReservationBuilder({ trip, seats, selectedSeatIds, onSeatToggle,
                 This bus has no open seats left for the selected segment right now.
               </div>
             ) : null}
-            <div className="mt-6 rounded-t-[2rem] bg-white px-5 py-5 shadow-[0_-10px_30px_rgba(95,25,230,0.08)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Your Selection</p>
-                  <p className="mt-2 text-[1.9rem] font-black leading-tight text-[var(--mb-text)]">Seats: {selectedLabels.join(", ") || "--"}</p>
+              <div className="mt-5 rounded-t-[1.7rem] bg-white px-4 py-4 shadow-[0_-10px_30px_rgba(95,25,230,0.08)] sm:mt-6 sm:rounded-t-[2rem] sm:px-5 sm:py-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Your Selection</p>
+                    <p className="mt-2 text-[1.55rem] font-black leading-tight text-[var(--mb-text)] sm:text-[1.9rem]">Seats: {selectedLabels.join(", ") || "--"}</p>
+                  </div>
+                  <div className="sm:text-right">
+                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Total Fare</p>
+                    <p className="mt-2 text-[1.9rem] font-black leading-tight text-[var(--mb-purple)] sm:text-[2.1rem]">{fmtMoney(total)}</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Total Fare</p>
-                  <p className="mt-2 text-[2.1rem] font-black leading-tight text-[var(--mb-purple)]">{fmtMoney(total)}</p>
-                </div>
-              </div>
-              <button type="button" onClick={onBook} disabled={bookingBusy || !selectedSeatIds.length} className="mt-5 w-full rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
+                <button type="button" onClick={onBook} disabled={bookingBusy || !selectedSeatIds.length} className="mt-5 w-full rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-[1.05rem] font-black text-white shadow-[var(--mb-shadow-strong)] disabled:opacity-60">
                 {bookingBusy ? "Confirming..." : "Confirm Booking"}
               </button>
             </div>
@@ -989,9 +989,9 @@ export function CheckoutPage({
   if (!booking) {
     return (
       <section className="space-y-4">
-        <div className="rounded-[28px] bg-white p-6 shadow-[var(--mb-shadow)]">
-          <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Checkout</p>
-          <h2 className="mt-3 text-[2.2rem] font-black leading-tight text-[var(--mb-text)]">No payment request is active</h2>
+          <div className="rounded-[1.8rem] bg-white p-5 shadow-[var(--mb-shadow)] sm:rounded-[28px] sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Checkout</p>
+            <h2 className="mt-3 text-[1.85rem] font-black leading-tight text-[var(--mb-text)] sm:text-[2.2rem]">No payment request is active</h2>
           <p className="mt-3 text-base font-medium leading-7 text-[var(--mb-muted)]">
             MetroBus will open checkout here when a helper scans or loads your ticket and requests payment for the current booking.
           </p>
@@ -1023,12 +1023,12 @@ export function CheckoutPage({
 
   return (
     <section className="space-y-5">
-      <div className="rounded-[30px] bg-white p-6 shadow-[var(--mb-shadow)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Checkout</p>
-            <h2 className="mt-3 text-[2.35rem] font-black leading-[0.95] tracking-[-0.04em] text-[var(--mb-text)]">
-              {booking.needs_payment_selection
+        <div className="rounded-[1.9rem] bg-white p-5 shadow-[var(--mb-shadow)] sm:rounded-[30px] sm:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Checkout</p>
+              <h2 className="mt-3 text-[1.85rem] font-black leading-[0.98] tracking-[-0.04em] text-[var(--mb-text)] sm:text-[2.35rem]">
+                {booking.needs_payment_selection
                 ? "Choose your payment method"
                 : waitingForCash
                   ? "Cash is waiting for helper confirmation"
@@ -1039,10 +1039,10 @@ export function CheckoutPage({
                       : "Review this booking payment"}
             </h2>
           </div>
-          <div className="rounded-full bg-[var(--mb-bg-alt)] px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
-            {fmtMoney(booking.fare_total)}
+            <div className="shrink-0 rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
+              {fmtMoney(booking.fare_total)}
+            </div>
           </div>
-        </div>
         <p className="mt-4 text-base leading-7 text-[var(--mb-muted)]">
           {booking.needs_payment_selection
             ? booking.payment_requested_by_name
@@ -1056,15 +1056,15 @@ export function CheckoutPage({
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-[24px] bg-white p-5 shadow-[var(--mb-shadow)]">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-[20px] bg-white p-4 shadow-[var(--mb-shadow)] sm:rounded-[24px] sm:p-5">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Trip</p>
           <p className="mt-2 text-[1.55rem] font-black leading-tight text-[var(--mb-text)]">{booking.route_name}</p>
           <p className="mt-3 text-sm font-medium leading-6 text-[var(--mb-muted)]">
             {booking.pickup_stop_name} to {booking.destination_stop_name}
           </p>
         </div>
-        <div className="rounded-[24px] bg-white p-5 shadow-[var(--mb-shadow)]">
+          <div className="rounded-[20px] bg-white p-4 shadow-[var(--mb-shadow)] sm:rounded-[24px] sm:p-5">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Ticket Summary</p>
           <p className="mt-2 text-[1.55rem] font-black leading-tight text-[var(--mb-purple)]">
             {(booking.seat_labels || []).join(", ") || "--"}
@@ -1075,7 +1075,7 @@ export function CheckoutPage({
         </div>
       </div>
 
-      <div className="rounded-[28px] bg-white p-5 shadow-[var(--mb-shadow)]">
+        <div className="rounded-[1.8rem] bg-white p-4 shadow-[var(--mb-shadow)] sm:rounded-[28px] sm:p-5">
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-purple)]">Payment Methods</p>
@@ -1173,8 +1173,8 @@ export function TrackMap({ trip, displayLine, now }) {
   const points = displayLine.length ? displayLine : (busLocation ? [busLocation.point] : [[28.2096, 83.9856]]);
   const distanceValue = trip?.pickup_point && busLocation?.point ? distKm(busLocation.point, trip.pickup_point).toFixed(1) : "3.0";
   return (
-    <div className="relative overflow-hidden rounded-[1.8rem] bg-[#2b1d30] shadow-[var(--mb-shadow-strong)]">
-      <div className="h-[37rem]">
+      <div className="relative overflow-hidden rounded-[1.6rem] bg-[#2b1d30] shadow-[var(--mb-shadow-strong)] sm:rounded-[1.8rem]">
+        <div className="h-[31rem] sm:h-[37rem]">
         <MapContainer center={points[0]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
           <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
           <MapViewport points={points} />
@@ -1183,47 +1183,47 @@ export function TrackMap({ trip, displayLine, now }) {
         </MapContainer>
       </div>
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(247,240,255,0.12),rgba(247,240,255,0.26))]" />
-      <div className="absolute left-5 right-5 top-5 rounded-[2.2rem] bg-white px-6 py-5 shadow-[0_18px_34px_rgba(30,18,57,0.12)]">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Current Journey</p>
-            <p className="mt-2 max-w-[12rem] text-[2rem] font-black leading-[1.02] text-[var(--mb-purple)]">{trip?.route_name || "Route 04: Lakeside Express"}</p>
+        <div className="absolute left-3 right-3 top-3 rounded-[1.5rem] bg-white px-4 py-4 shadow-[0_18px_34px_rgba(30,18,57,0.12)] sm:left-5 sm:right-5 sm:top-5 sm:rounded-[2.2rem] sm:px-6 sm:py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-muted)]">Current Journey</p>
+              <p className="mt-2 max-w-[11rem] text-[1.45rem] font-black leading-[1.02] text-[var(--mb-purple)] sm:max-w-[12rem] sm:text-[2rem]">{trip?.route_name || "Route 04: Lakeside Express"}</p>
+            </div>
+            <div className="shrink-0 rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-sm font-black text-[var(--mb-purple)] sm:px-4 sm:text-[1.1rem]">
+              LIVE
+            </div>
           </div>
-          <div className="rounded-full bg-[var(--mb-bg-alt)] px-4 py-2 text-[1.1rem] font-black text-[var(--mb-purple)]">
-            LIVE
+        </div>
+
+        <div className="absolute left-3 right-3 top-28 grid grid-cols-3 gap-2 sm:left-4 sm:right-4 sm:top-40 sm:gap-3">
+          <div className="rounded-[1.4rem] bg-white p-3 text-center shadow-[0_18px_32px_rgba(30,18,57,0.12)] sm:rounded-full sm:p-5">
+            <Icon name="seat" className="mx-auto h-6 w-6 text-[var(--mb-purple)]" />
+            <p className="mt-2 text-[0.72rem] text-[var(--mb-muted)] sm:mt-4 sm:text-sm">Available</p>
+            <p className="mt-1 text-[1.15rem] font-black text-[var(--mb-text)] sm:text-[2rem]">{trip?.open_seats ?? 12}</p>
+          </div>
+          <div className="rounded-[1.4rem] bg-white p-3 text-center shadow-[0_18px_32px_rgba(30,18,57,0.12)] sm:rounded-full sm:p-5">
+            <Icon name="snow" className="mx-auto h-6 w-6 text-[var(--mb-purple)]" />
+            <p className="mt-2 text-[0.72rem] text-[var(--mb-muted)] sm:mt-4 sm:text-sm">Climate</p>
+            <p className="mt-1 text-[1.15rem] font-black text-[var(--mb-text)] sm:text-[2rem]">22°C</p>
+          </div>
+          <div className="rounded-[1.4rem] bg-white p-3 text-center shadow-[0_18px_32px_rgba(30,18,57,0.12)] sm:rounded-full sm:p-5">
+            <Icon name="bell" className="mx-auto h-6 w-6 text-[var(--mb-purple)]" />
+            <p className="mt-2 text-[0.72rem] text-[var(--mb-muted)] sm:mt-4 sm:text-sm">ETA</p>
+            <p className="mt-1 text-[1.15rem] font-black text-[var(--mb-text)] sm:text-[2rem]">{trip?.eta?.minutes || 4} Mins</p>
           </div>
         </div>
-      </div>
 
-      <div className="absolute left-4 right-4 top-40 grid grid-cols-3 gap-3">
-        <div className="rounded-full bg-white p-5 text-center shadow-[0_18px_32px_rgba(30,18,57,0.12)]">
-          <Icon name="seat" className="mx-auto h-6 w-6 text-[var(--mb-purple)]" />
-          <p className="mt-4 text-sm text-[var(--mb-muted)]">Available</p>
-          <p className="mt-1 text-[2rem] font-black text-[var(--mb-text)]">{trip?.open_seats ?? 12}</p>
+        <div className="absolute left-1/2 top-[13.5rem] -translate-x-1/2 rounded-full bg-[linear-gradient(135deg,#6017eb,#8f30ff)] px-4 py-2 text-center text-sm font-black text-white shadow-[var(--mb-shadow-strong)] sm:top-[18rem] sm:px-5 sm:py-3 sm:text-xl">
+          Bus {routeCode(trip, 0)}
         </div>
-        <div className="rounded-full bg-white p-5 text-center shadow-[0_18px_32px_rgba(30,18,57,0.12)]">
-          <Icon name="snow" className="mx-auto h-6 w-6 text-[var(--mb-purple)]" />
-          <p className="mt-4 text-sm text-[var(--mb-muted)]">Climate</p>
-          <p className="mt-1 text-[2rem] font-black text-[var(--mb-text)]">22°C</p>
+
+        <div className="absolute right-3 top-[8.5rem] rounded-full bg-white px-3 py-2 text-[0.62rem] font-black uppercase tracking-[0.16em] text-[var(--mb-purple)] shadow-[var(--mb-shadow)] sm:right-8 sm:top-[10.5rem] sm:px-4 sm:text-xs">
+          {statusTone(trip, now).label}
         </div>
-        <div className="rounded-full bg-white p-5 text-center shadow-[0_18px_32px_rgba(30,18,57,0.12)]">
-          <Icon name="bell" className="mx-auto h-6 w-6 text-[var(--mb-purple)]" />
-          <p className="mt-4 text-sm text-[var(--mb-muted)]">ETA</p>
-          <p className="mt-1 text-[2rem] font-black text-[var(--mb-text)]">{trip?.eta?.minutes || 4} Mins</p>
+        <div className="absolute right-3 top-[15.75rem] rounded-full bg-white px-3 py-2 text-[0.62rem] font-black uppercase tracking-[0.16em] text-[var(--mb-purple)] shadow-[var(--mb-shadow)] sm:right-8 sm:top-[17.5rem] sm:px-4 sm:text-xs">
+          {distanceValue} km away
         </div>
       </div>
-
-      <div className="absolute left-1/2 top-[18rem] -translate-x-1/2 rounded-full bg-[linear-gradient(135deg,#6017eb,#8f30ff)] px-5 py-3 text-center text-xl font-black text-white shadow-[var(--mb-shadow-strong)]">
-        Bus {routeCode(trip, 0)}
-      </div>
-
-      <div className="absolute right-8 top-[10.5rem] rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
-        {statusTone(trip, now).label}
-      </div>
-      <div className="absolute right-8 top-[17.5rem] rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">
-        {distanceValue} km away
-      </div>
-    </div>
   );
 }
 
@@ -1258,10 +1258,10 @@ export function DriverCard({ trip, onShare, onChat }) {
 
 export function MetricCard({ icon, label, value }) {
   return (
-    <div className="rounded-[24px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[20px] bg-[var(--mb-card-strong)] p-4 shadow-[var(--mb-shadow)] sm:rounded-[24px] sm:p-5">
       <div className="text-[var(--mb-purple)]"><Icon name={icon} className="h-7 w-7" /></div>
       <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">{label}</p>
-      <p className="mt-2 text-4xl font-black text-[var(--mb-text)]">{value}</p>
+      <p className="mt-2 text-[2rem] font-black text-[var(--mb-text)] sm:text-4xl">{value}</p>
     </div>
   );
 }
@@ -1269,7 +1269,7 @@ export function MetricCard({ icon, label, value }) {
 export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel = "Track Ride", onViewTicket }) {
   if (!booking) return null;
   return (
-    <div className="rounded-[28px] bg-[var(--mb-card-strong)] p-6 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[22px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)] sm:rounded-[28px] sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <span className="rounded-full bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.2em] text-[var(--mb-purple)]">Express Route</span>
         <div className="text-right">
@@ -1277,9 +1277,9 @@ export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel =
           <p className="mt-2 text-3xl font-black text-[var(--mb-purple)]">{fmtMoney(booking.fare_total)}</p>
         </div>
       </div>
-      <div className="mt-6 flex items-end gap-3">
-        <p className="text-6xl font-black leading-none text-[var(--mb-text)]">{fmtTime(booking.created_at)}</p>
-        <p className="pb-2 text-3xl font-medium text-[var(--mb-text)]">Today</p>
+      <div className="mt-6 flex flex-wrap items-end gap-3">
+        <p className="text-[3.2rem] font-black leading-none text-[var(--mb-text)] sm:text-6xl">{fmtTime(booking.created_at)}</p>
+        <p className="pb-1 text-[1.7rem] font-medium text-[var(--mb-text)] sm:pb-2 sm:text-3xl">Today</p>
       </div>
       <div className="mt-6 space-y-5">
         <div className="flex gap-4">
@@ -1291,16 +1291,16 @@ export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel =
           <div className="space-y-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Pickup</p>
-              <p className="mt-1 text-3xl font-black text-[var(--mb-text)]">{booking.pickup_stop_name}</p>
+              <p className="mt-1 text-[1.7rem] font-black text-[var(--mb-text)] sm:text-3xl">{booking.pickup_stop_name}</p>
             </div>
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Destination</p>
-              <p className="mt-1 text-3xl font-black text-[var(--mb-text)]">{booking.destination_stop_name}</p>
+              <p className="mt-1 text-[1.7rem] font-black text-[var(--mb-text)] sm:text-3xl">{booking.destination_stop_name}</p>
             </div>
           </div>
         </div>
       </div>
-      <div className="mt-7 grid grid-cols-2 gap-4">
+      <div className="mt-7 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
         <button type="button" onClick={onPrimaryAction} className="rounded-full bg-white px-6 py-4 text-lg font-black text-[var(--mb-text)]">
           {primaryActionLabel}
         </button>
@@ -1346,16 +1346,16 @@ export function HistoryCard({ booking, onDownload }) {
 export function ProfileCard({ user, profileForm, setProfileForm, onSave, profileBusy }) {
   const nameInputRef = useRef(null);
   return (
-    <div className="rounded-[28px] bg-[var(--mb-card)] p-6 text-center shadow-[var(--mb-shadow)]">
+    <div className="rounded-[22px] bg-[var(--mb-card)] p-5 text-center shadow-[var(--mb-shadow)] sm:rounded-[28px] sm:p-6">
       <div className="relative mx-auto w-fit">
         <PassengerAvatar user={user} size="h-28 w-28" />
         <button type="button" onClick={() => nameInputRef.current?.focus()} className="absolute bottom-0 right-0 grid h-12 w-12 place-items-center rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]">
           <Icon name="edit" />
         </button>
       </div>
-      <h2 className="mt-6 text-5xl font-black text-[var(--mb-text)]">{profileForm.full_name || user?.full_name || "MetroBus Rider"}</h2>
-      <p className="mt-2 text-2xl text-[var(--mb-muted)]">{user?.email || "Add your email"}</p>
-      <div className="mt-6 flex items-center justify-center gap-10">
+      <h2 className="mt-6 text-[2.6rem] font-black text-[var(--mb-text)] sm:text-5xl">{profileForm.full_name || user?.full_name || "MetroBus Rider"}</h2>
+      <p className="mt-2 text-lg text-[var(--mb-muted)] sm:text-2xl">{user?.email || "Add your email"}</p>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-4 sm:gap-10">
         <span className="text-sm font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">{user?.is_corporate_employee ? "PRO MEMBER" : "CITY RIDER"}</span>
         <span className="text-xl font-black text-[var(--mb-purple)]">4.9 star</span>
       </div>
@@ -1384,15 +1384,15 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
         <h3 className="text-3xl font-black text-[var(--mb-text)]">Payment Methods</h3>
         <button type="button" onClick={onTopUp} disabled={actionBusy} className="text-lg font-black text-[var(--mb-purple)] disabled:opacity-60">Top Up +500</button>
       </div>
-      <div className="rounded-[24px] bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] p-6 text-white shadow-[var(--mb-shadow-strong)]">
-        <div className="flex items-center justify-between">
+      <div className="rounded-[22px] bg-[linear-gradient(135deg,var(--mb-purple),var(--mb-accent))] p-5 text-white shadow-[var(--mb-shadow-strong)] sm:rounded-[24px] sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--mb-purple)]">
             <Icon name="wallet" />
           </div>
-          <p className="text-2xl font-black uppercase tracking-[0.2em]">Metro Wallet</p>
+          <p className="text-xl font-black uppercase tracking-[0.18em] sm:text-2xl sm:tracking-[0.2em]">Metro Wallet</p>
         </div>
         <p className="mt-8 text-sm font-bold uppercase tracking-[0.24em] text-white/70">Passenger account</p>
-        <p className="mt-2 text-4xl font-black">{walletSummary ? fmtMoney(walletSummary.balance) : "NPR 0"}</p>
+        <p className="mt-2 text-[2.2rem] font-black sm:text-4xl">{walletSummary ? fmtMoney(walletSummary.balance) : "NPR 0"}</p>
         <div className="mt-8 flex items-end justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/70">Lifetime Points</p>
@@ -1411,7 +1411,7 @@ export function PaymentShowcase({ latestPaidBooking, walletSummary, passPlans = 
         <div className="rounded-[22px] bg-[var(--mb-card-strong)] p-5 shadow-[var(--mb-shadow)]">
           <div className="text-[var(--mb-purple)]"><Icon name="wallet" className="h-7 w-7" /></div>
           <p className="mt-7 text-sm font-bold uppercase tracking-[0.2em] text-[var(--mb-muted)]">Ride Pass</p>
-          <p className="mt-2 text-4xl font-black text-[var(--mb-purple)]">{walletSummary?.pass_active ? (walletSummary.pass_plan_label || "Active pass") : passLabel}</p>
+          <p className="mt-2 text-[2rem] font-black text-[var(--mb-purple)] sm:text-4xl">{walletSummary?.pass_active ? (walletSummary.pass_plan_label || "Active pass") : passLabel}</p>
           <p className="mt-3 text-sm font-medium text-[var(--mb-muted)]">
             {walletSummary?.pass_active
               ? `${passLabel} • valid until ${fmtDate(walletSummary.pass_valid_until)}`
@@ -1560,25 +1560,25 @@ export function BottomNav({ activeView, onChange }) {
   const tabs = [
     { id: "home", label: "Home", icon: "home" },
     { id: "track", label: "Track", icon: "track" },
-    { id: "rides", label: "My Rides", icon: "rides" },
+    { id: "rides", label: "Rides", icon: "rides" },
     { id: "profile", label: "Profile", icon: "profile" },
   ];
   const currentTab = activeView === "checkout" ? "rides" : activeView;
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[1200] bg-[color:var(--mb-nav)]/92 px-3.5 pb-3 pt-2.5 backdrop-blur-xl">
-      <div className="mx-auto max-w-[26rem] rounded-[1.65rem] bg-white px-2 py-2 shadow-[0_-8px_32px_rgba(95,25,230,0.1)]">
+    <div className="fixed inset-x-0 bottom-0 z-[1200] px-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
+      <div className="enterprise-mobile-nav rounded-[1.35rem] bg-white/96 px-2 py-2 shadow-[0_-8px_32px_rgba(95,25,230,0.1)] sm:rounded-[1.65rem]">
         <div className="grid grid-cols-4 gap-1.5">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => onChange(tab.id)}
-              className={`rounded-[1.2rem] px-1.5 py-2 text-center transition ${currentTab === tab.id ? "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]" : "text-[var(--mb-muted)]"}`}
+              className={`rounded-[1rem] px-1 py-2 text-center transition sm:rounded-[1.2rem] ${currentTab === tab.id ? "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]" : "text-[var(--mb-muted)]"}`}
             >
-              <div className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full ${currentTab === tab.id ? "bg-white shadow-[0_8px_18px_rgba(95,25,230,0.08)]" : ""}`}>
-                <Icon name={tab.icon} className="h-5 w-5" />
+              <div className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full sm:h-9 sm:w-9 ${currentTab === tab.id ? "bg-white shadow-[0_8px_18px_rgba(95,25,230,0.08)]" : ""}`}>
+                <Icon name={tab.icon} className="h-4 w-4 sm:h-5 sm:w-5" />
               </div>
-              <p className={`mt-1.5 text-[0.68rem] font-bold leading-tight ${currentTab === tab.id ? "text-[var(--mb-purple)]" : ""}`}>{tab.label}</p>
+              <p className={`mt-1 text-[0.62rem] font-bold leading-tight sm:mt-1.5 sm:text-[0.68rem] ${currentTab === tab.id ? "text-[var(--mb-purple)]" : ""}`}>{tab.label}</p>
             </button>
           ))}
         </div>

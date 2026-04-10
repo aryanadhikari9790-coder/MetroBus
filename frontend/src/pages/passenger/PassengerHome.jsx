@@ -1094,7 +1094,7 @@ export default function PassengerHome() {
         onNotifications={openNotificationsPanel}
         notificationCount={passengerNotifications.length}
       />
-      <main className="mx-auto max-w-[28rem] px-4 pb-36 pt-24">
+      <main className="enterprise-mobile-main">
         {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
         {(activeBooking || paymentActionBooking || paymentPendingBooking || activeView === "checkout") ? (
@@ -1149,20 +1149,20 @@ export default function PassengerHome() {
 
         {activeView === "home" ? (
           <section className="space-y-5">
-            <div className="rounded-[42px] bg-[radial-gradient(circle_at_top_right,rgba(255,107,115,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,244,244,0.96))] p-5 shadow-[var(--mb-shadow)] md:p-8">
+            <div className="rounded-[2rem] bg-[radial-gradient(circle_at_top_right,rgba(255,107,115,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,244,244,0.96))] p-4 shadow-[var(--mb-shadow)] sm:rounded-[42px] sm:p-5 md:p-8">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-sm font-black uppercase tracking-[0.28em] text-[var(--mb-purple)]">
-                    {homeStageMeta[homeStage]?.eyebrow || "MetroBus Booking"}
-                  </p>
-                  <h1 className="mt-3 text-[2.7rem] font-black leading-[0.95] text-[var(--mb-text)] md:text-[4rem]">
-                    {homeStageMeta[homeStage]?.title || "Book your ride"}
-                  </h1>
-                  <p className="mt-3 max-w-2xl text-base font-medium text-[var(--mb-muted)]">
-                    {homeStageMeta[homeStage]?.description || "Move through the booking flow on one mobile screen."}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
+                    <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--mb-purple)] sm:text-sm sm:tracking-[0.28em]">
+                      {homeStageMeta[homeStage]?.eyebrow || "MetroBus Booking"}
+                    </p>
+                    <h1 className="mt-3 text-[2.15rem] font-black leading-[0.96] text-[var(--mb-text)] sm:text-[2.7rem] md:text-[4rem]">
+                      {homeStageMeta[homeStage]?.title || "Book your ride"}
+                    </h1>
+                    <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-[var(--mb-muted)] sm:text-base sm:leading-7">
+                      {homeStageMeta[homeStage]?.description || "Move through the booking flow on one mobile screen."}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 self-start">
                   {!homeBookingLocked && homeStage !== "planner" ? (
                     <button
                       type="button"
@@ -1558,7 +1558,7 @@ export default function PassengerHome() {
       ) : null}
       {headerPanel ? (
         <div className="fixed inset-0 z-[1350] bg-[rgba(49,23,56,0.32)] px-4 pb-28 pt-24 backdrop-blur-sm" onClick={() => setHeaderPanel("")}>
-          <div className="mx-auto max-w-[28rem]" onClick={(event) => event.stopPropagation()}>
+          <div className="enterprise-mobile-shell" onClick={(event) => event.stopPropagation()}>
             {headerPanel === "menu" ? (
               <div className="rounded-[34px] bg-white p-5 shadow-[0_30px_80px_rgba(95,25,230,0.2)]">
                 <div className="flex items-start justify-between gap-4">

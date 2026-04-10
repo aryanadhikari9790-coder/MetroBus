@@ -48,7 +48,7 @@ const TABS = [
   { id: "route", label: "Route", icon: "map" },
 ];
 
-const APP_SHELL_CLASS = "mx-auto w-full max-w-[31rem]";
+const APP_SHELL_CLASS = "enterprise-mobile-shell";
 
 function Icon({ name, className = "h-5 w-5" }) {
   const common = { className, fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", viewBox: "0 0 24 24" };
@@ -76,11 +76,11 @@ function Icon({ name, className = "h-5 w-5" }) {
 }
 
 function SurfaceCard({ children, className = "" }) {
-  return <div className={`rounded-[1.5rem] border border-[var(--hlp-border)] bg-[var(--hlp-surface)] p-5 shadow-[var(--hlp-shadow)] backdrop-blur-xl ${className}`}>{children}</div>;
+  return <div className={`rounded-[1.35rem] border border-[var(--hlp-border)] bg-[var(--hlp-surface)] p-4 shadow-[var(--hlp-shadow)] backdrop-blur-xl sm:rounded-[1.5rem] sm:p-5 ${className}`}>{children}</div>;
 }
 
 function HeaderButton({ children, className = "", ...props }) {
-  return <button type="button" className={`grid h-11 w-11 place-items-center rounded-full border border-[var(--hlp-border)] bg-white/75 text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)] ${className}`} {...props}>{children}</button>;
+  return <button type="button" className={`grid h-10 w-10 place-items-center rounded-full border border-[var(--hlp-border)] bg-white/75 text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)] sm:h-11 sm:w-11 ${className}`} {...props}>{children}</button>;
 }
 
 function Chip({ children, tone = "soft", className = "" }) {
@@ -99,7 +99,7 @@ function PrimaryButton({ children, tone = "primary", className = "", ...props })
     danger: "bg-[var(--hlp-plum)] text-white shadow-[0_18px_40px_rgba(71,39,81,0.24)]",
     ghost: "border border-[var(--hlp-border)] bg-white/82 text-[var(--hlp-text)]",
   };
-  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-[1rem] px-5 py-3 text-sm font-bold tracking-[0.04em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
+  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-[0.95rem] px-4 py-3 text-sm font-bold tracking-[0.04em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
 }
 
 function SectionLabel({ children }) {
@@ -968,22 +968,22 @@ Need support with live trip operations.`;
 
   return (
     <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--hlp-bg),var(--hlp-bg-end))] text-[var(--hlp-text)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[var(--hlp-header)] px-4 py-4 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[var(--hlp-header)] px-3 py-3 backdrop-blur-xl sm:px-4 sm:py-4">
         <div className={`${APP_SHELL_CLASS} flex items-center justify-between gap-3`}>
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <HeaderButton onClick={() => loadDashboard()}>
               <Icon name="refresh" />
             </HeaderButton>
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-white shadow-[var(--hlp-shadow)]">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[1rem] bg-white shadow-[var(--hlp-shadow)] sm:h-11 sm:w-11 sm:rounded-2xl">
               <span className="text-[0.6rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
             </div>
             <div className="min-w-0">
-              <p className="text-[1rem] font-black tracking-[0.01em] text-[var(--hlp-purple)]">MetroBus Helper</p>
-              <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Staff Operations</p>
+              <p className="truncate text-[0.92rem] font-black tracking-[0.01em] text-[var(--hlp-purple)] sm:text-[1rem]">MetroBus Helper</p>
+              <p className="truncate text-[0.58rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)] sm:text-[0.6rem] sm:tracking-[0.18em]">Staff Operations</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Chip tone={activeTrip ? "live" : pendingTrip ? "warn" : "soft"} className="px-3 py-2">
+          <div className="flex shrink-0 items-center gap-2">
+            <Chip tone={activeTrip ? "live" : pendingTrip ? "warn" : "soft"} className="px-2.5 py-2 sm:px-3">
               {helperHeaderStatus}
             </Chip>
             <HeaderButton onClick={handleLogout}>
@@ -993,16 +993,16 @@ Need support with live trip operations.`;
         </div>
       </header>
 
-      <main className={`${APP_SHELL_CLASS} px-4 py-5 pb-32 sm:px-5`}>
+      <main className={`${APP_SHELL_CLASS} px-4 py-4 pb-28 sm:px-5 sm:py-5 sm:pb-32`}>
         {err ? <div className="mb-4 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
 
         {activeTab === "trip" ? <>
-          <section className="relative overflow-hidden rounded-[1.9rem] bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] p-6 text-white shadow-[var(--hlp-shadow-strong)]">
+          <section className="relative overflow-hidden rounded-[1.6rem] bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] p-5 text-white shadow-[var(--hlp-shadow-strong)] sm:rounded-[1.9rem] sm:p-6">
             <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
             <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
-            <h1 className="mt-3 text-5xl font-black leading-[0.92] whitespace-pre-line">{activeTrip ? "LIVE\nSUPPORT" : pendingTrip ? "START\nPENDING" : "READY ON\nSHIFT"}</h1>
-            <p className="mt-4 text-base font-medium text-white/84">
+            <h1 className="mt-3 text-[2.7rem] font-black leading-[0.92] whitespace-pre-line sm:text-5xl">{activeTrip ? "LIVE\nSUPPORT" : pendingTrip ? "START\nPENDING" : "READY ON\nSHIFT"}</h1>
+            <p className="mt-4 text-sm font-medium leading-6 text-white/84 sm:text-base sm:leading-7">
               {activeTrip ? `${activeTrip.route_name} is ready for boarding, payment checks, and route support.` : pendingTrip ? pendingStartLabel : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
             </p>
             <div className="mt-6 rounded-[1.4rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
@@ -1017,7 +1017,7 @@ Need support with live trip operations.`;
             </div>
           </section>
 
-          <div className="mt-5 grid grid-cols-3 gap-3">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <StatCard label="Open Seats" value={availableSeats.length} note="Current segment" icon="ticket" />
             <StatCard label="Occupied" value={occupiedCount} note="Already reserved" icon="shield" />
             <StatCard label="Marked" value={selectedCount} note="Offline seats" icon="money" />
@@ -1037,7 +1037,7 @@ Need support with live trip operations.`;
 
             <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
               <Chip tone="dark" className="bg-white/18">{activeTrip ? "Active Trip" : pendingTrip ? "Start Pending" : "Shift Ready"}</Chip>
-              <h3 className="mt-6 break-words text-[3rem] font-black leading-[0.92]">{helperTripHeroTitle}</h3>
+                <h3 className="mt-6 break-words text-[2.3rem] font-black leading-[0.94] sm:text-[3rem]">{helperTripHeroTitle}</h3>
               <div className="mt-6 flex flex-wrap gap-3">
                 <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? `Started ${tripStarted}` : nextSchedule ? `Scheduled ${formatTime(nextSchedule.scheduled_start_time)}` : "Waiting for trip"}</span>
                 <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? "On Time" : pendingTrip ? "Confirm Start" : "Standby"}</span>
@@ -1093,20 +1093,20 @@ Need support with live trip operations.`;
               </SurfaceCard>
             ) : null}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
               <SurfaceCard className="bg-[rgba(247,224,249,0.84)]">
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--hlp-purple)]"><Icon name="ticket" /></div>
-                <p className="mt-8 text-4xl font-black">{availableSeats.length || 12}</p>
+                <p className="mt-8 text-[2rem] font-black sm:text-4xl">{availableSeats.length || 12}</p>
                 <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Open Seats</p>
               </SurfaceCard>
               <SurfaceCard className="bg-[rgba(245,219,248,0.92)]">
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--hlp-purple)]"><Icon name="profile" /></div>
-                <p className="mt-8 text-4xl font-black">{occupiedCount || 18}</p>
+                <p className="mt-8 text-[2rem] font-black sm:text-4xl">{occupiedCount || 18}</p>
                 <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Occupied</p>
               </SurfaceCard>
               <SurfaceCard className="col-span-2 bg-[rgba(245,206,241,0.9)]">
                 <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(233,86,120,0.12)] text-[#c81e49]"><Icon name="alert" /></div>
-                <p className="mt-8 text-4xl font-black">{helperDashboardMarked}</p>
+                <p className="mt-8 text-[2rem] font-black sm:text-4xl">{helperDashboardMarked}</p>
                 <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Marked (Special)</p>
               </SurfaceCard>
             </div>
@@ -1211,7 +1211,7 @@ Need support with live trip operations.`;
           <div className="mt-5 space-y-5">
             <div className="px-1">
               <SectionLabel>Transit Verification</SectionLabel>
-              <h2 className="mt-2 text-6xl font-black leading-[0.9]">Verify Payment</h2>
+              <h2 className="mt-2 text-[2.9rem] font-black leading-[0.92] sm:text-6xl">Verify Payment</h2>
               <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Scan the passenger ticket QR or enter the ticket code to verify payment, confirm boarding, and complete the ride when the passenger gets off.</p>
             </div>
             <SurfaceCard className="rounded-[1.8rem]">
@@ -1290,7 +1290,7 @@ Need support with live trip operations.`;
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <Chip tone="soft">Verification Result</Chip>
-                  <h3 className="mt-5 text-4xl font-black leading-tight">Commuter Ticket</h3>
+                  <h3 className="mt-5 text-[2rem] font-black leading-tight sm:text-4xl">Commuter Ticket</h3>
                 </div>
                 <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="shield" className="h-8 w-8" /></div>
               </div>
@@ -1446,7 +1446,7 @@ Need support with live trip operations.`;
           <div className="mt-5 space-y-5">
             <div className="px-1">
               <SectionLabel>Live Journey</SectionLabel>
-              <h2 className="mt-2 break-words text-4xl font-black leading-tight">{routeTitle}</h2>
+              <h2 className="mt-2 break-words text-[2rem] font-black leading-tight sm:text-4xl">{routeTitle}</h2>
               <div className="mt-3 flex flex-wrap items-center gap-3">
                 <Chip tone="soft">Express</Chip>
                 <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeDestination}</p>
@@ -1530,7 +1530,7 @@ Need support with live trip operations.`;
               <div className="mt-4 flex items-center gap-4">
                 <div className="grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="thermo" className="h-7 w-7" /></div>
                 <div>
-                  <p className="text-4xl font-black">24C</p>
+                  <p className="text-[2rem] font-black sm:text-4xl">24C</p>
                   <p className="mt-1 text-sm font-medium uppercase tracking-[0.12em] text-[var(--hlp-muted)]">Clear skies for travel in Pokhara</p>
                 </div>
               </div>
@@ -1538,9 +1538,11 @@ Need support with live trip operations.`;
           </div>
         ) : null}
       </main>
-      <div className="fixed bottom-3 left-1/2 z-40 w-[calc(100%-1rem)] max-w-[28rem] -translate-x-1/2 rounded-[1.65rem] border border-white/70 bg-[var(--hlp-nav)] p-1.5 shadow-[var(--hlp-shadow)] backdrop-blur-xl">
-        <div className="grid grid-cols-4 gap-1.5">
-          {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-1.5 rounded-[1.1rem] py-2 text-center transition ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-[1.1rem] w-[1.1rem]" /><span className="px-1 text-[0.6rem] font-black uppercase tracking-[0.1em] leading-tight">{tab.label}</span></button>)}
+      <div className="fixed bottom-0 inset-x-0 z-40 px-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2">
+        <div className="enterprise-mobile-nav rounded-[1.35rem] border border-white/70 bg-[var(--hlp-nav)] p-1.5 shadow-[var(--hlp-shadow)] backdrop-blur-xl sm:rounded-[1.65rem]">
+          <div className="grid grid-cols-4 gap-1.5">
+            {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-1 rounded-[1rem] py-2 text-center transition sm:gap-1.5 sm:rounded-[1.1rem] ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-4 w-4 sm:h-[1.1rem] sm:w-[1.1rem]" /><span className="px-1 text-[0.58rem] font-black uppercase tracking-[0.08em] leading-tight sm:text-[0.6rem] sm:tracking-[0.1em]">{tab.label}</span></button>)}
+          </div>
         </div>
       </div>
     </div>

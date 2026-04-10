@@ -2,7 +2,101 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root { height: 100%; }
+html,
+body,
+#root {
+  height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  overflow-x: hidden;
+}
+
+img,
+svg,
+canvas,
+video {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+span,
+a,
+button,
+label,
+td,
+th {
+  overflow-wrap: anywhere;
+}
+
+.leaflet-container {
+  z-index: 0;
+}
+
+.enterprise-mobile-shell {
+  width: min(100%, 28.75rem);
+  margin-inline: auto;
+}
+
+.enterprise-mobile-main {
+  width: min(100%, 28.75rem);
+  margin-inline: auto;
+  padding-inline: 1rem;
+  padding-top: 5.65rem;
+  padding-bottom: calc(6.75rem + env(safe-area-inset-bottom));
+}
+
+.enterprise-mobile-topbar {
+  padding-top: calc(0.75rem + env(safe-area-inset-top));
+  padding-bottom: 0.85rem;
+  padding-inline: 0.9rem;
+}
+
+.enterprise-mobile-nav {
+  width: min(calc(100% - 1rem), 26.75rem);
+  margin-inline: auto;
+}
+
+.enterprise-inline-scroll {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.enterprise-inline-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (min-width: 480px) {
+  .enterprise-mobile-shell,
+  .enterprise-mobile-main {
+    width: min(100%, 30.5rem);
+  }
+
+  .enterprise-mobile-main {
+    padding-inline: 1.1rem;
+  }
+}
 
 /* ── Theme tokens ─────────────────────────────────────────── */
 :root[data-theme="dark"] {
