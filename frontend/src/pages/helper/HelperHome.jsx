@@ -374,6 +374,25 @@ export default function HelperHome() {
     }
   }, []);
 
+  const refreshBookingDetail = useCallback(async (bookingId, { silent = true } = {}) => {
+    if (!bookingId) return null;
+    if (!silent) {
+      setVerifyBusy(true);
+      setErr("");
+      setMsg("");
+    }
+    try {
+      const response = await api.get(`/api/bookings/${bookingId}/`);
+      setTicketLookup(response.data.booking);
+      return response.data.booking;
+    } catch (error) {
+      if (!silent) setErr(error?.response?.data?.detail || "Booking refresh failed.");
+      return null;
+    } finally {
+      if (!silent) setVerifyBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadDashboard();
     loadAssignedBus();
@@ -544,25 +563,6 @@ export default function HelperHome() {
       "Trip end confirmation sent.",
     );
   };
-
-  const refreshBookingDetail = useCallback(async (bookingId, { silent = true } = {}) => {
-    if (!bookingId) return null;
-    if (!silent) {
-      setVerifyBusy(true);
-      setErr("");
-      setMsg("");
-    }
-    try {
-      const response = await api.get(`/api/bookings/${bookingId}/`);
-      setTicketLookup(response.data.booking);
-      return response.data.booking;
-    } catch (error) {
-      if (!silent) setErr(error?.response?.data?.detail || "Booking refresh failed.");
-      return null;
-    } finally {
-      if (!silent) setVerifyBusy(false);
-    }
-  }, []);
 
   const lookupTicket = useCallback(async (referenceOverride) => {
     const reference = String(referenceOverride ?? verifyBookingId).trim();
