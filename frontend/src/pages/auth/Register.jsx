@@ -162,21 +162,10 @@ export default function Register() {
           <h1 className="text-[2.5rem] font-black leading-[0.94] tracking-[-0.04em] text-[#121019]">
             Create Passenger Profile
           </h1>
-          <p className="mt-3 text-[1.05rem] leading-8 text-[#4f475f]">
-            Join the future of premium urban mobility in Pokhara.
-          </p>
         </div>
 
-        {err ? (
-          <div className="mt-5 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            {err}
-          </div>
-        ) : null}
-        {ok ? (
-          <div className="mt-5 rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-            {ok}
-          </div>
-        ) : null}
+        {err ? <p className="mt-5 text-sm font-semibold text-red-600">{err}</p> : null}
+        {ok ? <p className="mt-5 text-sm font-semibold text-emerald-600">{ok}</p> : null}
 
         <section className="mt-6 rounded-[2rem] bg-white/96 px-5 py-6 shadow-[0_18px_42px_rgba(123,53,190,0.1)]">
           <div className="space-y-4">
@@ -229,16 +218,13 @@ export default function Register() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-base font-black text-[#4721d1]">Verify Mobile</p>
-                  <p className="mt-1 text-sm leading-6 text-[#625b73]">
-                    Enter the 4-digit code sent to your device.
-                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={verifyOtpLocally}
                   className="rounded-[1rem] bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-4 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]"
                 >
-                  Verify OTP
+                  {otpReady ? "Verified" : "Verify OTP"}
                 </button>
               </div>
               <div className="mt-4">
@@ -256,7 +242,6 @@ export default function Register() {
                   Dev OTP: <span className="font-mono font-black">{devOtp}</span>
                 </p>
               ) : null}
-              {otpReady ? <p className="mt-2 text-xs font-semibold text-emerald-700">OTP ready for registration.</p> : null}
             </div>
 
             <label className="block">
@@ -290,7 +275,6 @@ export default function Register() {
         <section className="mt-6 rounded-[2rem] bg-white/96 px-5 py-6 shadow-[0_18px_42px_rgba(123,53,190,0.1)]">
           <div>
             <h2 className="text-[1.7rem] font-black text-[#1c1723]">Frequent Destinations</h2>
-            <p className="mt-1 text-sm leading-6 text-[#635c73]">Pin your home, work, and study stops for faster bookings.</p>
           </div>
 
           <div className="mt-5 space-y-4">
@@ -300,7 +284,6 @@ export default function Register() {
               onChange={setHomeLocation}
               isDark={false}
               required
-              helperText="Search or tap the map to pin your usual pickup area."
             />
 
             {isCorporateEmployee ? (
@@ -310,7 +293,6 @@ export default function Register() {
                 onChange={setOfficeLocation}
                 isDark={false}
                 required
-                helperText="Add your office if this account is used for company travel."
               />
             ) : null}
 
@@ -319,22 +301,7 @@ export default function Register() {
               value={schoolLocation}
               onChange={setSchoolLocation}
               isDark={false}
-              helperText="Optional. Add a study route if you use MetroBus for school travel."
             />
-          </div>
-
-          <div className="mt-5 rounded-[1.2rem] bg-[#f8f6fd] px-4 py-4">
-            <div className="flex gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[rgba(104,13,255,0.12)] text-[#5d17eb]">
-                <Icon name="shield" className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="text-base font-black text-[#241828]">Secure & Verified</p>
-                <p className="mt-1 text-sm leading-6 text-[#635d73]">
-                  Your data is encrypted with enterprise-grade standards.
-                </p>
-              </div>
-            </div>
           </div>
         </section>
 

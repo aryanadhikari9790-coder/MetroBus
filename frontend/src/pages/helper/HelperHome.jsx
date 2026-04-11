@@ -814,8 +814,8 @@ Need support with live trip operations.`;
       </header>
 
       <main className={`${APP_SHELL_CLASS} px-4 py-4 pb-28 sm:px-5 sm:py-5 sm:pb-32`}>
-        {err ? <div className="mb-4 rounded-[1.5rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
-        {msg ? <div className="mb-4 rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
+        {err ? <p className="mb-4 text-sm font-semibold text-red-600">{err}</p> : null}
+        {msg ? <p className="mb-4 text-sm font-semibold text-emerald-600">{msg}</p> : null}
 
         {activeTab === "trip" ? <>
           <section className="relative overflow-hidden rounded-[1.6rem] bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] p-5 text-white shadow-[var(--hlp-shadow-strong)] sm:rounded-[1.9rem] sm:p-6">
@@ -845,10 +845,9 @@ Need support with live trip operations.`;
         </> : null}
 
         {activeTab === "trip" ? (
-          <div className="mt-5 space-y-5">
+            <div className="mt-5 space-y-5">
             <div className="px-1">
                 <h2 className="text-[1.35rem] font-black">Helper Dashboard</h2>
-                <p className="mt-1 text-base text-[var(--hlp-muted)]">Monitoring active transit operations</p>
               </div>
 
             <div className="max-w-[15rem]">
@@ -1032,7 +1031,6 @@ Need support with live trip operations.`;
             <div className="px-1">
               <SectionLabel>Transit Verification</SectionLabel>
               <h2 className="mt-2 text-[2.9rem] font-black leading-[0.92] sm:text-6xl">Verify Payment</h2>
-              <p className="mt-4 max-w-xl text-base leading-7 text-[var(--hlp-muted)]">Enter the passenger 4-digit ride OTP to load the booking, request payment, confirm boarding, and complete the ride when the passenger gets off.</p>
             </div>
             <SurfaceCard className="rounded-[1.8rem]">
               <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">4-Digit Ride OTP</label>
@@ -1052,32 +1050,6 @@ Need support with live trip operations.`;
                 <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy} className="!px-8 !py-4">
                   {verifyBusy ? "Loading Ride" : "Load Ride"}
                 </PrimaryButton>
-              </div>
-              <p className="mt-3 text-sm text-[var(--hlp-muted)]">The passenger shares this OTP after booking. MetroBus verifies it against the live booking before payment and boarding actions are unlocked.</p>
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs font-black uppercase tracking-[0.14em] text-[var(--hlp-muted)]">
-                <span className="rounded-full bg-[var(--hlp-soft)] px-3 py-2">Socket: {bookingSocketState}</span>
-                <span className="rounded-full bg-[var(--hlp-soft)] px-3 py-2">Lookup: OTP verification</span>
-              </div>
-            </SurfaceCard>
-
-            <SurfaceCard className="rounded-[1.8rem]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <SectionLabel>Debug Status</SectionLabel>
-                  <p className="mt-2 text-2xl font-black">Helper OTP and payment log</p>
-                </div>
-                <Chip tone="soft">{scanLogItems.length} events</Chip>
-              </div>
-              <div className="mt-4 space-y-2">
-                {scanLogItems.length ? scanLogItems.map((item) => (
-                  <div key={item.id} className="rounded-[1.1rem] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium text-[var(--hlp-text)]">
-                    {item.text}
-                  </div>
-                )) : (
-                  <div className="rounded-[1.1rem] border border-dashed border-[var(--hlp-border)] px-4 py-4 text-sm text-[var(--hlp-muted)]">
-                    No helper OTP events yet. Load a passenger ride OTP to see each verification and payment step here.
-                  </div>
-                )}
               </div>
             </SurfaceCard>
 
@@ -1233,8 +1205,6 @@ Need support with live trip operations.`;
                 </div>
               </SurfaceCard>
             ) : null}
-            <p className="text-center text-sm text-[var(--hlp-muted)]">Verify the ride OTP, accept the passenger ride details, request or verify payment, then mark the rider boarded. Once the ride is completed, the seat becomes free for the next passengers on that segment.</p>
-            <div className="h-48 rounded-[2.6rem] border border-white/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.55),rgba(244,232,247,0.42))] shadow-[var(--hlp-shadow)]" />
           </div>
         ) : null}
 

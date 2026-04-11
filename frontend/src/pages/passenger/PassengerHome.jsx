@@ -1095,57 +1095,8 @@ export default function PassengerHome() {
         notificationCount={passengerNotifications.length}
       />
       <main className="enterprise-mobile-main">
-        {err ? <div className="mb-4 rounded-[24px] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
-        {msg ? <div className="mb-4 rounded-[24px] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
-        {(activeBooking || paymentActionBooking || paymentPendingBooking || activeView === "checkout") ? (
-          <div className="mb-4 rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-4 shadow-[var(--mb-shadow)]">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Realtime Status</p>
-                <p className="mt-1 text-sm font-medium text-[var(--mb-muted)]">Socket: {bookingSocketState}</p>
-              </div>
-              <span className="rounded-full bg-[var(--mb-card-soft)] px-3 py-2 text-xs font-black uppercase tracking-[0.14em] text-[var(--mb-purple)]">
-                {bookingEventLog.length} events
-              </span>
-            </div>
-            <div className="mt-3 space-y-2">
-              {bookingEventLog.length ? bookingEventLog.map((item) => (
-                <div key={item.id} className="rounded-[18px] bg-[var(--mb-card-soft)] px-3 py-3 text-sm font-medium text-[var(--mb-text)]">
-                  {item.text}
-                </div>
-              )) : (
-                <div className="rounded-[18px] border border-dashed border-[var(--mb-border)] px-3 py-3 text-sm text-[var(--mb-muted)]">
-                  Waiting for helper scan and payment events.
-                </div>
-              )}
-            </div>
-          </div>
-        ) : null}
-        {paymentActionBooking && activeView !== "checkout" ? (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-3 shadow-[var(--mb-shadow)]">
-            <div>
-              <p className="text-sm font-black text-[var(--mb-text)]">A helper requested payment for Booking #{paymentActionBooking.id}.</p>
-              <p className="mt-1 text-sm text-[var(--mb-muted)]">MetroBus opened a dedicated checkout page for this booking.</p>
-            </div>
-            <button type="button" onClick={() => openCheckout()} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-3 text-sm font-black text-white shadow-[var(--mb-shadow-strong)]">
-              Pay Now
-            </button>
-          </div>
-        ) : null}
-        {!paymentActionBooking && paymentPendingBooking && activeView !== "checkout" ? (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-[var(--mb-border)] bg-white px-4 py-3 text-sm font-medium text-[var(--mb-muted)] shadow-[var(--mb-shadow)]">
-            <p>
-              Payment for Booking #{paymentPendingBooking.id} is pending. {paymentPendingBooking.payment_method === "CASH" ? "Please hand the fare to the helper for verification." : "Keep MetroBus open while the payment completes."}
-            </p>
-            <button
-              type="button"
-              onClick={() => openCheckout()}
-              className="rounded-full border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]"
-            >
-              View Checkout
-            </button>
-          </div>
-        ) : null}
+        {err ? <p className="mb-4 text-sm font-semibold text-red-600">{err}</p> : null}
+        {msg ? <p className="mb-4 text-sm font-semibold text-emerald-600">{msg}</p> : null}
 
         {activeView === "home" ? (
           <section className="space-y-5">
@@ -1158,9 +1109,6 @@ export default function PassengerHome() {
                     <h1 className="mt-3 text-[2.15rem] font-black leading-[0.96] text-[var(--mb-text)] sm:text-[2.7rem] md:text-[4rem]">
                       {homeStageMeta[homeStage]?.title || "Book your ride"}
                     </h1>
-                    <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-[var(--mb-muted)] sm:text-base sm:leading-7">
-                      {homeStageMeta[homeStage]?.description || "Move through the booking flow on one mobile screen."}
-                    </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2 self-start">
                   {!homeBookingLocked && homeStage !== "planner" ? (
@@ -1184,30 +1132,6 @@ export default function PassengerHome() {
                 </div>
               </div>
 
-              {!homeBookingLocked ? (
-                <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {stageOrder.map((stage, index) => {
-                    const reached = stageOrder.indexOf(homeStage) >= index;
-                    const active = homeStage === stage;
-                    return (
-                      <div
-                        key={stage}
-                        className={`rounded-[24px] px-4 py-3 text-sm font-black transition ${
-                          active
-                            ? "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]"
-                            : reached
-                              ? "bg-[var(--mb-accent-soft)] text-[var(--mb-purple)]"
-                              : "bg-white text-[var(--mb-muted)]"
-                        }`}
-                      >
-                        <span className="block text-[0.65rem] uppercase tracking-[0.2em] opacity-80">Step {index + 1}</span>
-                        <span className="mt-1 block">{stage === "planner" ? "Route" : stage === "matches" ? "Bus" : stage === "seats" ? "Seat" : "OTP"}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-
               {!homeBookingLocked && (pickupStop || dropStop) ? (
                 <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[26px] bg-[var(--mb-card-soft)] p-4">
                   <span className="rounded-full bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Current route</span>
@@ -1229,14 +1153,7 @@ export default function PassengerHome() {
                         paymentBusy={paymentBusy}
                         onPay={pay}
                       />
-                    ) : (
-                      <div className="rounded-[28px] bg-white p-5 shadow-[var(--mb-shadow)]">
-                        <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Next Step</p>
-                        <p className="mt-3 text-base font-medium leading-7 text-[var(--mb-muted)]">
-                          Keep this ride OTP ready. When the helper enters your code, MetroBus will ask for payment on this same ride and you can continue with cash or Khalti checkout.
-                        </p>
-                      </div>
-                    )}
+                    ) : null}
                     <div className="grid gap-3 sm:grid-cols-2">
                       <button
                         type="button"
@@ -1437,14 +1354,7 @@ export default function PassengerHome() {
                 {ticketBooking ? <TicketOtpCard booking={ticketBooking} title="Ride OTP" /> : null}
                 {paymentActionBooking ? (
                   <PaymentRequestCard booking={paymentActionBooking} paymentBusy={paymentBusy} onPay={pay} />
-                ) : (
-                  <div className="rounded-[30px] bg-white p-5 shadow-[var(--mb-shadow)]">
-                    <p className="text-xs font-bold uppercase tracking-[0.24em] text-[var(--mb-purple)]">Next</p>
-                    <p className="mt-2 text-base font-medium text-[var(--mb-muted)]">
-                      Keep this ride OTP ready. When the helper enters your code and requests payment, MetroBus will open a dedicated passenger checkout page for cash, eSewa, Khalti, wallet, pass, or reward payment on this same booking.
-                    </p>
-                  </div>
-                )}
+                ) : null}
                 <div className="grid gap-3 sm:grid-cols-2">
                   <button
                     type="button"
@@ -1564,7 +1474,7 @@ export default function PassengerHome() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Menu</p>
-                    <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Quick actions</h3>
+                    <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Menu</h3>
                   </div>
                   <button type="button" onClick={() => setHeaderPanel("")} className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-xs font-black text-[var(--mb-purple)]">
                     Close
@@ -1587,7 +1497,6 @@ export default function PassengerHome() {
                       className="rounded-[24px] border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-4 text-left"
                     >
                       <span className="block text-lg font-black text-[var(--mb-text)]">{item.label}</span>
-                      <span className="mt-1 block text-sm text-[var(--mb-muted)]">{item.note}</span>
                     </button>
                   ))}
                 </div>
@@ -1598,7 +1507,7 @@ export default function PassengerHome() {
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Notifications</p>
-                    <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Passenger alerts</h3>
+                    <h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Alerts</h3>
                   </div>
                   <button type="button" onClick={() => setHeaderPanel("")} className="rounded-full bg-[var(--mb-bg-alt)] px-3 py-2 text-xs font-black text-[var(--mb-purple)]">
                     Close
@@ -1619,7 +1528,7 @@ export default function PassengerHome() {
                     </div>
                   )) : (
                     <div className="rounded-[24px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] px-4 py-8 text-center text-sm font-medium text-[var(--mb-muted)]">
-                      No new passenger alerts right now.
+                      No alerts.
                     </div>
                   )}
                 </div>

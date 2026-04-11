@@ -440,11 +440,6 @@ export default function AdminHome() {
       </header>
 
         <div className="mx-auto max-w-[76rem] px-3 py-4 sm:px-4 sm:py-5">
-        {err && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.errBanner}`}>{err}</div>}
-        {stopMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>✓ {stopMsg}</div>}
-        {routeMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>Saved: {routeMsg}</div>}
-        {scheduleMsg && <div className={`mb-4 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>Saved: {scheduleMsg}</div>}
-
         {/* Tabs */}
           <div className={`enterprise-inline-scroll mb-6 flex gap-1.5 rounded-2xl border p-1.5 backdrop-blur ${t.tabBar}`}>
             {TABS.map(tab => (
@@ -548,7 +543,6 @@ export default function AdminHome() {
             <div className="space-y-4">
               <GlassCard t={t}>
                 <SLabel t={t}>Add Stop To Main Map</SLabel>
-                <p className={`text-xs mb-4 ${t.textSub}`}>Tap the map on the right to pin a new stop, then save it so the whole MetroBus system can use it.</p>
                 <div className="space-y-3">
                   <InputField label="Stop Name" value={stopName} onChange={setStopName} placeholder="Bindhyabasini Gate" t={t} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -764,7 +758,6 @@ export default function AdminHome() {
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <SLabel t={t}>{editingBusId ? "Edit Bus" : "Add New Bus"}</SLabel>
-                    <p className={`text-xs ${t.textSub}`}>{editingBusId ? "Update the selected bus profile, layout, and media." : "Add the full bus profile, media, and seat layout used across the MetroBus system."}</p>
                   </div>
                   {editingBusId ? (
                     <button type="button" onClick={resetBusForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
@@ -772,7 +765,6 @@ export default function AdminHome() {
                     </button>
                   ) : null}
                 </div>
-                {busMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>OK: {busMgmtMsg}</div>}
                 <div className="space-y-3">
                   <InputField label="Bus Name / Identifier" value={busName} onChange={setBusName} placeholder="MetroBus Lakeside Express" t={t} />
                   <InputField label="Plate Number" value={busPlate} onChange={setBusPlate} placeholder="BA 1 CHA 2233" t={t} />
@@ -805,8 +797,6 @@ export default function AdminHome() {
 
               <GlassCard t={t}>
                 <SLabel t={t}>Assign Staff to Bus</SLabel>
-                <p className={`text-xs mb-4 ${t.textSub}`}>Select an existing bus to map a driver and/or helper.</p>
-                {assignMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>OK: {assignMsg}</div>}
                 <div className="space-y-3">
                   <SelectField label="Select Bus" value={assignBusId} onChange={setAssignBusId} t={t} options={[{ value: "", label: "-- Select Bus --" }, ...busList.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} (${b.plate_number})` }))]} />
                   <SelectField label="Select Driver" value={assignDriverId} onChange={setAssignDriverId} t={t} options={[{ value: "", label: "None / Clear" }, ...userList.filter(u => u.role === "DRIVER").map(u => ({ value: u.id, label: u.full_name }))]} />
@@ -857,7 +847,6 @@ export default function AdminHome() {
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
                     <SLabel t={t}>{editingUserId ? "Edit Staff Account" : "Add Staff Account"}</SLabel>
-                    <p className={`text-xs ${t.textSub}`}>{editingUserId ? "Update the selected staff profile, login phone, and documents. Leave password blank to keep it unchanged." : "Create fully documented driver, helper, or admin accounts. Passengers still self-register, and admin review happens after upload."}</p>
                   </div>
                   {editingUserId ? (
                     <button type="button" onClick={resetUserForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
@@ -865,7 +854,6 @@ export default function AdminHome() {
                     </button>
                   ) : null}
                 </div>
-                {uMgmtMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.okBanner}`}>OK: {uMgmtMsg}</div>}
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {["DRIVER", "HELPER", "ADMIN"].map(role => (
@@ -903,7 +891,6 @@ export default function AdminHome() {
                     ))}
                   </div>
                 </div>
-                {reviewMsg && <div className={`mb-3 rounded-xl border px-4 py-3 text-sm ${t.infoBanner}`}>OK: {reviewMsg}</div>}
                 <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
                   {userList.length === 0 && <p className={`text-sm ${t.textSub}`}>No users loaded.</p>}
                   {userList.map(u => (

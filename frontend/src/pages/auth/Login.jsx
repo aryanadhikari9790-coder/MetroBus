@@ -153,25 +153,13 @@ export default function Login() {
           <div className="mt-7 flex justify-center">
             <MetroBusWordmark />
           </div>
-          <p className="mt-3 text-[1.05rem] font-medium text-[#4e475c]">Your premium urban transit portal</p>
         </div>
 
         <section className="mt-10 rounded-[2rem] bg-white/95 px-6 py-7 shadow-[0_18px_44px_rgba(125,55,193,0.1)]">
           <h1 className="text-[2.7rem] font-black leading-[0.95] tracking-[-0.04em] text-[#17131d]">Welcome Back</h1>
-          <p className="mt-4 text-[1.05rem] leading-8 text-[#544d61]">
-            Please enter your credentials to continue your journey.
-          </p>
 
-          {err ? (
-            <div className="mt-6 rounded-[1.2rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-              {err}
-            </div>
-          ) : null}
-          {msg ? (
-            <div className="mt-6 rounded-[1.2rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-              {msg}
-            </div>
-          ) : null}
+          {err ? <p className="mt-5 text-sm font-semibold text-red-600">{err}</p> : null}
+          {msg ? <p className="mt-5 text-sm font-semibold text-emerald-600">{msg}</p> : null}
 
           <div className="mt-8 space-y-6">
             <label className="block">
@@ -228,9 +216,6 @@ export default function Login() {
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.28em] text-[#5b20dd]">Passenger Password Reset</p>
                   <h2 className="mt-2 text-[1.5rem] font-black leading-tight text-[#17131d]">Reset with phone OTP</h2>
-                  <p className="mt-2 text-sm leading-6 text-[#544d61]">
-                    This reset flow is only for passenger accounts. Staff and admin passwords are managed by MetroBus admin.
-                  </p>
                 </div>
                 <button type="button" onClick={closeReset} className="rounded-[0.9rem] bg-white px-3 py-2 text-xs font-black text-[#4b22d3]">
                   Close
@@ -263,7 +248,6 @@ export default function Login() {
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-black text-[#4b22d3]">Verify Mobile</p>
-                      <p className="mt-1 text-xs leading-5 text-[#61586e]">Enter the 4-digit code sent to your passenger phone.</p>
                     </div>
                     {resetDevCode ? <span className="rounded-[0.85rem] bg-[#efe5ff] px-3 py-1 text-[0.7rem] font-black text-[#5b20dd]">Dev OTP: {resetDevCode}</span> : null}
                   </div>
@@ -321,18 +305,6 @@ export default function Login() {
               </div>
             </div>
           ) : null}
-
-          <div className="mt-8 rounded-[1.5rem] bg-[#f2effa] px-5 py-5 text-left">
-            <div className="flex gap-4">
-              <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[rgba(104,13,255,0.12)] text-[#5e17eb]">
-                <Icon name="info" className="h-5 w-5" />
-              </div>
-              <p className="text-[1rem] leading-8 text-[#3f364d]">
-                <span className="font-black text-[#241828]">Staff Notice:</span> Admin and staff accounts are pre-created by the
-                system administrator. If you need access, please contact the central operations office.
-              </p>
-            </div>
-          </div>
 
           <div className="mt-8 text-center">
             <Link

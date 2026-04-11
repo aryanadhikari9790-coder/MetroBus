@@ -663,8 +663,8 @@ Please review the earnings breakdown for this shift.`;
       </header>
 
       <main className={`${APP_SHELL_CLASS} px-4 py-4 pb-28 sm:px-5 sm:py-5 sm:pb-32`}>
-        {err ? <div className="mb-4 rounded-[1.6rem] border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div> : null}
-        {msg ? <div className="mb-4 rounded-[1.6rem] border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">{msg}</div> : null}
+        {err ? <p className="mb-4 text-sm font-semibold text-red-600">{err}</p> : null}
+        {msg ? <p className="mb-4 text-sm font-semibold text-emerald-600">{msg}</p> : null}
 
         <section className="relative overflow-hidden rounded-[1.8rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)] sm:rounded-[2.6rem] sm:p-6">
           <div className="absolute inset-y-0 right-0 w-32 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
@@ -741,8 +741,6 @@ Please review the earnings breakdown for this shift.`;
                 ))}
               </div>
             </div>
-
-            <Panel className="mt-5 bg-[rgba(255,240,239,0.9)]"><div className="flex items-start gap-3"><div className="grid h-10 w-10 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--drv-purple)]"><Icon name="alert" /></div><div><SectionLabel>Traffic Alert</SectionLabel><p className="text-lg font-black">Heavy congestion reported near Mahendrapul.</p><p className="mt-2 text-sm leading-6 text-[var(--drv-muted)]">Consider switching to deviation mode if your next departure starts before the scheduled corridor clears.</p></div></div></Panel>
           </>
         ) : null}
 
@@ -861,31 +859,6 @@ Please review the earnings breakdown for this shift.`;
                   </div>
                 </div>
               </div>
-
-              <Panel>
-                <SectionLabel>What Happens Next</SectionLabel>
-                <h3 className="mt-2 text-3xl font-black">Trip is waiting on staff confirmation</h3>
-                <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
-                  The trip will become officially LIVE only after both you and the assigned helper confirm the start. GPS sharing and the route simulator stay locked until then.
-                </p>
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
-                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Assigned Helper</p>
-                    <p className="mt-2 text-lg font-black">{helperName}</p>
-                  </div>
-                  <div className="rounded-[1.5rem] bg-[var(--drv-soft)] px-4 py-4">
-                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Deviation Mode</p>
-                    <p className="mt-2 text-lg font-black">{currentTrip?.deviation_mode ? "Enabled" : "Off"}</p>
-                  </div>
-                </div>
-                {!pendingTrip?.driver_start_confirmed && pendingTrip?.schedule_id ? (
-                  <ActionButton tone="primary" onClick={() => startScheduledTrip(pendingTrip.schedule_id)} disabled={busy} className="mt-5 w-full !py-4">
-                    <Icon name="play" className="h-4 w-4" />
-                    {busy ? "Confirming Trip" : "Confirm Trip Start"}
-                  </ActionButton>
-                ) : null}
-              </Panel>
-
               <Panel className="bg-white/80">
                 <div className="flex items-start justify-between gap-3">
                   <div>
