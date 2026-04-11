@@ -252,33 +252,6 @@ export default function PassengerHome() {
     user?.office_location_label,
     user?.school_location_label,
   ]);
-  const homeStageMeta = useMemo(() => ({
-    planner: {
-      eyebrow: activeBooking ? "Ride Ticket" : "Journey Planner",
-      title: activeBooking ? "Your ride OTP is ready" : "Where to next?",
-      description: activeBooking
-        ? "Share this 4-digit ride OTP with the helper when the bus arrives. Payment and boarding updates for this ride will continue from here."
-        : "Plan your journey across the city.",
-    },
-    matches: {
-      eyebrow: "Available Buses",
-      title: "Available Buses",
-      description: visibleMatchedTrips.length
-        ? `${visibleMatchedTrips.length} live bus${visibleMatchedTrips.length !== 1 ? "es" : ""} match your route right now.`
-        : "No live buses are available for this route right now.",
-    },
-    seats: {
-      eyebrow: "Seat Selection",
-      title: "Select Seats",
-      description: "Select the seats you want for this trip, then confirm the booking on the same screen.",
-    },
-    ticket: {
-      eyebrow: "Ride Ticket",
-      title: "Your ride OTP is ready",
-      description: "Share this 4-digit ride OTP with the helper when the bus arrives. Payment and boarding updates will continue from this same booking flow.",
-    },
-  }), [activeBooking, visibleMatchedTrips.length]);
-  const stageOrder = ["planner", "matches", "seats", "ticket"];
   const cancellationBooking = useMemo(
     () => bookings.find((booking) => Number(booking.id) === Number(cancellationBookingId)) || null,
     [bookings, cancellationBookingId],
@@ -292,6 +265,14 @@ export default function PassengerHome() {
     { value: "OTHER", label: "Other" },
   ]), []);
   const homeBookingLocked = Boolean(activeBooking && homeStage === "planner");
+  const showHomeStageHeader = !homeBookingLocked && (
+    homeStage !== "planner"
+    || pickupStop
+    || dropStop
+    || matchedTrips.length
+    || acceptedTripId
+    || lastBookingSummary
+  );
   const logoutCancellationBookings = useMemo(
     () =>
       bookings.filter(
@@ -1100,17 +1081,9 @@ export default function PassengerHome() {
 
         {activeView === "home" ? (
           <section className="space-y-5">
-            <div className="rounded-[2rem] bg-[radial-gradient(circle_at_top_right,rgba(255,107,115,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,244,244,0.96))] p-4 shadow-[var(--mb-shadow)] sm:rounded-[42px] sm:p-5 md:p-8">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                    <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--mb-purple)] sm:text-sm sm:tracking-[0.28em]">
-                      {homeStageMeta[homeStage]?.eyebrow || "MetroBus Booking"}
-                    </p>
-                    <h1 className="mt-3 text-[2.15rem] font-black leading-[0.96] text-[var(--mb-text)] sm:text-[2.7rem] md:text-[4rem]">
-                      {homeStageMeta[homeStage]?.title || "Book your ride"}
-                    </h1>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 self-start">
+            {showHomeStageHeader ? (
+              <div className="rounded-[2rem] bg-[radial-gradient(circle_at_top_right,rgba(255,107,115,0.18),transparent_32%),linear-gradient(180deg,rgba(255,255,255,0.96),rgba(255,244,244,0.96))] p-4 shadow-[var(--mb-shadow)] sm:rounded-[42px] sm:p-5 md:p-8">
+                <div className="flex flex-wrap justify-end gap-2">
                   {!homeBookingLocked && homeStage !== "planner" ? (
                     <button
                       type="button"
@@ -1130,17 +1103,17 @@ export default function PassengerHome() {
                     </button>
                   ) : null}
                 </div>
-              </div>
 
-              {!homeBookingLocked && (pickupStop || dropStop) ? (
-                <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[26px] bg-[var(--mb-card-soft)] p-4">
-                  <span className="rounded-full bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Current route</span>
-                  <p className="text-base font-bold text-[var(--mb-text)]">
-                    {pickupStop?.name || "Choose pickup"} to {dropStop?.name || "Choose destination"}
-                  </p>
-                </div>
-              ) : null}
-            </div>
+                {!homeBookingLocked && (pickupStop || dropStop) ? (
+                  <div className="mt-5 flex flex-wrap items-center gap-3 rounded-[26px] bg-[var(--mb-card-soft)] p-4">
+                    <span className="rounded-full bg-white px-3 py-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Current route</span>
+                    <p className="text-base font-bold text-[var(--mb-text)]">
+                      {pickupStop?.name || "Choose pickup"} to {dropStop?.name || "Choose destination"}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {homeStage === "planner" ? (
               <div className="space-y-4">
