@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
@@ -54,14 +54,28 @@ function fmt(v) { if (!v) return "--"; try { return new Date(v).toLocaleString()
 function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
 
 const EMPTY_OBJ = {};
-const TABS = [{ id: "overview", label: "Overview" }, { id: "routes", label: "Routes" }, { id: "schedules", label: "Schedules" }, { id: "activity", label: "Activity" }, { id: "manage", label: "Manage" }];
+const ADMIN_SECTIONS = [
+  { id: "analytics", label: "Analytics" },
+  { id: "routes", label: "Routes" },
+  { id: "buses", label: "Buses" },
+  { id: "staff", label: "Staff" },
+  { id: "assignments", label: "Assignments" },
+];
+const DEFAULT_ADMIN_SECTION = "analytics";
+
+function toLocalDatetimeInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+}
 
 export default function AdminHome() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { isDark, toggle } = useTheme();
   const t = themeTokens(isDark);
-  const [activeTab, setActiveTab] = useState("overview");
 
   const [dashboard, setDashboard]           = useState(null);
   const [loading, setLoading]               = useState(true);
@@ -71,6 +85,8 @@ export default function AdminHome() {
   const [recentRoutes, setRecentRoutes]     = useState([]);
   const [routeBusy, setRouteBusy]           = useState(false);
   const [routeMsg, setRouteMsg]             = useState("");
+  const [editingRouteId, setEditingRouteId] = useState(null);
+  const [routeDeleteBusyId, setRouteDeleteBusyId] = useState(null);
   const [stopMsg, setStopMsg]               = useState("");
   const [scheduleMsg, setScheduleMsg]       = useState("");
   const [stopName, setStopName]             = useState("");
@@ -85,12 +101,14 @@ export default function AdminHome() {
   const [segmentFares, setSegmentFares]     = useState([]);
   const [roadPolyline, setRoadPolyline]     = useState([]);
   const [scheduleBusy, setScheduleBusy]     = useState(false);
-  const [schedOpts, setSchedOpts]           = useState({ routes: [], buses: [], drivers: [], helpers: [], recent_schedules: [] });
+  const [schedOpts, setSchedOpts]           = useState({ routes: [], buses: [], drivers: [], helpers: [], recent_schedules: [], schedules: [] });
   const [sRouteId, setSRouteId]             = useState("");
   const [sBusId, setSBusId]                 = useState("");
   const [sDriverId, setSDriverId]           = useState("");
   const [sHelperId, setSHelperId]           = useState("");
   const [sStartTime, setSStartTime]         = useState("");
+  const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [scheduleDeleteBusyId, setScheduleDeleteBusyId] = useState(null);
   // Management
   const [busList, setBusList]               = useState([]);
   const [userList, setUserList]             = useState([]);
@@ -131,8 +149,8 @@ export default function AdminHome() {
   const [reviewMsg, setReviewMsg]           = useState("");
 
   const loadDB     = async ({ silent = false } = {}) => { if (!silent) setLoading(true); try { const r = await api.get("/api/auth/admin/dashboard/"); setDashboard(r.data); setErr(""); } catch (e) { setErr(e?.response?.data?.detail || "Failed to load dashboard."); } finally { if (!silent) setLoading(false); } };
-  const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentStops(r.data.recent_stops || []); setRecentRoutes(r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
-  const loadSched  = async () => { try { const r = await api.get("/api/trips/admin/schedules/"); setSchedOpts({ routes: r.data.routes || [], buses: r.data.buses || [], drivers: r.data.drivers || [], helpers: r.data.helpers || [], recent_schedules: r.data.recent_schedules || [] }); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load schedules."); } };
+  const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentStops(r.data.recent_stops || []); setRecentRoutes(r.data.routes || r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
+  const loadSched  = async () => { try { const r = await api.get("/api/trips/admin/schedules/"); setSchedOpts({ routes: r.data.routes || [], buses: r.data.buses || [], drivers: r.data.drivers || [], helpers: r.data.helpers || [], recent_schedules: r.data.recent_schedules || [], schedules: r.data.schedules || [] }); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load schedules."); } };
   const loadBuses  = async () => { try { const r = await api.get("/api/transport/admin/buses/"); setBusList(r.data.buses || []); } catch { /* silent */ } };
   const loadUsers  = async (role = null) => {
     try {
@@ -143,8 +161,14 @@ export default function AdminHome() {
   const reloadFilteredUsers = async () => loadUsers(userRoleFilter === "ALL" ? null : userRoleFilter);
 
   const selectedScheduleBus = useMemo(() => schedOpts.buses.find(b => String(b.id) === String(sBusId)) || null, [sBusId, schedOpts.buses]);
+  const selectedAssignBus = useMemo(() => busList.find(b => String(b.id) === String(assignBusId)) || null, [assignBusId, busList]);
 
   useEffect(() => { loadDB(); loadRoute(); loadSched(); loadBuses(); loadUsers(); const id = setInterval(() => loadDB({ silent: true }), 10000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+    if (location.pathname === "/admin" || location.pathname === "/admin/") {
+      navigate(`/admin/${DEFAULT_ADMIN_SECTION}`, { replace: true });
+    }
+  }, [location.pathname, navigate]);
   useEffect(() => { setSegmentFares(c => Array.from({ length: Math.max(selectedStopIds.length - 1, 0) }, (_, i) => c[i] || "")); }, [selectedStopIds]);
   useEffect(() => {
     if (!sRouteId && schedOpts.routes.length) setSRouteId(String(schedOpts.routes[0].id));
@@ -158,13 +182,25 @@ export default function AdminHome() {
     if (selectedScheduleBus.driver) setSDriverId(String(selectedScheduleBus.driver));
     if (selectedScheduleBus.helper) setSHelperId(String(selectedScheduleBus.helper));
   }, [selectedScheduleBus]);
+  useEffect(() => {
+    if (!selectedAssignBus) return;
+    setAssignDriverId(selectedAssignBus.driver ? String(selectedAssignBus.driver) : "");
+    setAssignHelperId(selectedAssignBus.helper ? String(selectedAssignBus.helper) : "");
+  }, [selectedAssignBus]);
 
   const handleLogout = () => { clearToken(); navigate("/auth/login"); };
 
-  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const rideOps = overview?.ride_ops || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ;
+  const activeSection = useMemo(() => {
+    const section = location.pathname.split("/")[2] || DEFAULT_ADMIN_SECTION;
+    return ADMIN_SECTIONS.some((item) => item.id === section) ? section : DEFAULT_ADMIN_SECTION;
+  }, [location.pathname]);
+  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const transport = overview?.transport || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const rideOps = overview?.ride_ops || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ;
   const paymentRows = useMemo(() => Object.entries(payments?.methods || {}).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [payments]);
   const recentBookingFlow = dashboard?.recent_booking_flow || [];
   const rewardLeaderboard = dashboard?.reward_leaderboard || [];
+  const routeAnalytics = dashboard?.route_analytics || [];
+  const busAnalytics = dashboard?.bus_analytics || [];
+  const staffUsers = useMemo(() => userList.filter(item => item.role !== "PASSENGER"), [userList]);
   const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
   const selPts = useMemo(() => selectedStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)), [selectedStops]);
   const dispPts = roadPolyline.length > 1 ? roadPolyline : selPts;
@@ -181,7 +217,8 @@ export default function AdminHome() {
   const toggleStop = id => setSelectedStopIds(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
   const moveStop = (i, dir) => setSelectedStopIds(c => { const ti = i + dir; if (ti < 0 || ti >= c.length) return c; const n = [...c]; [n[i], n[ti]] = [n[ti], n[i]]; return n; });
   const clearStopForm = () => { setStopName(""); setStopLat(""); setStopLng(""); setStopActive(true); };
-  const clearRoute  = () => { setRouteName(""); setRouteCity("Pokhara"); setRouteActive(true); setSelectedStopIds([]); setSegmentFares([]); setRouteMsg(""); };
+  const clearRoute  = () => { setEditingRouteId(null); setRouteName(""); setRouteCity("Pokhara"); setRouteActive(true); setSelectedStopIds([]); setSegmentFares([]); setRouteMsg(""); };
+  const clearScheduleForm = () => { setEditingScheduleId(null); setScheduleMsg(""); setSStartTime(""); };
   const resetBusForm = () => {
     setEditingBusId(null);
     setBusName("");
@@ -234,18 +271,92 @@ export default function AdminHome() {
     }
   };
 
-  const createRoute = async () => {
+  const saveRoute = async () => {
     if (!routeName.trim()) { setErr("Enter a route name."); return; } if (selectedStopIds.length < 2) { setErr("Select at least two stops."); return; } if (segmentFares.some(f => f === "" || Number(f) < 0)) { setErr("Fill every segment fare."); return; }
     setRouteBusy(true); setErr(""); setRouteMsg("");
-    try { const r = await api.post("/api/transport/admin/route-builder/", { name: routeName.trim(), city: routeCity.trim() || "Pokhara", is_active: routeActive, stop_ids: selectedStopIds, segment_fares: segmentFares.map(Number) }); setRouteMsg(r.data.message || "Route created."); clearRoute(); await Promise.all([loadDB({ silent: true }), loadRoute()]); }
-    catch (e) { setErr(e?.response?.data?.detail || "Failed to create route."); } finally { setRouteBusy(false); }
+    try {
+      const payload = { name: routeName.trim(), city: routeCity.trim() || "Pokhara", is_active: routeActive, stop_ids: selectedStopIds, segment_fares: segmentFares.map(Number) };
+      const r = editingRouteId
+        ? await api.patch(`/api/transport/admin/routes/${editingRouteId}/`, payload)
+        : await api.post("/api/transport/admin/route-builder/", payload);
+      setRouteMsg(r.data.message || (editingRouteId ? "Route updated." : "Route created."));
+      clearRoute();
+      await Promise.all([loadDB({ silent: true }), loadRoute(), loadSched()]);
+    }
+    catch (e) { setErr(e?.response?.data?.detail || `Failed to ${editingRouteId ? "update" : "create"} route.`); } finally { setRouteBusy(false); }
   };
 
-  const createSchedule = async () => {
+  const startEditingRoute = (route) => {
+    setErr("");
+    setRouteMsg("");
+    setEditingRouteId(route.id);
+    setRouteName(route.name || "");
+    setRouteCity(route.city || "Pokhara");
+    setRouteActive(Boolean(route.is_active));
+    setSelectedStopIds((route.route_stops || []).map(item => item.stop.id));
+    setSegmentFares((route.segment_fares || []).map(value => String(value)));
+    navigate("/admin/routes");
+  };
+
+  const deleteRoute = async (route) => {
+    if (!window.confirm(`Delete route ${route.name}? This cannot be undone.`)) return;
+    setRouteDeleteBusyId(route.id);
+    setErr("");
+    setRouteMsg("");
+    try {
+      const r = await api.delete(`/api/transport/admin/routes/${route.id}/`);
+      setRouteMsg(r.data.message || "Route deleted.");
+      if (editingRouteId === route.id) clearRoute();
+      await Promise.all([loadDB({ silent: true }), loadRoute(), loadSched()]);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to delete route.");
+    } finally {
+      setRouteDeleteBusyId(null);
+    }
+  };
+
+  const saveSchedule = async () => {
     if (!(sRouteId && sBusId && sDriverId && sHelperId && sStartTime)) { setErr("Fill all schedule fields."); return; }
     setScheduleBusy(true); setErr(""); setScheduleMsg("");
-    try { const r = await api.post("/api/trips/admin/schedules/", { route_id: +sRouteId, bus_id: +sBusId, driver_id: +sDriverId, helper_id: +sHelperId, scheduled_start_time: new Date(sStartTime).toISOString() }); setScheduleMsg(r.data.message || "Schedule created."); setSStartTime(""); await Promise.all([loadDB({ silent: true }), loadSched()]); }
-    catch (e) { setErr(e?.response?.data?.detail || "Failed to create schedule."); } finally { setScheduleBusy(false); }
+    try {
+      const payload = { route_id: +sRouteId, bus_id: +sBusId, driver_id: +sDriverId, helper_id: +sHelperId, scheduled_start_time: new Date(sStartTime).toISOString() };
+      const r = editingScheduleId
+        ? await api.patch(`/api/trips/admin/schedules/${editingScheduleId}/`, payload)
+        : await api.post("/api/trips/admin/schedules/", payload);
+      setScheduleMsg(r.data.message || (editingScheduleId ? "Schedule updated." : "Schedule created."));
+      clearScheduleForm();
+      await Promise.all([loadDB({ silent: true }), loadSched()]);
+    }
+    catch (e) { setErr(e?.response?.data?.detail || `Failed to ${editingScheduleId ? "update" : "create"} schedule.`); } finally { setScheduleBusy(false); }
+  };
+
+  const startEditingSchedule = (schedule) => {
+    setErr("");
+    setScheduleMsg("");
+    setEditingScheduleId(schedule.id);
+    setSRouteId(String(schedule.route));
+    setSBusId(String(schedule.bus));
+    setSDriverId(String(schedule.driver));
+    setSHelperId(String(schedule.helper));
+    setSStartTime(toLocalDatetimeInput(schedule.scheduled_start_time));
+    navigate("/admin/assignments");
+  };
+
+  const deleteSchedule = async (schedule) => {
+    if (!window.confirm(`Delete the schedule for ${schedule.route_name}? This cannot be undone.`)) return;
+    setScheduleDeleteBusyId(schedule.id);
+    setErr("");
+    setScheduleMsg("");
+    try {
+      const r = await api.delete(`/api/trips/admin/schedules/${schedule.id}/`);
+      setScheduleMsg(r.data.message || "Schedule deleted.");
+      if (editingScheduleId === schedule.id) clearScheduleForm();
+      await Promise.all([loadDB({ silent: true }), loadSched()]);
+    } catch (e) {
+      setErr(e?.response?.data?.detail || "Failed to delete schedule.");
+    } finally {
+      setScheduleDeleteBusyId(null);
+    }
   };
 
   const saveBus = async () => {
@@ -290,6 +401,7 @@ export default function AdminHome() {
     setBusExteriorPhoto(null);
     setBusInteriorPhoto(null);
     setBusSeatPhoto(null);
+    navigate("/admin/buses");
   };
 
   const deleteBus = async (bus) => {
@@ -372,6 +484,7 @@ export default function AdminHome() {
     setUOfficialPhoto(null);
     setULicenseNumber(staffUser.license_number || "");
     setULicensePhoto(null);
+    navigate("/admin/staff");
   };
 
   const deleteUser = async (staffUser) => {
@@ -440,18 +553,19 @@ export default function AdminHome() {
       </header>
 
         <div className="mx-auto max-w-[76rem] px-3 py-4 sm:px-4 sm:py-5">
+        {err ? <p className="mb-4 text-sm font-semibold text-red-600">{err}</p> : null}
         {/* Tabs */}
           <div className={`enterprise-inline-scroll mb-6 flex gap-1.5 rounded-2xl border p-1.5 backdrop-blur ${t.tabBar}`}>
-            {TABS.map(tab => (
-              <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeTab === tab.id ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white shadow-[0_18px_34px_rgba(255,107,115,0.24)]" : t.tabInactive}`}>
-                <span>{tab.label}</span>
+            {ADMIN_SECTIONS.map(section => (
+              <button key={section.id} type="button" onClick={() => navigate(`/admin/${section.id}`)}
+                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeSection === section.id ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white shadow-[0_18px_34px_rgba(255,107,115,0.24)]" : t.tabInactive}`}>
+                <span>{section.label}</span>
               </button>
             ))}
           </div>
 
         {/* OVERVIEW */}
-        {activeTab === "overview" && (
+        {activeSection === "analytics" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers | ${roleCounts.DRIVER || 0} drivers`} accent="text-[#ff6b73]" t={t} />
@@ -471,6 +585,65 @@ export default function AdminHome() {
               <StatCard label="Ready To Board" value={rideOps.ready_to_board ?? 0} sub="Paid and waiting" accent="text-sky-500" t={t} />
               <StatCard label="Onboard" value={rideOps.onboard ?? 0} sub="Passengers riding now" accent="text-emerald-500" t={t} />
               <StatCard label="Completed Today" value={rideOps.completed_today ?? 0} sub="Seats released today" accent="text-violet-500" t={t} />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard label="Routes" value={transport.routes ?? 0} sub={`${routeAnalytics.filter(route => route.is_active).length} active across ${new Set(routeAnalytics.map(route => route.city)).size || 1} city`} accent="text-indigo-500" t={t} />
+              <StatCard label="Stops" value={transport.stops ?? 0} sub="Shared map stops managed by admin" accent="text-sky-500" t={t} />
+              <StatCard label="Buses" value={transport.buses ?? 0} sub={`${busAnalytics.filter(bus => bus.is_active).length} active fleet vehicles`} accent="text-fuchsia-500" t={t} />
+              <StatCard label="Seats" value={transport.seats ?? 0} sub="Total seats mapped across the fleet" accent="text-orange-500" t={t} />
+            </div>
+            <div className="grid gap-5 xl:grid-cols-2">
+              <GlassCard t={t}>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <SLabel t={t}>Route Analytics</SLabel>
+                  <Pill color="indigo" isDark={isDark}>{routeAnalytics.length} routes</Pill>
+                </div>
+                <div className="space-y-3">
+                  {routeAnalytics.length === 0 ? <p className={`text-sm ${t.textSub}`}>No route analytics yet.</p> : routeAnalytics.slice(0, 8).map(route => (
+                    <div key={route.route_id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`break-words text-sm font-bold ${t.text}`}>{route.route_name}</p>
+                          <p className={`mt-1 text-xs ${t.textSub}`}>{route.city} | {route.stops_count} stops</p>
+                        </div>
+                        <Pill color={route.is_active ? "emerald" : "slate"} isDark={isDark}>{route.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Schedules {route.planned_schedules}</div>
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Live {route.live_trips}</div>
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Bookings {route.bookings}</div>
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Revenue {fmtMoney(route.revenue_success)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+              <GlassCard t={t}>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <SLabel t={t}>Bus Analytics</SLabel>
+                  <Pill color="fuchsia" isDark={isDark}>{busAnalytics.length} buses</Pill>
+                </div>
+                <div className="space-y-3">
+                  {busAnalytics.length === 0 ? <p className={`text-sm ${t.textSub}`}>No fleet analytics yet.</p> : busAnalytics.slice(0, 8).map(bus => (
+                    <div key={bus.bus_id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`break-words text-sm font-bold ${t.text}`}>{bus.display_name}</p>
+                          <p className={`mt-1 text-xs ${t.textSub}`}>{bus.plate_number} | {bus.capacity} seats | {bus.condition}</p>
+                          <p className={`mt-1 text-xs ${t.textSub}`}>Driver {bus.driver_name || "Unassigned"} | Helper {bus.helper_name || "Unassigned"}</p>
+                        </div>
+                        <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Schedules {bus.planned_schedules}</div>
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Live {bus.live_trips}</div>
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Trips {bus.total_trips}</div>
+                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Revenue {fmtMoney(bus.revenue_success)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
             </div>
             <GlassCard t={t}>
               <SLabel t={t}>Payment Method Performance</SLabel>
@@ -538,7 +711,7 @@ export default function AdminHome() {
         )}
 
         {/* ROUTES */}
-        {activeTab === "routes" && (
+        {activeSection === "routes" && (
           <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
             <div className="space-y-4">
               <GlassCard t={t}>
@@ -566,13 +739,17 @@ export default function AdminHome() {
                 </div>
               </GlassCard>
               <GlassCard t={t}>
-                <SLabel t={t}>Route Builder</SLabel>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <SLabel t={t}>{editingRouteId ? "Edit Route" : "Route Builder"}</SLabel>
+                  {editingRouteId ? <button type="button" onClick={clearRoute} className={`rounded-lg border px-3 py-2 text-xs font-bold ${rowBg} ${t.text}`}>Cancel</button> : null}
+                </div>
                 <div className="space-y-3">
                   <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" t={t} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
                     <InputField label="City" value={routeCity} onChange={setRouteCity} placeholder="Pokhara" t={t} />
                     <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
                   </div>
+                  {routeMsg ? <p className="text-sm font-semibold text-emerald-600">{routeMsg}</p> : null}
                 </div>
               </GlassCard>
               <GlassCard t={t}>
@@ -598,7 +775,7 @@ export default function AdminHome() {
                   ))}
                 </GlassCard>
               )}
-              <Btn tone="success" onClick={createRoute} disabled={routeBusy} className="w-full !py-4">{routeBusy ? "Creating..." : "Create Route"}</Btn>
+              <Btn tone="success" onClick={saveRoute} disabled={routeBusy} className="w-full !py-4">{routeBusy ? (editingRouteId ? "Saving..." : "Creating...") : (editingRouteId ? "Save Route Changes" : "Create Route")}</Btn>
             </div>
             <div className="space-y-4">
               <GlassCard t={t} className="!p-0 overflow-hidden">
@@ -634,12 +811,24 @@ export default function AdminHome() {
                   ))}
               </GlassCard>
               <GlassCard t={t}>
-                <SLabel t={t}>Recent Routes</SLabel>
+                <SLabel t={t}>Routes ({recentRoutes.length})</SLabel>
                 {recentRoutes.length === 0 ? <p className={`text-sm ${t.textSub}`}>No routes yet.</p>
                   : recentRoutes.map(r => (
-                    <div key={r.id} className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
-                      <div className="min-w-0"><p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{r.name}</p><p className={`mt-0.5 break-words text-xs leading-5 ${t.textSub}`}>{r.city} | {r.stops_count} stops</p></div>
-                      <Pill color={r.is_active ? "emerald" : "slate"} isDark={isDark}>{r.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
+                    <div key={r.id} className={`rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{r.name}</p>
+                          <p className={`mt-0.5 break-words text-xs leading-5 ${t.textSub}`}>{r.city} | {r.stops_count} stops</p>
+                          {r.route_stops?.length ? <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>{r.route_stops[0].stop.name} to {r.route_stops[r.route_stops.length - 1].stop.name}</p> : null}
+                        </div>
+                        <Pill color={r.is_active ? "emerald" : "slate"} isDark={isDark}>{r.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Btn tone="primary" onClick={() => startEditingRoute(r)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
+                        <Btn tone="danger" onClick={() => deleteRoute(r)} disabled={routeDeleteBusyId === r.id} className="!rounded-full !px-3 !py-2 text-[11px]">
+                          {routeDeleteBusyId === r.id ? "Deleting..." : "Delete"}
+                        </Btn>
+                      </div>
                     </div>
                   ))}
               </GlassCard>
@@ -648,45 +837,115 @@ export default function AdminHome() {
         )}
 
         {/* SCHEDULES */}
-        {activeTab === "schedules" && (
+        {activeSection === "assignments" && (
           <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
-            <GlassCard t={t}>
-              <SLabel t={t}>Create Trip Schedule</SLabel>
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <SelectField label="Route" value={sRouteId} onChange={setSRouteId} t={t} options={schedOpts.routes.map(r => ({ value: r.id, label: r.name }))} />
-                  <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} | ${b.plate_number}` }))} />
-                  <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} t={t} options={schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))} />
-                  <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} t={t} options={schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))} />
-                </div>
-                {selectedScheduleBus ? (
-                  <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Assigned Bus Snapshot</p>
-                    <p className={`mt-2 text-sm font-bold ${t.text}`}>{selectedScheduleBus.display_name || selectedScheduleBus.plate_number}</p>
-                    <p className={`mt-1 ${t.textSub}`}>{selectedScheduleBus.plate_number} | {selectedScheduleBus.capacity} seats</p>
-                    <p className={`mt-2 ${t.textSub}`}>Driver: {selectedScheduleBus.driver_name || "Not assigned"} | Helper: {selectedScheduleBus.helper_name || "Not assigned"}</p>
+            <div className="space-y-4">
+              <GlassCard t={t}>
+                <SLabel t={t}>Assign Bus And Staff</SLabel>
+                <div className="space-y-3">
+                  {assignMsg ? <p className="text-sm font-semibold text-emerald-600">{assignMsg}</p> : null}
+                  <SelectField label="Bus" value={assignBusId} onChange={setAssignBusId} t={t} options={[{ value: "", label: "-- Select Bus --" }, ...busList.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} | ${b.plate_number}` }))]} />
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <SelectField label="Driver" value={assignDriverId} onChange={setAssignDriverId} t={t} options={[{ value: "", label: "Unassigned" }, ...schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))]} />
+                    <SelectField label="Helper" value={assignHelperId} onChange={setAssignHelperId} t={t} options={[{ value: "", label: "Unassigned" }, ...schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))]} />
                   </div>
-                ) : null}
-                <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} t={t} />
-                <div className={`rounded-xl border px-4 py-3 text-xs ${isDark ? "border-white/5 bg-white/5 text-slate-400" : "border-slate-200 bg-slate-50 text-slate-500"}`}>Schedules appear on the driver and helper dashboards so they can start assigned trips without manual setup. MetroBus now also blocks same-time conflicts for the same bus, driver, or helper.</div>
-                <Btn tone="primary" onClick={createSchedule} disabled={scheduleBusy} className="w-full !py-4">{scheduleBusy ? "Creating..." : "Create Trip Schedule"}</Btn>
-              </div>
-            </GlassCard>
-            <div className="space-y-3">
-              <SLabel t={t}>Recent Schedules ({schedOpts.recent_schedules.length})</SLabel>
-              {schedOpts.recent_schedules.length === 0 ? <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No schedules yet.</p></GlassCard>
-                : schedOpts.recent_schedules.map(s => (
-                  <GlassCard key={s.id} t={t} className="!p-4">
-                    <div className="flex items-start justify-between gap-3"><div><p className={`text-sm font-bold ${t.text}`}>{s.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{s.bus_plate} | {s.driver_name || "--"} | {s.helper_name || "--"}</p></div><Pill color={s.status === "PLANNED" ? "amber" : s.status === "COMPLETED" ? "emerald" : "slate"} isDark={isDark}>{s.status}</Pill></div>
-                    <p className={`mt-2 text-xs ${t.textMuted}`}>Starts {fmt(s.scheduled_start_time)}</p>
-                  </GlassCard>
-                ))}
+                  {selectedAssignBus ? (
+                    <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Current Assignment</p>
+                      <p className={`mt-2 text-sm font-bold ${t.text}`}>{selectedAssignBus.display_name || selectedAssignBus.plate_number}</p>
+                      <p className={`mt-1 ${t.textSub}`}>{selectedAssignBus.plate_number} | {selectedAssignBus.capacity} seats | {selectedAssignBus.condition}</p>
+                      <p className={`mt-2 ${t.textSub}`}>Driver: {selectedAssignBus.driver_name || "Unassigned"} | Helper: {selectedAssignBus.helper_name || "Unassigned"}</p>
+                    </div>
+                  ) : null}
+                  <Btn tone="primary" onClick={assignStaffToBus} disabled={assignBusy} className="w-full !py-4">
+                    {assignBusy ? "Updating..." : "Save Assignment"}
+                  </Btn>
+                </div>
+              </GlassCard>
+              <GlassCard t={t}>
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <SLabel t={t}>{editingScheduleId ? "Edit Trip Schedule" : "Create Trip Schedule"}</SLabel>
+                  </div>
+                  {editingScheduleId ? (
+                    <button type="button" onClick={clearScheduleForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
+                      Cancel
+                    </button>
+                  ) : null}
+                </div>
+                <div className="space-y-3">
+                  {scheduleMsg ? <p className="text-sm font-semibold text-emerald-600">{scheduleMsg}</p> : null}
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <SelectField label="Route" value={sRouteId} onChange={setSRouteId} t={t} options={schedOpts.routes.map(r => ({ value: r.id, label: r.name }))} />
+                    <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} | ${b.plate_number}` }))} />
+                    <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} t={t} options={schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))} />
+                    <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} t={t} options={schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))} />
+                  </div>
+                  {selectedScheduleBus ? (
+                    <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Schedule Snapshot</p>
+                      <p className={`mt-2 text-sm font-bold ${t.text}`}>{selectedScheduleBus.display_name || selectedScheduleBus.plate_number}</p>
+                      <p className={`mt-1 ${t.textSub}`}>{selectedScheduleBus.plate_number} | {selectedScheduleBus.capacity} seats</p>
+                      <p className={`mt-2 ${t.textSub}`}>Driver: {selectedScheduleBus.driver_name || "Not assigned"} | Helper: {selectedScheduleBus.helper_name || "Not assigned"}</p>
+                    </div>
+                  ) : null}
+                  <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} t={t} />
+                  <Btn tone="primary" onClick={saveSchedule} disabled={scheduleBusy} className="w-full !py-4">
+                    {scheduleBusy ? (editingScheduleId ? "Saving..." : "Creating...") : (editingScheduleId ? "Save Schedule Changes" : "Create Trip Schedule")}
+                  </Btn>
+                </div>
+              </GlassCard>
+            </div>
+            <div className="space-y-4">
+              <GlassCard t={t}>
+                <SLabel t={t}>Bus Assignment Snapshot</SLabel>
+                <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+                  {busList.length === 0 ? <p className={`text-sm ${t.textSub}`}>No buses registered yet.</p> : busList.map(bus => (
+                    <div key={bus.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`break-words text-sm font-bold ${t.text}`}>{bus.display_name || bus.plate_number}</p>
+                          <p className={`mt-1 text-xs ${t.textSub}`}>{bus.plate_number} | {bus.capacity} seats | {bus.condition}</p>
+                          <p className={`mt-1 text-xs ${t.textSub}`}>Driver: {bus.driver_name || "Unassigned"} | Helper: {bus.helper_name || "Unassigned"}</p>
+                        </div>
+                        <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Btn tone="primary" onClick={() => setAssignBusId(String(bus.id))} className="!rounded-full !px-3 !py-2 text-[11px]">Load Assignment</Btn>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
+              <GlassCard t={t}>
+                <SLabel t={t}>Trip Schedules ({schedOpts.schedules.length})</SLabel>
+                <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
+                  {schedOpts.schedules.length === 0 ? <p className={`text-sm ${t.textSub}`}>No schedules yet.</p> : schedOpts.schedules.map(s => (
+                    <div key={s.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className={`break-words text-sm font-bold ${t.text}`}>{s.route_name}</p>
+                          <p className={`mt-1 text-xs ${t.textSub}`}>{s.bus_plate} | {s.driver_name || "--"} | {s.helper_name || "--"}</p>
+                          <p className={`mt-1 text-xs ${t.textMuted}`}>Starts {fmt(s.scheduled_start_time)}</p>
+                        </div>
+                        <Pill color={s.status === "PLANNED" ? "amber" : s.status === "COMPLETED" ? "emerald" : "slate"} isDark={isDark}>{s.status}</Pill>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Btn tone="primary" onClick={() => startEditingSchedule(s)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
+                        <Btn tone="danger" onClick={() => deleteSchedule(s)} disabled={scheduleDeleteBusyId === s.id} className="!rounded-full !px-3 !py-2 text-[11px]">
+                          {scheduleDeleteBusyId === s.id ? "Deleting..." : "Delete"}
+                        </Btn>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </GlassCard>
             </div>
           </div>
         )}
 
         {/* ACTIVITY */}
-        {activeTab === "activity" && (
+        {activeSection === "analytics" && (
           <div className="grid gap-5 xl:grid-cols-2">
             <div>
               <SLabel t={t}>Live Trips</SLabel>
@@ -750,10 +1009,8 @@ export default function AdminHome() {
         )}
 
         {/* MANAGE */}
-        {activeTab === "manage" && (
-          <div className="grid gap-5 xl:grid-cols-2">
-            {/* Add Bus */}
-            <div className="space-y-4">
+        {activeSection === "buses" && (
+          <div className="space-y-4">
               <GlassCard t={t}>
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
@@ -766,6 +1023,7 @@ export default function AdminHome() {
                   ) : null}
                 </div>
                 <div className="space-y-3">
+                  {busMgmtMsg ? <p className="text-sm font-semibold text-emerald-600">{busMgmtMsg}</p> : null}
                   <InputField label="Bus Name / Identifier" value={busName} onChange={setBusName} placeholder="MetroBus Lakeside Express" t={t} />
                   <InputField label="Plate Number" value={busPlate} onChange={setBusPlate} placeholder="BA 1 CHA 2233" t={t} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -796,20 +1054,8 @@ export default function AdminHome() {
               </GlassCard>
 
               <GlassCard t={t}>
-                <SLabel t={t}>Assign Staff to Bus</SLabel>
-                <div className="space-y-3">
-                  <SelectField label="Select Bus" value={assignBusId} onChange={setAssignBusId} t={t} options={[{ value: "", label: "-- Select Bus --" }, ...busList.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} (${b.plate_number})` }))]} />
-                  <SelectField label="Select Driver" value={assignDriverId} onChange={setAssignDriverId} t={t} options={[{ value: "", label: "None / Clear" }, ...userList.filter(u => u.role === "DRIVER").map(u => ({ value: u.id, label: u.full_name }))]} />
-                  <SelectField label="Select Helper" value={assignHelperId} onChange={setAssignHelperId} t={t} options={[{ value: "", label: "None / Clear" }, ...userList.filter(u => u.role === "HELPER").map(u => ({ value: u.id, label: u.full_name }))]} />
-                  <Btn tone="primary" onClick={assignStaffToBus} disabled={assignBusy} className="w-full !py-4">
-                    {assignBusy ? "Updating..." : "Update Assignment"}
-                  </Btn>
-                </div>
-              </GlassCard>
-
-              <GlassCard t={t}>
                 <SLabel t={t}>Existing Buses ({busList.length})</SLabel>
-                <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
+                <div className="max-h-[48rem] overflow-y-auto space-y-3 pr-1">
                   {busList.length === 0 && <p className={`text-sm ${t.textSub}`}>No buses registered yet.</p>}
                   {busList.map(bus => (
                     <div key={bus.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
@@ -839,10 +1085,11 @@ export default function AdminHome() {
                   ))}
                 </div>
               </GlassCard>
-            </div>
+          </div>
+        )}
 
-            {/* Add Staff User */}
-            <div className="space-y-4">
+        {activeSection === "staff" && (
+          <div className="space-y-4">
               <GlassCard t={t}>
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
@@ -855,6 +1102,7 @@ export default function AdminHome() {
                   ) : null}
                 </div>
                 <div className="space-y-3">
+                  {uMgmtMsg ? <p className="text-sm font-semibold text-emerald-600">{uMgmtMsg}</p> : null}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {["DRIVER", "HELPER", "ADMIN"].map(role => (
                       <button key={role} type="button" onClick={() => setURole(role)} className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
@@ -882,7 +1130,7 @@ export default function AdminHome() {
 
               <GlassCard t={t}>
                 <div className="flex items-center justify-between mb-3">
-                  <SLabel t={t}>Staff Accounts ({userList.filter(u => u.role !== "PASSENGER").length})</SLabel>
+                  <SLabel t={t}>Staff Accounts ({staffUsers.length})</SLabel>
                   <div className="flex gap-1">
                     {["ALL", "DRIVER", "HELPER", "ADMIN"].map(r => (
                       <button key={r} type="button" onClick={() => setStaffFilter(r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${userRoleFilter === r ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
@@ -891,9 +1139,10 @@ export default function AdminHome() {
                     ))}
                   </div>
                 </div>
-                <div className="max-h-80 overflow-y-auto space-y-3 pr-1">
-                  {userList.length === 0 && <p className={`text-sm ${t.textSub}`}>No users loaded.</p>}
-                  {userList.map(u => (
+                {reviewMsg ? <p className="mb-3 text-sm font-semibold text-emerald-600">{reviewMsg}</p> : null}
+                <div className="max-h-[48rem] overflow-y-auto space-y-3 pr-1">
+                  {staffUsers.length === 0 && <p className={`text-sm ${t.textSub}`}>No staff users loaded.</p>}
+                  {staffUsers.map(u => (
                     <div key={u.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
@@ -962,7 +1211,6 @@ export default function AdminHome() {
                   ))}
                 </div>
               </GlassCard>
-            </div>
           </div>
         )}
       </div>
