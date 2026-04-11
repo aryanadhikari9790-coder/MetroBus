@@ -7,7 +7,14 @@ from rest_framework.views import APIView
 
 from .models import Stop, Route, RouteStop, RouteFare, Bus
 from .services import ensure_bus_seats
-from .serializers import StopSerializer, CreateStopSerializer, RouteListSerializer, CreateRouteSerializer, BusSerializer
+from .serializers import (
+    StopSerializer,
+    CreateStopSerializer,
+    RouteListSerializer,
+    RouteManageSerializer,
+    CreateRouteSerializer,
+    BusSerializer,
+)
 
 User = get_user_model()
 
@@ -22,6 +29,41 @@ def _parse_bool(value, default=False):
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _route_segment_fares(route):
+    fare_lookup = {
+        (fare.from_stop_order, fare.to_stop_order): fare.fare_amount
+        for fare in route.fares.all()
+    }
+    ordered_stop_orders = list(route.route_stops.order_by("stop_order").values_list("stop_order", flat=True))
+    return [
+        fare_lookup.get((ordered_stop_orders[index], ordered_stop_orders[index + 1]), 0)
+        for index in range(len(ordered_stop_orders) - 1)
+    ]
+
+
+def _replace_route_layout(route, stop_ids, segment_fares):
+    ordered_stops = list(Stop.objects.filter(id__in=stop_ids))
+    stop_map = {stop.id: stop for stop in ordered_stops}
+    ordered_stop_objects = [stop_map[stop_id] for stop_id in stop_ids]
+
+    route.route_stops.all().delete()
+    route.fares.all().delete()
+
+    for index, stop in enumerate(ordered_stop_objects, start=1):
+        RouteStop.objects.create(route=route, stop=stop, stop_order=index)
+
+    for start_index in range(len(stop_ids) - 1):
+        running_total = 0
+        for end_index in range(start_index + 1, len(stop_ids)):
+            running_total += segment_fares[end_index - 1]
+            RouteFare.objects.create(
+                route=route,
+                from_stop_order=start_index + 1,
+                to_stop_order=end_index + 1,
+                fare_amount=running_total,
+            )
 
 
 class ActiveStopsView(APIView):
@@ -85,13 +127,14 @@ class AdminTransportRouteBuilderView(APIView):
             return denial
 
         stops = Stop.objects.filter(is_active=True).order_by("name")
-        routes = Route.objects.prefetch_related("route_stops").order_by("-id")[:10]
+        routes = Route.objects.prefetch_related("route_stops__stop", "fares").order_by("-id")
 
         return Response(
             {
                 "stops": StopSerializer(stops, many=True).data,
                 "recent_stops": StopSerializer(Stop.objects.order_by("-id")[:10], many=True).data,
                 "recent_routes": RouteListSerializer(routes, many=True).data,
+                "routes": RouteManageSerializer(routes, many=True).data,
             }
         )
 
@@ -111,25 +154,7 @@ class AdminTransportRouteBuilderView(APIView):
         segment_fares = serializer.validated_data["segment_fares"]
 
         route = Route.objects.create(name=name, city=city, is_active=is_active)
-
-        ordered_stops = list(Stop.objects.filter(id__in=stop_ids))
-        stop_map = {stop.id: stop for stop in ordered_stops}
-        ordered_stop_objects = [stop_map[stop_id] for stop_id in stop_ids]
-
-        for index, stop in enumerate(ordered_stop_objects, start=1):
-            RouteStop.objects.create(route=route, stop=stop, stop_order=index)
-
-        # Build complete fare matrix from consecutive segment fares.
-        for start_index in range(len(stop_ids) - 1):
-            running_total = 0
-            for end_index in range(start_index + 1, len(stop_ids)):
-                running_total += segment_fares[end_index - 1]
-                RouteFare.objects.create(
-                    route=route,
-                    from_stop_order=start_index + 1,
-                    to_stop_order=end_index + 1,
-                    fare_amount=running_total,
-                )
+        _replace_route_layout(route, stop_ids, segment_fares)
 
         return Response(
             {
@@ -144,6 +169,83 @@ class AdminTransportRouteBuilderView(APIView):
             },
             status=201,
         )
+
+
+class AdminTransportRouteDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _ensure_admin(self, request):
+        if getattr(request.user, "role", None) != User.Role.ADMIN and not request.user.is_superuser:
+            return Response({"detail": "You do not have permission to manage transport routes."}, status=403)
+        return None
+
+    def _get_route(self, route_id):
+        return Route.objects.prefetch_related("route_stops__stop", "fares", "schedules", "trips").filter(id=route_id).first()
+
+    def get(self, request, route_id):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        route = self._get_route(route_id)
+        if not route:
+            return Response({"detail": "Route not found."}, status=404)
+
+        return Response({"route": RouteManageSerializer(route).data})
+
+    @transaction.atomic
+    def patch(self, request, route_id):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        route = self._get_route(route_id)
+        if not route:
+            return Response({"detail": "Route not found."}, status=404)
+
+        current_stop_ids = list(route.route_stops.order_by("stop_order").values_list("stop_id", flat=True))
+        payload = {
+            "name": request.data.get("name", route.name),
+            "city": request.data.get("city", route.city),
+            "is_active": request.data.get("is_active", route.is_active),
+            "stop_ids": request.data.get("stop_ids", current_stop_ids),
+            "segment_fares": request.data.get("segment_fares", _route_segment_fares(route)),
+        }
+        serializer = CreateRouteSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+
+        route.name = serializer.validated_data["name"]
+        route.city = serializer.validated_data["city"]
+        route.is_active = serializer.validated_data["is_active"]
+        route.save(update_fields=["name", "city", "is_active"])
+        _replace_route_layout(route, serializer.validated_data["stop_ids"], serializer.validated_data["segment_fares"])
+
+        route.refresh_from_db()
+        return Response(
+            {
+                "message": "Route updated successfully.",
+                "route": RouteManageSerializer(self._get_route(route_id)).data,
+            }
+        )
+
+    def delete(self, request, route_id):
+        denial = self._ensure_admin(request)
+        if denial:
+            return denial
+
+        route = self._get_route(route_id)
+        if not route:
+            return Response({"detail": "Route not found."}, status=404)
+
+        if route.trips.exists() or route.schedules.exists():
+            return Response(
+                {"detail": "This route is linked to trips or schedules. Reassign them before deleting the route."},
+                status=409,
+            )
+
+        route_name = route.name
+        route.delete()
+        return Response({"message": f"Deleted route '{route_name}'."}, status=200)
 
 
 class AdminBusManageView(APIView):

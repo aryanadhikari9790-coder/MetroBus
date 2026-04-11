@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Stop, Route, RouteStop, Bus
+from .models import Stop, Route, RouteStop, RouteFare, Bus
 
 
 def _absolute_media_url(serializer, value):
@@ -49,6 +49,42 @@ class RouteListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Route
         fields = ("id", "name", "city", "is_active", "stops_count")
+
+
+class RouteManageSerializer(serializers.ModelSerializer):
+    stops_count = serializers.SerializerMethodField()
+    route_stops = serializers.SerializerMethodField()
+    segment_fares = serializers.SerializerMethodField()
+
+    def get_stops_count(self, obj):
+        return obj.route_stops.count()
+
+    def get_route_stops(self, obj):
+        ordered_stops = obj.route_stops.select_related("stop").order_by("stop_order")
+        return [
+            {
+                "stop_order": route_stop.stop_order,
+                "stop": StopSerializer(route_stop.stop).data,
+            }
+            for route_stop in ordered_stops
+        ]
+
+    def get_segment_fares(self, obj):
+        fare_lookup = {
+            (fare.from_stop_order, fare.to_stop_order): float(fare.fare_amount)
+            for fare in obj.fares.all()
+        }
+        ordered_stops = list(obj.route_stops.order_by("stop_order").values_list("stop_order", flat=True))
+        segments = []
+        for index in range(len(ordered_stops) - 1):
+            from_order = ordered_stops[index]
+            to_order = ordered_stops[index + 1]
+            segments.append(fare_lookup.get((from_order, to_order), 0))
+        return segments
+
+    class Meta:
+        model = Route
+        fields = ("id", "name", "city", "is_active", "stops_count", "route_stops", "segment_fares")
 
 
 class CreateRouteSerializer(serializers.Serializer):

@@ -263,6 +263,55 @@ class AdminDashboardView(APIView):
                 }
             )
 
+        route_analytics = []
+        for route in Route.objects.prefetch_related("route_stops").order_by("city", "name")[:40]:
+            route_bookings = Booking.objects.filter(trip__route=route)
+            route_revenue = Payment.objects.filter(
+                booking__trip__route=route,
+                status=Payment.Status.SUCCESS,
+            ).aggregate(total=Coalesce(Sum("amount"), money_zero))["total"]
+            route_analytics.append(
+                {
+                    "route_id": route.id,
+                    "route_name": route.name,
+                    "city": route.city,
+                    "stops_count": route.route_stops.count(),
+                    "is_active": route.is_active,
+                    "planned_schedules": route.schedules.filter(status="PLANNED").count(),
+                    "live_trips": route.trips.filter(status=Trip.Status.LIVE).count(),
+                    "total_trips": route.trips.count(),
+                    "bookings": route_bookings.count(),
+                    "completed_bookings": route_bookings.filter(status=Booking.Status.COMPLETED).count(),
+                    "revenue_success": float(route_revenue),
+                }
+            )
+
+        bus_analytics = []
+        for bus in Bus.objects.order_by("plate_number")[:60]:
+            bus_bookings = Booking.objects.filter(trip__bus=bus)
+            bus_revenue = Payment.objects.filter(
+                booking__trip__bus=bus,
+                status=Payment.Status.SUCCESS,
+            ).aggregate(total=Coalesce(Sum("amount"), money_zero))["total"]
+            bus_analytics.append(
+                {
+                    "bus_id": bus.id,
+                    "display_name": bus.display_name or bus.plate_number,
+                    "plate_number": bus.plate_number,
+                    "capacity": bus.capacity,
+                    "condition": bus.condition,
+                    "driver_name": bus.driver.full_name if bus.driver else None,
+                    "helper_name": bus.helper.full_name if bus.helper else None,
+                    "is_active": bus.is_active,
+                    "planned_schedules": bus.schedules.filter(status="PLANNED").count(),
+                    "live_trips": bus.trips.filter(status=Trip.Status.LIVE).count(),
+                    "total_trips": bus.trips.count(),
+                    "bookings": bus_bookings.count(),
+                    "completed_bookings": bus_bookings.filter(status=Booking.Status.COMPLETED).count(),
+                    "revenue_success": float(bus_revenue),
+                }
+            )
+
         data = {
             "overview": {
                 "users_total": User.objects.count(),
@@ -394,6 +443,8 @@ class AdminDashboardView(APIView):
                 }
                 for wallet in wallet_rows
             ],
+            "route_analytics": route_analytics,
+            "bus_analytics": bus_analytics,
         }
         return Response(data)
 

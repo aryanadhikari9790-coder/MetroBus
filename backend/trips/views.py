@@ -450,7 +450,7 @@ class AdminTripScheduleBuilderView(APIView):
         helpers = User.objects.filter(role=User.Role.HELPER, is_active=True).order_by("full_name")
         schedules = (
             TripSchedule.objects.select_related("route", "bus", "driver", "helper")
-            .order_by("-scheduled_start_time")[:8]
+            .order_by("-scheduled_start_time")
         )
 
         return Response(
@@ -459,7 +459,8 @@ class AdminTripScheduleBuilderView(APIView):
                 "buses": DriverStartOptionBusSerializer(buses, many=True).data,
                 "drivers": AdminTripScheduleUserSerializer(drivers, many=True).data,
                 "helpers": AdminTripScheduleUserSerializer(helpers, many=True).data,
-                "recent_schedules": TripScheduleSerializer(schedules, many=True).data,
+                "recent_schedules": TripScheduleSerializer(schedules[:8], many=True).data,
+                "schedules": TripScheduleSerializer(schedules[:50], many=True).data,
             }
         )
 
@@ -529,6 +530,108 @@ class AdminTripScheduleBuilderView(APIView):
             },
             status=201,
         )
+
+
+class AdminTripScheduleDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _get_schedule(self, schedule_id):
+        return (
+            TripSchedule.objects.select_related("route", "bus", "driver", "helper")
+            .prefetch_related("trips")
+            .filter(id=schedule_id)
+            .first()
+        )
+
+    def _check_admin(self, request):
+        if not _is_admin_user(request.user):
+            return Response({"detail": "You do not have permission to manage schedules."}, status=403)
+        return None
+
+    def patch(self, request, schedule_id):
+        denial = self._check_admin(request)
+        if denial:
+            return denial
+
+        schedule = self._get_schedule(schedule_id)
+        if not schedule:
+            return Response({"detail": "Schedule not found."}, status=404)
+        if schedule.status != TripSchedule.Status.PLANNED or schedule.trips.exists():
+            return Response({"detail": "Only untouched planned schedules can be updated."}, status=409)
+
+        payload = {
+            "route_id": request.data.get("route_id", schedule.route_id),
+            "bus_id": request.data.get("bus_id", schedule.bus_id),
+            "driver_id": request.data.get("driver_id", schedule.driver_id),
+            "helper_id": request.data.get("helper_id", schedule.helper_id),
+            "scheduled_start_time": request.data.get("scheduled_start_time", schedule.scheduled_start_time),
+        }
+        ser = CreateTripScheduleSerializer(data=payload)
+        ser.is_valid(raise_exception=True)
+
+        route_id = ser.validated_data["route_id"]
+        bus_id = ser.validated_data["bus_id"]
+        driver_id = ser.validated_data["driver_id"]
+        helper_id = ser.validated_data["helper_id"]
+        scheduled_start_time = ser.validated_data["scheduled_start_time"]
+
+        try:
+            route = Route.objects.get(id=route_id, is_active=True)
+            bus = Bus.objects.get(id=bus_id, is_active=True)
+            driver = User.objects.get(id=driver_id, role=User.Role.DRIVER, is_active=True)
+            helper = User.objects.get(id=helper_id, role=User.Role.HELPER, is_active=True)
+        except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
+            return Response({"detail": "Invalid route, bus, driver, or helper."}, status=400)
+
+        if TripSchedule.objects.filter(
+            bus=bus,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        ).exclude(id=schedule.id).exists():
+            return Response({"detail": "This bus already has a planned trip at that start time."}, status=400)
+
+        if TripSchedule.objects.filter(
+            driver=driver,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        ).exclude(id=schedule.id).exists():
+            return Response({"detail": "This driver already has a planned trip at that start time."}, status=400)
+
+        if TripSchedule.objects.filter(
+            helper=helper,
+            scheduled_start_time=scheduled_start_time,
+            status=TripSchedule.Status.PLANNED,
+        ).exclude(id=schedule.id).exists():
+            return Response({"detail": "This helper already has a planned trip at that start time."}, status=400)
+
+        schedule.route = route
+        schedule.bus = bus
+        schedule.driver = driver
+        schedule.helper = helper
+        schedule.scheduled_start_time = scheduled_start_time
+        schedule.save(update_fields=["route", "bus", "driver", "helper", "scheduled_start_time"])
+
+        return Response(
+            {
+                "message": "Schedule updated successfully.",
+                "schedule": TripScheduleSerializer(schedule).data,
+            }
+        )
+
+    def delete(self, request, schedule_id):
+        denial = self._check_admin(request)
+        if denial:
+            return denial
+
+        schedule = self._get_schedule(schedule_id)
+        if not schedule:
+            return Response({"detail": "Schedule not found."}, status=404)
+        if schedule.status != TripSchedule.Status.PLANNED or schedule.trips.exists():
+            return Response({"detail": "Only untouched planned schedules can be deleted."}, status=409)
+
+        label = f"{schedule.route.name} @ {schedule.scheduled_start_time}"
+        schedule.delete()
+        return Response({"message": f"Deleted schedule '{label}'."}, status=200)
 
 
 class StartTripView(APIView):
