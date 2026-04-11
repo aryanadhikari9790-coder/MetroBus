@@ -73,11 +73,12 @@ def _generate_trip_boarding_otp(trip):
 def _resolve_helper_booking_by_otp(user, reference):
     otp = "".join(character for character in str(reference or "") if character.isdigit())
     if len(otp) != 4:
-        return None, otp
+        return None, otp, None
 
-    queryset = _booking_queryset().filter(boarding_otp=otp).exclude(
+    matching_queryset = _booking_queryset().filter(boarding_otp=otp).exclude(
         status__in=[Booking.Status.CANCELLED, Booking.Status.COMPLETED, Booking.Status.NO_SHOW]
     )
+    queryset = matching_queryset
     if not user.is_superuser:
         queryset = queryset.filter(trip__helper_id=user.id)
 
@@ -86,7 +87,13 @@ def _resolve_helper_booking_by_otp(user, reference):
         booking = queryset.filter(trip__status=Trip.Status.NOT_STARTED).order_by("-created_at").first()
     if not booking:
         booking = queryset.order_by("-created_at").first()
-    return booking, otp
+
+    matched_booking = matching_queryset.filter(trip__status=Trip.Status.LIVE).order_by("-created_at").first()
+    if not matched_booking:
+        matched_booking = matching_queryset.filter(trip__status=Trip.Status.NOT_STARTED).order_by("-created_at").first()
+    if not matched_booking:
+        matched_booking = matching_queryset.order_by("-created_at").first()
+    return booking, otp, matched_booking
 
 
 class PassengerBookingsView(APIView):
@@ -362,10 +369,20 @@ class HelperVerifyBookingOtpView(APIView):
         ser.is_valid(raise_exception=True)
 
         reference = ser.validated_data["reference"]
-        booking, parsed_otp = _resolve_helper_booking_by_otp(request.user, reference)
+        booking, parsed_otp, matched_booking = _resolve_helper_booking_by_otp(request.user, reference)
         if len(parsed_otp) != 4:
             return Response({"detail": "Enter the passenger 4-digit ride OTP."}, status=400)
         if not booking:
+            if matched_booking and matched_booking.trip.helper_id and matched_booking.trip.helper_id != request.user.id:
+                assigned_helper = getattr(matched_booking.trip, "helper", None)
+                helper_name = getattr(assigned_helper, "full_name", "") or "the assigned helper"
+                helper_phone = getattr(assigned_helper, "phone", "") or "the assigned helper account"
+                return Response(
+                    {
+                        "detail": f"This OTP belongs to trip #{matched_booking.trip_id} and is assigned to {helper_name} ({helper_phone}). Sign in with that helper account to continue.",
+                    },
+                    status=403,
+                )
             return Response({"detail": "No active passenger ride matches that 4-digit OTP."}, status=404)
         if booking.status == Booking.Status.CANCELLED:
             return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
