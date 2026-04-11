@@ -9,6 +9,7 @@ class TripSchedule(models.Model):
     driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="driver_schedules")
     helper = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="helper_schedules")
     scheduled_start_time = models.DateTimeField()
+    driver_assignment_accepted_at = models.DateTimeField(null=True, blank=True)
 
     class Status(models.TextChoices):
         PLANNED = "PLANNED", "Planned"
@@ -24,6 +25,10 @@ class TripSchedule(models.Model):
 
     def __str__(self):
         return f"{self.route.name} @ {self.scheduled_start_time}"
+
+    @property
+    def driver_assignment_accepted(self):
+        return bool(self.driver_assignment_accepted_at)
 
 
 class Trip(models.Model):

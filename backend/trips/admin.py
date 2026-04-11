@@ -5,7 +5,7 @@ from .models import TripSchedule, Trip, TripLocation, TripSimulation
 
 @admin.register(TripSchedule)
 class TripScheduleAdmin(admin.ModelAdmin):
-    list_display = ("id", "route", "bus", "driver", "helper", "scheduled_start_time", "status")
+    list_display = ("id", "route", "bus", "driver", "helper", "scheduled_start_time", "driver_assignment_accepted_at", "status")
     list_filter = ("status", "route")
     search_fields = ("route__name", "bus__plate_number", "driver__full_name", "helper__full_name")
 

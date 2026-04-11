@@ -604,12 +604,28 @@ class AdminTripScheduleDetailView(APIView):
         ).exclude(id=schedule.id).exists():
             return Response({"detail": "This helper already has a planned trip at that start time."}, status=400)
 
+        acceptance_should_reset = any(
+            [
+                schedule.route_id != route.id,
+                schedule.bus_id != bus.id,
+                schedule.driver_id != driver.id,
+                schedule.helper_id != helper.id,
+                schedule.scheduled_start_time != scheduled_start_time,
+            ]
+        )
+
         schedule.route = route
         schedule.bus = bus
         schedule.driver = driver
         schedule.helper = helper
         schedule.scheduled_start_time = scheduled_start_time
-        schedule.save(update_fields=["route", "bus", "driver", "helper", "scheduled_start_time"])
+
+        update_fields = ["route", "bus", "driver", "helper", "scheduled_start_time"]
+        if acceptance_should_reset and schedule.driver_assignment_accepted_at:
+            schedule.driver_assignment_accepted_at = None
+            update_fields.append("driver_assignment_accepted_at")
+
+        schedule.save(update_fields=update_fields)
 
         return Response(
             {
@@ -658,6 +674,10 @@ class StartTripView(APIView):
 
             if schedule.status != TripSchedule.Status.PLANNED:
                 return Response({"detail": "This schedule is no longer available to start."}, status=400)
+            if role_label == "driver" and not schedule.driver_assignment_accepted_at:
+                return Response({"detail": "Accept the admin assignment before starting this scheduled trip."}, status=400)
+            if role_label == "helper" and not schedule.driver_assignment_accepted_at:
+                return Response({"detail": "Waiting for the driver to accept and start this scheduled trip first."}, status=400)
 
             trip = (
                 schedule.trips.select_related("route", "bus", "driver", "helper", "simulation")
@@ -752,6 +772,42 @@ class StartTripView(APIView):
 
         trip, message = _confirm_trip_start(pending_trip, actor)
         return _respond_with_trip(trip, message, status_code=201 if created else 200)
+
+
+class AcceptTripAssignmentView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request, schedule_id: int):
+        schedule = (
+            TripSchedule.objects.select_related("route", "bus", "driver", "helper")
+            .filter(id=schedule_id)
+            .first()
+        )
+        if not schedule:
+            return Response({"detail": "Schedule not found."}, status=404)
+        if request.user.id != schedule.driver_id and not request.user.is_superuser:
+            return Response({"detail": "This assignment does not belong to you."}, status=403)
+        if schedule.status != TripSchedule.Status.PLANNED:
+            return Response({"detail": "Only planned schedules can be accepted."}, status=400)
+
+        if schedule.driver_assignment_accepted_at:
+            return Response(
+                {
+                    "message": "Assignment already accepted.",
+                    "schedule": TripScheduleSerializer(schedule).data,
+                },
+                status=200,
+            )
+
+        schedule.driver_assignment_accepted_at = timezone.now()
+        schedule.save(update_fields=["driver_assignment_accepted_at"])
+        return Response(
+            {
+                "message": "Assignment accepted. Complete your pre-trip checklist, then start the trip.",
+                "schedule": TripScheduleSerializer(schedule).data,
+            },
+            status=200,
+        )
 
 
 class EndTripView(APIView):
