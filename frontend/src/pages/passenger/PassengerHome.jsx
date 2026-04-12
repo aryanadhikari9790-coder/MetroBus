@@ -61,6 +61,9 @@ export default function PassengerHome() {
   const [passPlans, setPassPlans] = useState([]);
   const [walletBusy, setWalletBusy] = useState(false);
   const [settings, setSettings] = useState({ liveTracking: true, arrivalAlerts: true });
+  const [rideReviews, setRideReviews] = useState({});
+  const [pendingReviewBookingId, setPendingReviewBookingId] = useState(null);
+  const [reviewDraft, setReviewDraft] = useState({ stars: 5, note: "" });
   const [liveLocationOverwrites, setLiveLocationOverwrites] = useState({});
   const [roadPolyline, setRoadPolyline] = useState([]);
   const [ticketBookingId, setTicketBookingId] = useState(null);
@@ -124,6 +127,19 @@ export default function PassengerHome() {
   useEffect(() => {
     localStorage.setItem("metrobus_passenger_settings", JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("metrobus_passenger_reviews");
+      if (raw) setRideReviews(JSON.parse(raw));
+    } catch {
+      // Ignore invalid local review cache.
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("metrobus_passenger_reviews", JSON.stringify(rideReviews));
+  }, [rideReviews]);
 
   const pickupStop = stops.find((stop) => String(stop.id) === String(pickupStopId)) || null;
   const dropStop = stops.find((stop) => String(stop.id) === String(dropStopId)) || null;
@@ -197,6 +213,7 @@ export default function PassengerHome() {
   const latestPaidBooking = bookings.find((booking) => booking.payment_status === "SUCCESS") || null;
   const ticketBooking = bookings.find((booking) => booking.id === ticketBookingId) || lastBookingSummary || activeBooking || null;
   const homeRideBooking = paymentActionBooking || paymentPendingBooking || ticketBooking || activeBooking || null;
+  const pendingReviewBooking = bookings.find((booking) => Number(booking.id) === Number(pendingReviewBookingId)) || null;
   const checkoutBooking = useMemo(() => {
     if (paymentActionBooking) return paymentActionBooking;
     if (paymentPendingBooking) return paymentPendingBooking;
@@ -221,6 +238,13 @@ export default function PassengerHome() {
       || null
     );
   }, [acceptedTripId, activeBooking?.trip_id, hydrateTrip, liveTripsById, visibleMatchedTrips]);
+  const homeLiveTrip = useMemo(() => {
+    const activeTripKey = activeBooking?.trip_id ? String(activeBooking.trip_id) : "";
+    return acceptedTrip
+      || (activeTripKey ? hydrateTrip(liveTripsById.get(activeTripKey)) : null)
+      || selectedTrip
+      || null;
+  }, [acceptedTrip, activeBooking?.trip_id, hydrateTrip, liveTripsById, selectedTrip]);
   const occupancyTrip = useMemo(() => {
     const occupancyKey = occupancyTripId ? String(occupancyTripId) : "";
     return (
@@ -594,11 +618,16 @@ export default function PassengerHome() {
 
           if (payload.type === "PAYMENT_CONFIRMED") {
             setMsg(payload.message || `Payment confirmed for Booking #${payload.booking_id}.`);
-            setActiveView("track");
+            setActiveView("home");
+            setHomeStage("planner");
           }
 
           if (payload.type === "BOARDING_COMPLETED") {
             setMsg(payload.message || `Ride completed for Booking #${payload.booking_id}.`);
+            setPendingReviewBookingId(payload.booking_id || null);
+            setReviewDraft({ stars: 5, note: "" });
+            setActiveView("home");
+            setHomeStage("planner");
           }
         } catch {
           pushBookingLog("Received an unreadable passenger booking event.");
@@ -846,7 +875,8 @@ export default function PassengerHome() {
       if (payment?.status === "SUCCESS") {
         pushBookingLog(`Payment confirmed immediately with ${method}.`);
         setMsg("Payment completed for this booking.");
-        setActiveView("track");
+        setActiveView("home");
+        setHomeStage("planner");
       } else if (payment?.status === "PENDING") {
         pushBookingLog(`Payment is pending after selecting ${method}.`);
         if (method === "CASH") {
@@ -920,6 +950,49 @@ export default function PassengerHome() {
       }
       setErr("Unable to open your messaging app right now.");
     }
+  };
+
+  const callSupport = () => {
+    try {
+      window.location.href = "tel:+9779800000000";
+      setMsg("Opening the MetroBus support line.");
+    } catch {
+      setErr("Unable to open the phone dialer right now.");
+    }
+  };
+
+  const emailSupport = () => {
+    const subject = activeBooking ? `MetroBus help for booking #${activeBooking.id}` : "MetroBus passenger support";
+    const body = activeBooking
+      ? `Hello MetroBus,%0D%0A%0D%0AI need help with booking #${activeBooking.id} from ${activeBooking.pickup_stop_name} to ${activeBooking.destination_stop_name}.`
+      : "Hello MetroBus,%0D%0A%0D%0AI need help with my passenger account or a ride.";
+    try {
+      window.location.href = `mailto:support@metrobus.app?subject=${encodeURIComponent(subject)}&body=${body}`;
+      setMsg("Opening your email app for MetroBus support.");
+    } catch {
+      setErr("Unable to open email support right now.");
+    }
+  };
+
+  const submitRideReview = () => {
+    if (!pendingReviewBooking) return;
+    const bookingId = String(pendingReviewBooking.id);
+    setRideReviews((current) => ({
+      ...current,
+      [bookingId]: {
+        stars: reviewDraft.stars,
+        note: reviewDraft.note.trim(),
+        saved_at: new Date().toISOString(),
+      },
+    }));
+    setPendingReviewBookingId(null);
+    setReviewDraft({ stars: 5, note: "" });
+    setMsg(`Thanks for rating Booking #${bookingId}.`);
+  };
+
+  const skipRideReview = () => {
+    setPendingReviewBookingId(null);
+    setReviewDraft({ stars: 5, note: "" });
   };
 
   const openMenuPanel = () => {
@@ -1119,6 +1192,7 @@ export default function PassengerHome() {
               <div className="space-y-4">
                 {activeBooking ? (
                   <div className="space-y-4">
+                    {homeLiveTrip ? <TrackMap trip={homeLiveTrip} displayLine={displayLine} now={now} /> : null}
                     {homeRideBooking ? <TicketOtpCard booking={homeRideBooking} title="Current Ride" /> : null}
                     {paymentActionBooking || paymentPendingBooking ? (
                       <PaymentRequestCard
@@ -1163,6 +1237,51 @@ export default function PassengerHome() {
                           Cancel Ride
                         </button>
                       ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                {!activeBooking && pendingReviewBooking ? (
+                  <div className="space-y-4 rounded-[2rem] bg-white p-5 shadow-[var(--mb-shadow)]">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[0.24em] text-[var(--mb-purple)]">Ride Complete</p>
+                      <h3 className="mt-2 text-[2rem] font-black leading-tight text-[var(--mb-text)]">Thanks for riding with MetroBus</h3>
+                      <p className="mt-2 text-sm leading-6 text-[var(--mb-muted)]">
+                        Your ride from {pendingReviewBooking.pickup_stop_name} to {pendingReviewBooking.destination_stop_name} is complete. Rate the ride and share a quick note if you want.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setReviewDraft((current) => ({ ...current, stars: star }))}
+                          className={`rounded-full px-4 py-2 text-sm font-black shadow-[var(--mb-shadow)] ${reviewDraft.stars === star ? "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white" : "bg-[var(--mb-card-soft)] text-[var(--mb-text)]"}`}
+                        >
+                          {star} Star{star > 1 ? "s" : ""}
+                        </button>
+                      ))}
+                    </div>
+                    <textarea
+                      value={reviewDraft.note}
+                      onChange={(event) => setReviewDraft((current) => ({ ...current, note: event.target.value }))}
+                      placeholder="Share a quick review for this ride..."
+                      className="min-h-[7rem] w-full rounded-[1.4rem] border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-4 text-sm font-medium text-[var(--mb-text)] outline-none transition focus:border-[var(--mb-purple)]"
+                    />
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={submitRideReview}
+                        className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-5 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)]"
+                      >
+                        Submit Review
+                      </button>
+                      <button
+                        type="button"
+                        onClick={skipRideReview}
+                        className="rounded-full border border-[var(--mb-border)] bg-white px-5 py-4 text-base font-black text-[var(--mb-text)] shadow-[var(--mb-shadow)]"
+                      >
+                        Skip for Now
+                      </button>
                     </div>
                   </div>
                 ) : null}
@@ -1426,6 +1545,57 @@ export default function PassengerHome() {
 
         {activeView === "rides" ? <section className="space-y-7"><div className="inline-flex rounded-full bg-[var(--mb-card-soft)] p-2 shadow-[var(--mb-shadow)]">{["upcoming", "past"].map((tab) => <button key={tab} type="button" onClick={() => setRideTab(tab)} className={`rounded-full px-10 py-4 text-2xl font-black transition ${rideTab === tab ? "bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] text-white shadow-[var(--mb-shadow-strong)]" : "text-[var(--mb-text)]"}`}>{tab === "upcoming" ? "Upcoming" : "Past"}</button>)}</div><div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Active Reservations</h2>{bookingsLoading ? <span className="text-sm font-medium text-[var(--mb-muted)]">Syncing rides...</span> : null}</div>{rideTab === "upcoming" ? <>{paymentActionBooking ? <PaymentRequestCard booking={paymentActionBooking} paymentBusy={paymentBusy} onPay={pay} /> : null}{activeBooking ? <div className="space-y-4"><ReservationCard booking={activeBooking} onPrimaryAction={() => setActiveView("track")} primaryActionLabel="Track Ride" onViewTicket={() => setTicketBookingId(activeBooking.id)} />{activeBooking.can_cancel ? <button type="button" onClick={() => requestCancellation(activeBooking)} className="w-full rounded-full border border-red-200 bg-white px-6 py-4 text-lg font-black text-red-600 shadow-[var(--mb-shadow)]">Cancel Ride</button> : null}{cancellationBooking && Number(cancellationBooking.id) === Number(activeBooking.id) ? <CancellationSheet booking={cancellationBooking} reasons={cancellationReasons} reason={cancellationReason} note={cancellationNote} busy={cancellationBusy} onReasonChange={setCancellationReason} onNoteChange={setCancellationNote} onConfirm={confirmPassengerCancellation} onClose={closeCancellationSheet} /> : null}</div> : <div className="rounded-[36px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] p-8 text-center text-lg text-[var(--mb-muted)]">No active reservations yet.</div>}</> : pastBookings.map((booking) => <HistoryCard key={booking.id} booking={booking} onDownload={() => downloadInvoice(booking)} />)}<div className="flex items-center justify-between gap-3"><h2 className="text-4xl font-black text-[var(--mb-text)]">Recent History</h2><button type="button" onClick={() => setRideTab("past")} className="text-lg font-black uppercase tracking-[0.16em] text-[var(--mb-purple)]">View All</button></div>{historyBooking ? <HistoryCard booking={historyBooking} onDownload={() => downloadInvoice(historyBooking)} /> : null}{ticketBooking ? <div className="space-y-3"><div className="flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[0.22em] text-[var(--mb-purple)]">Ticket Preview</p><h3 className="mt-2 text-3xl font-black text-[var(--mb-text)]">Booking #{ticketBooking.id}</h3></div><button type="button" onClick={() => setTicketBookingId(null)} className="rounded-full bg-white px-4 py-2 text-sm font-black text-[var(--mb-purple)] shadow-[var(--mb-shadow)]">Close</button></div><TicketOtpCard booking={ticketBooking} compact /></div> : null}</section> : null}
 
+        {activeView === "support" ? (
+          <section className="space-y-7">
+            <div className="rounded-[34px] bg-white p-6 shadow-[var(--mb-shadow)]">
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-[var(--mb-purple)]">Passenger Support</p>
+              <h2 className="mt-3 text-4xl font-black text-[var(--mb-text)]">Help when you need it</h2>
+              <p className="mt-3 text-base leading-7 text-[var(--mb-muted)]">Contact MetroBus support, report a ride issue, or jump back into your active booking without leaving the app.</p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <button type="button" onClick={callSupport} className="rounded-[28px] bg-white px-5 py-5 text-left shadow-[var(--mb-shadow)]">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Support Line</p>
+                <p className="mt-3 text-2xl font-black text-[var(--mb-text)]">Call MetroBus</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--mb-muted)]">Open the phone dialer and call the MetroBus support desk.</p>
+              </button>
+              <button type="button" onClick={emailSupport} className="rounded-[28px] bg-white px-5 py-5 text-left shadow-[var(--mb-shadow)]">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Email Support</p>
+                <p className="mt-3 text-2xl font-black text-[var(--mb-text)]">Send Details</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--mb-muted)]">Open your email app with your current booking details already prepared.</p>
+              </button>
+              <button type="button" onClick={contactTripSupport} className="rounded-[28px] bg-white px-5 py-5 text-left shadow-[var(--mb-shadow)]">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Message Support</p>
+                <p className="mt-3 text-2xl font-black text-[var(--mb-text)]">Text MetroBus</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--mb-muted)]">Open SMS with your route and booking details ready to send.</p>
+              </button>
+              <button type="button" onClick={() => activeBooking ? openCheckout("support") : setActiveView("rides")} className="rounded-[28px] bg-white px-5 py-5 text-left shadow-[var(--mb-shadow)]">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Ride Help</p>
+                <p className="mt-3 text-2xl font-black text-[var(--mb-text)]">{activeBooking ? "Open Active Checkout" : "Open Ride History"}</p>
+                <p className="mt-2 text-sm leading-6 text-[var(--mb-muted)]">{activeBooking ? "Jump straight to the current payment or ride issue flow." : "Review earlier tickets and travel history."}</p>
+              </button>
+            </div>
+            <div className="rounded-[34px] bg-white p-6 shadow-[var(--mb-shadow)]">
+              <h3 className="text-3xl font-black text-[var(--mb-text)]">Current Ride Snapshot</h3>
+              {activeBooking ? (
+                <div className="mt-5 space-y-3">
+                  <div className="rounded-[24px] bg-[var(--mb-card-soft)] px-4 py-4">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--mb-purple)]">Booking #{activeBooking.id}</p>
+                    <p className="mt-2 text-xl font-black text-[var(--mb-text)]">{activeBooking.pickup_stop_name} to {activeBooking.destination_stop_name}</p>
+                    <p className="mt-2 text-sm leading-6 text-[var(--mb-muted)]">Status: {activeBooking.journey_status_label || activeBooking.status} • Payment: {activeBooking.payment_status}</p>
+                  </div>
+                  <button type="button" onClick={() => setActiveView("home")} className="rounded-full bg-[linear-gradient(135deg,var(--mb-accent),var(--mb-accent-2))] px-6 py-4 text-base font-black text-white shadow-[var(--mb-shadow-strong)]">
+                    Return to Main Ride Page
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-5 rounded-[24px] border border-dashed border-[var(--mb-border)] bg-[var(--mb-card)] px-4 py-8 text-center text-sm font-medium text-[var(--mb-muted)]">
+                  You do not have an active ride right now. Book your next trip from the main page.
+                </div>
+              )}
+            </div>
+          </section>
+        ) : null}
+
         {activeView === "profile" ? <section className="space-y-7"><ProfileCard user={user} profileForm={profileForm} setProfileForm={setProfileForm} onSave={saveProfile} profileBusy={profileBusy} /><PaymentShowcase latestPaidBooking={latestPaidBooking} walletSummary={walletSummary} passPlans={passPlans} onTopUp={() => topUpWallet(500)} onBuyPass={buyRidePass} actionBusy={walletBusy} /><div className="space-y-4"><h3 className="text-3xl font-black text-[var(--mb-text)]">Settings</h3><SettingsRow icon="bell" title="Notifications" description="Trip updates and boarding alerts" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, arrivalAlerts: !current.arrivalAlerts }))} className={`relative h-7 w-12 rounded-full transition ${settings.arrivalAlerts ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.arrivalAlerts ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="track" title="Live Tracking" description="Show live bus movement on the map" trailing={<button type="button" onClick={() => setSettings((current) => ({ ...current, liveTracking: !current.liveTracking }))} className={`relative h-7 w-12 rounded-full transition ${settings.liveTracking ? "bg-[var(--mb-purple)]" : "bg-[#d9c6df]"}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${settings.liveTracking ? "left-6" : "left-1"}`} /></button>} /><SettingsRow icon="shield" title="Security & Privacy" description="Protected with verified phone login" /><SettingsRow icon="help" title="Help & Support" description="Need assistance with a route or payment?" /></div><button type="button" onClick={handleLogout} className="w-full rounded-full border border-red-200 bg-white px-6 py-5 text-2xl font-black text-red-600">Log Out</button></section> : null}
       </main>
       {occupancyTrip ? (
@@ -1456,8 +1626,8 @@ export default function PassengerHome() {
                 <div className="mt-5 grid gap-3">
                   {[
                     { id: "home", label: "Go to Home", note: "Book and manage your next ride" },
-                    { id: "track", label: "Open Track", note: "See your live bus movement" },
                     { id: "rides", label: "Open My Rides", note: "Tickets, history, and payment requests" },
+                    { id: "support", label: "Open Support", note: "Help with routes, payment, and ride issues" },
                     { id: "profile", label: "Open Profile", note: "Wallet, passes, and settings" },
                   ].map((item) => (
                     <button

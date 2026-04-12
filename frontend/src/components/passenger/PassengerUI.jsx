@@ -168,6 +168,8 @@ export function HeaderBar({ user, activeView, onLogout, onMenu, onNotifications,
                   ? "Live Tracking"
                   : activeView === "rides"
                     ? "My Tickets"
+                    : activeView === "support"
+                      ? "Help & Support"
                     : activeView === "checkout"
                       ? "Passenger Checkout"
                       : "Passenger Profile"}
@@ -1572,11 +1574,11 @@ export function SettingsRow({ icon, title, description, trailing }) {
 export function BottomNav({ activeView, onChange }) {
   const tabs = [
     { id: "home", label: "Home", icon: "home" },
-    { id: "track", label: "Track", icon: "track" },
     { id: "rides", label: "Rides", icon: "rides" },
+    { id: "support", label: "Support", icon: "help" },
     { id: "profile", label: "Profile", icon: "profile" },
   ];
-  const currentTab = activeView === "checkout" ? "rides" : activeView;
+  const currentTab = ["checkout", "track"].includes(activeView) ? "home" : activeView;
   return (
     <div className="fixed inset-x-0 bottom-0 z-[1200] px-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
       <div className="enterprise-mobile-nav rounded-[1.35rem] bg-white/96 px-2 py-2 shadow-[0_-8px_32px_rgba(95,25,230,0.1)] sm:rounded-[1.65rem]">
