@@ -207,6 +207,7 @@ export default function DriverHome() {
   const [routeId, setRouteId] = useState("");
   const [busId, setBusId] = useState("");
   const [helperId, setHelperId] = useState("");
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
   const [manualLat, setManualLat] = useState("");
   const [manualLng, setManualLng] = useState("");
   const [simulationActive, setSimulationActive] = useState(false);
@@ -233,8 +234,18 @@ export default function DriverHome() {
     () => dashboard?.manual_start_options ?? { routes: [], buses: [], helpers: [] },
     [dashboard?.manual_start_options],
   );
-  const nextSchedule = schedules[0] ?? null;
-  const nextScheduleAccepted = Boolean(nextSchedule?.driver_assignment_accepted);
+  const actionableSchedule = useMemo(() => {
+    const preferredScheduleId = currentTrip?.schedule_id
+      ? String(currentTrip.schedule_id)
+      : selectedScheduleId;
+    if (preferredScheduleId) {
+      const matchedSchedule = schedules.find((schedule) => String(schedule.id) === preferredScheduleId);
+      if (matchedSchedule) return matchedSchedule;
+    }
+    return schedules.find((schedule) => schedule.driver_assignment_accepted) || schedules[0] || null;
+  }, [currentTrip?.schedule_id, schedules, selectedScheduleId]);
+  const nextSchedule = actionableSchedule;
+  const nextScheduleAccepted = Boolean(actionableSchedule?.driver_assignment_accepted);
   const routePolyline = useMemo(() => routeStops.map((stop) => [Number(stop.stop?.lat), Number(stop.stop?.lng)]).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)), [routeStops]);
   const displayedPolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
   const liveBusPoint = useMemo(() => {
@@ -371,7 +382,22 @@ export default function DriverHome() {
 
   useEffect(() => {
     setPreTripChecks(createChecklistState());
-  }, [nextSchedule?.id]);
+  }, [actionableSchedule?.id]);
+
+  useEffect(() => {
+    const preferredScheduleId = currentTrip?.schedule_id
+      ? String(currentTrip.schedule_id)
+      : selectedScheduleId;
+    if (preferredScheduleId && schedules.some((schedule) => String(schedule.id) === preferredScheduleId)) {
+      if (preferredScheduleId !== selectedScheduleId) setSelectedScheduleId(preferredScheduleId);
+      return;
+    }
+    const fallbackSchedule = schedules.find((schedule) => schedule.driver_assignment_accepted) || schedules[0] || null;
+    const fallbackScheduleId = fallbackSchedule ? String(fallbackSchedule.id) : "";
+    if (fallbackScheduleId !== selectedScheduleId) {
+      setSelectedScheduleId(fallbackScheduleId);
+    }
+  }, [currentTrip?.schedule_id, schedules, selectedScheduleId]);
 
   const loadDashboard = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -423,11 +449,12 @@ export default function DriverHome() {
 
   useEffect(() => { loadDashboard(); loadAssignedBus(); }, []);
   useEffect(() => {
-    if (!currentTrip?.id) return undefined;
     const timer = setInterval(() => {
       loadDashboard({ silent: true });
-      loadTripContext(currentTrip.id);
-    }, activeTab === "active" || simulationActive ? 1000 : 3000);
+      if (currentTrip?.id) {
+        loadTripContext(currentTrip.id);
+      }
+    }, activeTab === "active" || simulationActive || currentTrip?.id ? 1000 : 3000);
     return () => clearInterval(timer);
   }, [activeTab, currentTrip?.id, simulationActive, loadTripContext]);
   useEffect(() => { if (currentTrip) setActiveTab("active"); }, [currentTrip]);
@@ -460,14 +487,23 @@ export default function DriverHome() {
       const response = await fn();
       setMsg(response?.data?.message || successMsg);
       await loadDashboard({ silent: true });
+      if (response?.data?.trip?.id) {
+        await loadTripContext(response.data.trip.id, { clearIfMissing: true });
+      }
+      return response;
     } catch (error) {
       setErr(error?.response?.data?.detail || "Action failed.");
+      return null;
     } finally {
       setBusy(false);
     }
   };
 
-  const startScheduledTrip = async (id) => {
+  const startScheduledTrip = async (id = actionableSchedule?.id) => {
+    if (!id) {
+      setErr("There is no scheduled trip selected right now.");
+      return;
+    }
     if (!nextScheduleAccepted) {
       setErr("Accept the admin assignment before starting this scheduled trip.");
       return;
@@ -476,7 +512,10 @@ export default function DriverHome() {
       setErr("Complete the pre-trip checklist before you start the trip.");
       return;
     }
-    await runAction(() => api.post("/api/trips/start/", { schedule_id: id, deviation_mode: deviationMode }), "Trip start request sent.");
+    const response = await runAction(() => api.post("/api/trips/start/", { schedule_id: id, deviation_mode: deviationMode }), "Trip start request sent.");
+    if (response?.data?.trip?.schedule_id) {
+      setSelectedScheduleId(String(response.data.trip.schedule_id));
+    }
     setActiveTab("active");
   };
 
@@ -510,6 +549,7 @@ export default function DriverHome() {
     try {
       const response = await api.post(`/api/trips/schedules/${scheduleId}/accept/`);
       setMsg(response?.data?.message || "Assignment accepted.");
+      setSelectedScheduleId(String(scheduleId));
       await loadDashboard({ silent: true });
       setActiveTab("active");
     } catch (error) {
@@ -811,6 +851,7 @@ Please review the earnings breakdown for this shift.`;
                     key={schedule.id}
                     type="button"
                     onClick={() => {
+                      setSelectedScheduleId(String(schedule.id));
                       if (currentTrip) return;
                       if (schedule.driver_assignment_accepted) {
                         setMsg("Assignment is ready. Complete the checklist from Active Trip to start.");

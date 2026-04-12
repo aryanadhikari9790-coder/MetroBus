@@ -197,6 +197,7 @@ export default function HelperHome() {
 
   const [dashboard, setDashboard] = useState(null);
   const [tripId, setTripId] = useState("");
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
   const [routeStops, setRouteStops] = useState([]);
   const [latestLocation, setLatestLocation] = useState(null);
   const [passengerRequests, setPassengerRequests] = useState([]);
@@ -234,6 +235,16 @@ export default function HelperHome() {
   const currentTrip = selectedTrip || pendingTrip || null;
   const tripAwaitingStart = Boolean(pendingTrip && !activeTrip);
   const contextTripId = activeTrip?.id || pendingTrip?.id || "";
+  const actionableSchedule = useMemo(() => {
+    const preferredScheduleId = currentTrip?.schedule_id
+      ? String(currentTrip.schedule_id)
+      : selectedScheduleId;
+    if (preferredScheduleId) {
+      const matchedSchedule = schedules.find((schedule) => String(schedule.id) === preferredScheduleId);
+      if (matchedSchedule) return matchedSchedule;
+    }
+    return schedules.find((schedule) => schedule.driver_assignment_accepted) || schedules[0] || null;
+  }, [currentTrip?.schedule_id, schedules, selectedScheduleId]);
   const availableSeats = seats.filter((seat) => seat.available);
   const occupiedCount = seats.length - availableSeats.length;
   const selectedCount = selectedSeatIds.length;
@@ -273,7 +284,8 @@ export default function HelperHome() {
     return bestIndex;
   }, [livePoint, mapPolyline]);
   const upcomingStop = routeStops[Math.min(currentStopIndex + 1, routeStops.length - 1)] || null;
-  const nextSchedule = schedules[0] ?? null;
+  const nextSchedule = actionableSchedule;
+  const nextScheduleReady = Boolean(actionableSchedule?.driver_assignment_accepted);
   const routeTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A";
   const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
   const routeCondition = livePoint ? "Live movement on route" : tripAwaitingStart ? "Waiting for both start confirmations" : "Waiting for GPS ping";
@@ -328,11 +340,12 @@ export default function HelperHome() {
       setLatestLocation(response.data.latest_location || null);
       setErr("");
       setTripId((current) => {
-        const liveTripId = response.data.active_trip?.id ? String(response.data.active_trip.id) : "";
-        if (!liveTripId) return "";
-        if (!current) return liveTripId;
-        if (current !== liveTripId) {
-          return liveTripId;
+        const activeOrPendingTripId = response.data.active_trip?.id || response.data.pending_trip?.id;
+        const normalizedTripId = activeOrPendingTripId ? String(activeOrPendingTripId) : "";
+        if (!normalizedTripId) return "";
+        if (!current) return normalizedTripId;
+        if (current !== normalizedTripId) {
+          return normalizedTripId;
         }
         return current;
       });
@@ -342,6 +355,21 @@ export default function HelperHome() {
       if (!silent) setLoadingTrips(false);
     }
   }, []);
+
+  useEffect(() => {
+    const preferredScheduleId = currentTrip?.schedule_id
+      ? String(currentTrip.schedule_id)
+      : selectedScheduleId;
+    if (preferredScheduleId && schedules.some((schedule) => String(schedule.id) === preferredScheduleId)) {
+      if (preferredScheduleId !== selectedScheduleId) setSelectedScheduleId(preferredScheduleId);
+      return;
+    }
+    const fallbackSchedule = schedules.find((schedule) => schedule.driver_assignment_accepted) || schedules[0] || null;
+    const fallbackScheduleId = fallbackSchedule ? String(fallbackSchedule.id) : "";
+    if (fallbackScheduleId !== selectedScheduleId) {
+      setSelectedScheduleId(fallbackScheduleId);
+    }
+  }, [currentTrip?.schedule_id, schedules, selectedScheduleId]);
 
   const loadAssignedBus = useCallback(async () => {
     try {
@@ -501,7 +529,7 @@ export default function HelperHome() {
   useEffect(() => {
     loadTripContext(contextTripId);
     if (!contextTripId) return undefined;
-    const intervalId = setInterval(() => loadTripContext(contextTripId), 15000);
+    const intervalId = setInterval(() => loadTripContext(contextTripId), 3000);
     return () => clearInterval(intervalId);
   }, [contextTripId, loadTripContext]);
 
@@ -561,6 +589,10 @@ export default function HelperHome() {
       const response = await requestFn();
       setMsg(response?.data?.message || fallbackMessage);
       await loadDashboard({ silent: true });
+      if (response?.data?.trip?.id) {
+        setTripId(String(response.data.trip.id));
+        await loadTripContext(response.data.trip.id);
+      }
       return response;
     } catch (error) {
       setErr(error?.response?.data?.detail || "Trip action failed.");
@@ -568,11 +600,20 @@ export default function HelperHome() {
     }
   };
 
-  const requestScheduledStart = async (scheduleId) => {
+  const requestScheduledStart = async (scheduleId = actionableSchedule?.id) => {
+    if (!scheduleId) {
+      setErr("There is no scheduled trip selected right now.");
+      return;
+    }
+    if (!nextScheduleReady) {
+      setErr("Wait for the driver to accept the assignment before requesting trip start.");
+      return;
+    }
     const response = await runTripAction(
       () => api.post("/api/trips/start/", { schedule_id: scheduleId }),
       "Trip start confirmation sent.",
     );
+    setSelectedScheduleId(String(scheduleId));
     if (response?.data?.trip?.status === "LIVE") {
       setTripId(String(response.data.trip.id));
       setActiveTab("route");
@@ -590,6 +631,7 @@ export default function HelperHome() {
       () => api.post("/api/trips/start/", { schedule_id: pendingTrip.schedule_id }),
       "Trip start confirmation sent.",
     );
+    setSelectedScheduleId(String(pendingTrip.schedule_id));
     if (response?.data?.trip?.status === "LIVE") {
       setTripId(String(response.data.trip.id));
       setActiveTab("route");
@@ -939,11 +981,16 @@ Need support with live trip operations.`;
                     </PrimaryButton>
                   )
                 ) : null}
-                {!currentTrip && nextSchedule ? (
+                {!currentTrip && nextScheduleReady ? (
                   <PrimaryButton tone="primary" onClick={() => requestScheduledStart(nextSchedule.id)} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
                     Start Scheduled Trip
                     <Icon name="bus" className="h-5 w-5" />
                   </PrimaryButton>
+                ) : null}
+                {!currentTrip && nextSchedule && !nextScheduleReady ? (
+                  <div className="rounded-[1.6rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
+                    Waiting for the driver to accept this assignment before helper start can be requested.
+                  </div>
                 ) : null}
                 {activeTrip ? (
                   <PrimaryButton tone={activeTrip.helper_end_confirmed ? "ghost" : "danger"} onClick={requestTripEnd} disabled={activeTrip.helper_end_confirmed} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
@@ -1342,11 +1389,16 @@ Need support with live trip operations.`;
                     </PrimaryButton>
                   )
                 ) : null}
-                {!currentTrip && nextSchedule ? (
+                {!currentTrip && nextScheduleReady ? (
                   <PrimaryButton tone="primary" onClick={() => requestScheduledStart(nextSchedule.id)} className="flex-1 !justify-between !rounded-[1.5rem] !bg-white !px-5 !py-4 !text-[var(--hlp-purple)] !shadow-none">
                     Request Start
                     <Icon name="bus" className="h-5 w-5" />
                   </PrimaryButton>
+                ) : null}
+                {!currentTrip && nextSchedule && !nextScheduleReady ? (
+                  <div className="flex-1 rounded-[1.4rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
+                    Driver acceptance is still pending for this assignment.
+                  </div>
                 ) : null}
                 {activeTrip ? (
                   <PrimaryButton tone={activeTrip.helper_end_confirmed ? "ghost" : "danger"} onClick={requestTripEnd} disabled={activeTrip.helper_end_confirmed} className="flex-1 !justify-between !rounded-[1.5rem] !border-white/25 !bg-white/10 !px-5 !py-4 !text-white !shadow-none">
