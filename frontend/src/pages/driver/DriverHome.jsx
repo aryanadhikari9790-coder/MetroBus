@@ -6,39 +6,40 @@ import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
+import { PASSENGER_THEME } from "../passenger/passengerUtils";
 
 const LIGHT_THEME = {
-  "--drv-bg": "#fbf3f6",
-  "--drv-bg-end": "rgba(245,235,242,0.98)",
-  "--drv-surface": "rgba(255,255,255,0.92)",
-  "--drv-soft": "#fbebf0",
-  "--drv-border": "rgba(52,21,93,0.08)",
-  "--drv-text": "#27133f",
-  "--drv-muted": "#7d6b93",
-  "--drv-purple": "#34155d",
-  "--drv-purple-2": "#ff6b73",
-  "--drv-plum": "#2e124f",
-  "--drv-header": "rgba(252,245,248,0.92)",
-  "--drv-nav": "rgba(252,245,248,0.94)",
-  "--drv-shadow": "0 12px 28px rgba(46,18,79,0.08)",
-  "--drv-shadow-strong": "0 14px 30px rgba(255,107,115,0.16)",
+  "--drv-bg": PASSENGER_THEME["--mb-bg"],
+  "--drv-bg-end": PASSENGER_THEME["--mb-bg-alt"],
+  "--drv-surface": PASSENGER_THEME["--mb-card"],
+  "--drv-soft": PASSENGER_THEME["--mb-card-soft"],
+  "--drv-border": PASSENGER_THEME["--mb-border"],
+  "--drv-text": PASSENGER_THEME["--mb-text"],
+  "--drv-muted": PASSENGER_THEME["--mb-muted"],
+  "--drv-purple": PASSENGER_THEME["--mb-purple"],
+  "--drv-purple-2": PASSENGER_THEME["--mb-accent"],
+  "--drv-plum": PASSENGER_THEME["--mb-bg-deep"],
+  "--drv-header": PASSENGER_THEME["--mb-nav"],
+  "--drv-nav": PASSENGER_THEME["--mb-nav"],
+  "--drv-shadow": PASSENGER_THEME["--mb-shadow"],
+  "--drv-shadow-strong": PASSENGER_THEME["--mb-shadow-strong"],
 };
 
 const DARK_THEME = {
-  "--drv-bg": "#241043",
+  "--drv-bg": "#2e124f",
   "--drv-bg-end": "rgba(36,16,67,0.98)",
-  "--drv-surface": "rgba(57,27,92,0.9)",
-  "--drv-soft": "rgba(255,107,115,0.12)",
-  "--drv-border": "rgba(196,152,233,0.14)",
-  "--drv-text": "#fff7f5",
-  "--drv-muted": "#d3c3e2",
-  "--drv-purple": "#ff8a77",
-  "--drv-purple-2": "#ff9a5c",
-  "--drv-plum": "#2e124f",
-  "--drv-header": "rgba(36,16,67,0.92)",
-  "--drv-nav": "rgba(43,20,78,0.94)",
-  "--drv-shadow": "0 14px 30px rgba(0,0,0,0.2)",
-  "--drv-shadow-strong": "0 16px 32px rgba(255,107,115,0.18)",
+  "--drv-surface": "rgba(64,32,102,0.9)",
+  "--drv-soft": "rgba(248,242,246,0.10)",
+  "--drv-border": "rgba(255,255,255,0.10)",
+  "--drv-text": "#fff7fb",
+  "--drv-muted": "#d7c5e6",
+  "--drv-purple": "#552681",
+  "--drv-purple-2": "#ff6b73",
+  "--drv-plum": "#1e0b35",
+  "--drv-header": "rgba(46,18,79,0.92)",
+  "--drv-nav": "rgba(46,18,79,0.94)",
+  "--drv-shadow": "0 18px 34px rgba(12,3,29,0.28)",
+  "--drv-shadow-strong": "0 18px 36px rgba(255,107,115,0.20)",
 };
 
 function Icon({ name, className = "h-5 w-5" }) {
@@ -774,7 +775,7 @@ Please review the earnings breakdown for this shift.`;
               <div className="text-[var(--drv-purple)]"><Icon name={card.icon} /></div>
               <p className="mt-10 text-[0.7rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p>
               <p className={`mt-2 font-black leading-none text-[var(--drv-text)] ${index === 1 ? "text-[1.65rem]" : "text-[1.9rem]"}`}>{card.value}</p>
-              {card.icon === "fuel" ? <div className="mt-4 h-2 rounded-full bg-[#f0dce4]"><div className="h-2 rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))]" style={{ width: `${fuelLevel}%` }} /></div> : null}
+              {card.icon === "fuel" ? <div className="mt-4 h-2 rounded-full bg-[var(--drv-soft)]"><div className="h-2 rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))]" style={{ width: `${fuelLevel}%` }} /></div> : null}
               <p className="mt-2 text-xs text-[var(--drv-muted)]">{card.note}</p>
             </Panel>
           ))}
@@ -1161,7 +1162,7 @@ Please review the earnings breakdown for this shift.`;
                   <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
                     <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
                     <MapViewport points={mapPoints} />
-                    {displayedPolyline.length > 0 ? <Polyline positions={displayedPolyline} pathOptions={{ color: "#ff6b73", weight: 5, opacity: 0.9 }} /> : null}
+                    {displayedPolyline.length > 0 ? <Polyline positions={displayedPolyline} pathOptions={{ color: theme["--drv-purple"], weight: 5, opacity: 0.9 }} /> : null}
                     {routeStops.map((item, index) => {
                       const lat = Number(item.stop?.lat);
                       const lng = Number(item.stop?.lng);
@@ -1172,7 +1173,7 @@ Please review the earnings breakdown for this shift.`;
                           key={`${item.stop_order}-${item.stop?.name}`}
                           center={[lat, lng]}
                           radius={current ? 8 : 5}
-                          pathOptions={{ color: current ? "#ff6b73" : "#af8bbf", fillColor: current ? "#ff6b73" : "#f0dce4", fillOpacity: 0.95 }}
+                          pathOptions={{ color: current ? theme["--drv-purple"] : "#af8bbf", fillColor: current ? theme["--drv-purple"] : theme["--drv-soft"], fillOpacity: 0.95 }}
                         >
                           <Popup>Stop {item.stop_order}: {item.stop?.name}</Popup>
                         </CircleMarker>
@@ -1567,7 +1568,7 @@ Please review the earnings breakdown for this shift.`;
                 {fuelBars.map((bar, index) => (
                   <div key={bar.day} className="flex flex-1 flex-col items-center gap-3">
                     <div
-                      className={`w-full max-w-[2.4rem] rounded-t-[1.1rem] ${index === fuelBars.length - 1 ? "bg-[linear-gradient(180deg,#ff8a5b,#ff6b73)]" : index >= fuelBars.length - 3 ? "bg-[rgba(255,145,120,0.68)]" : "bg-[rgba(249,221,218,0.9)]"}`}
+                      className={`w-full max-w-[2.4rem] rounded-t-[1.1rem] ${index === fuelBars.length - 1 ? "bg-[linear-gradient(180deg,#552681,#ff6b73)]" : index >= fuelBars.length - 3 ? "bg-[rgba(143,104,194,0.46)]" : "bg-[rgba(248,242,246,0.95)]"}`}
                       style={{ height: `${Math.max(bar.value, 24)}px` }}
                     />
                     <span className={`text-[0.66rem] font-black uppercase tracking-[0.14em] ${index === fuelBars.length - 1 ? "text-[var(--drv-purple)]" : "text-[var(--drv-muted)]"}`}>

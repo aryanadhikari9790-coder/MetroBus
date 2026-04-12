@@ -5,59 +5,59 @@
 export function themeTokens(isDark) {
   return {
     // Page background
-    page:       isDark ? "bg-[#241043] text-white"            : "bg-[#f7eef4] text-[#27133f]",
+    page:       isDark ? "bg-[linear-gradient(180deg,#2e124f,#241043)] text-[#fff7fb]" : "bg-[linear-gradient(180deg,#fbf3f6,#f5ebf2)] text-[#27133f]",
     // Sticky nav
-    nav:        isDark ? "bg-[#241043]/92 border-white/5"     : "bg-[#fbf3f6]/92 border-[#ecdff0] shadow-[0_8px_20px_rgba(46,18,79,0.06)]",
+    nav:        isDark ? "bg-[rgba(46,18,79,0.94)] border-white/10 shadow-[0_12px_28px_rgba(12,3,29,0.28)]" : "bg-[rgba(252,245,248,0.96)] border-[rgba(52,21,93,0.08)] shadow-[0_12px_28px_rgba(46,18,79,0.08)]",
     // Logo chip
     logoBg:     (color) => color,   // caller passes the role color, unchanged
     // Glass card
-    card:       isDark ? "bg-white/6 border-white/10"          : "bg-white border-[#ecdff0] shadow-[0_12px_28px_rgba(46,18,79,0.07)]",
+    card:       isDark ? "bg-[rgba(64,32,102,0.88)] border-white/10 shadow-[0_18px_34px_rgba(12,3,29,0.24)]" : "bg-[rgba(255,255,255,0.96)] border-[rgba(52,21,93,0.08)] shadow-[0_12px_28px_rgba(46,18,79,0.08)]",
     // Elevated card (hero)
-    heroCard:   isDark ? "from-[#2e124f] via-[#4a1e77] to-[#ff6b73] border-white/10"
-                       : "from-[#fff6f5] via-white to-[#fbf0f4] border-[#f5d9df]",
+    heroCard:   isDark ? "from-[#34155d] via-[#552681] to-[#ff6b73] border-white/10"
+                       : "from-[#34155d] via-[#552681] to-[#ff6b73] border-transparent text-white",
     // Inner mini-card inside hero
-    heroInner:  isDark ? "bg-white/10 border-white/10"         : "bg-[#fff0ef] border-[#f3d7dd]",
+    heroInner:  isDark ? "bg-white/10 border-white/10"         : "bg-[rgba(255,255,255,0.2)] border-white/20",
     // Section label
-    label:      isDark ? "text-[#bcaed1]"                       : "text-[#8e7aa9]",
+    label:      isDark ? "text-[#d6c8e7]"                       : "text-[#8e7aa9]",
     // Body text
-    text:       isDark ? "text-white"                           : "text-[#27133f]",
-    textSub:    isDark ? "text-[#c4b6d7]"                       : "text-[#6f6284]",
-    textMuted:  isDark ? "text-[#8f7fa8]"                       : "text-[#9b8bad]",
+    text:       isDark ? "text-[#fff7fb]"                       : "text-[#27133f]",
+    textSub:    isDark ? "text-[#d7c5e6]"                       : "text-[#6f6284]",
+    textMuted:  isDark ? "text-[#a998bd]"                       : "text-[#9b8bad]",
     // Input / select
     input:      isDark
-      ? "border-white/10 bg-white/5 text-white placeholder-[#8f7fa8] focus:border-[#ff8a5b]"
-      : "border-[#ecdff0] bg-white text-[#27133f] placeholder-[#b9abc8] focus:border-[#ff6b73]",
+      ? "border-white/10 bg-white/8 text-[#fff7fb] placeholder-[#a998bd] focus:border-[#ff6b73]"
+      : "border-[rgba(52,21,93,0.08)] bg-white text-[#27133f] placeholder-[#b9abc8] focus:border-[#34155d]",
     // Dropdown option background
-    optionBg:   isDark ? "bg-[#241043] text-white"             : "bg-white text-[#27133f]",
+    optionBg:   isDark ? "bg-[#34155d] text-[#fff7fb]"         : "bg-white text-[#27133f]",
     // Tab bar container
-    tabBar:     isDark ? "bg-white/4 border-white/5"           : "bg-white border-[#ecdff0] shadow-[0_10px_24px_rgba(46,18,79,0.07)]",
+    tabBar:     isDark ? "bg-[rgba(64,32,102,0.72)] border-white/10 shadow-[0_16px_32px_rgba(12,3,29,0.22)]" : "bg-[rgba(255,255,255,0.92)] border-[rgba(52,21,93,0.08)] shadow-[0_10px_24px_rgba(46,18,79,0.08)]",
     // Inactive tab
-    tabInactive:isDark ? "text-[#bcaed1] hover:text-white"     : "text-[#9b8bad] hover:text-[#34155d]",
+    tabInactive:isDark ? "text-[#cbb7df] hover:text-white"     : "text-[#9b8bad] hover:text-[#34155d]",
     // Divider
-    divider:    isDark ? "border-white/5"                       : "border-[#ecdff0]",
+    divider:    isDark ? "border-white/10"                      : "border-[rgba(52,21,93,0.08)]",
     // Notification banners
-    errBanner:  isDark ? "border-red-500/30 bg-red-500/10 text-red-400"       : "border-red-300 bg-red-50 text-red-700",
-    okBanner:   isDark ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-emerald-300 bg-emerald-50 text-emerald-700",
-    infoBanner: isDark ? "border-sky-500/30 bg-sky-500/10 text-sky-400"       : "border-sky-300 bg-sky-50 text-sky-700",
+    errBanner:  isDark ? "border-[#c53b56]/40 bg-[#c53b56]/12 text-[#ffd4dc]" : "border-[#f3bcc7] bg-[#fff4f6] text-[#b12f49]",
+    okBanner:   isDark ? "border-[#16a34a]/35 bg-[#16a34a]/10 text-[#c8ffd9]" : "border-[#b6e8c9] bg-[#f4fff7] text-[#127a39]",
+    infoBanner: isDark ? "border-[#552681]/40 bg-[#552681]/15 text-[#eadbff]" : "border-[#d8c4ef] bg-[#fbf5ff] text-[#552681]",
     // Timeline dot colours (unchanged, vivid enough for both modes)
     dotDone:    "bg-emerald-500 border-emerald-500",
-    dotCurrent: "bg-[#ff6b73] border-[#ff6b73]",
-    dotPending: isDark ? "bg-transparent border-slate-600" : "bg-transparent border-slate-300",
+    dotCurrent: "bg-[#34155d] border-[#34155d]",
+    dotPending: isDark ? "bg-transparent border-[#7e69a3]" : "bg-transparent border-[#d4c4de]",
     // Timeline line
-    timelineLine: isDark ? "bg-slate-700/60" : "bg-slate-200",
+    timelineLine: isDark ? "bg-[#7e69a3]/45" : "bg-[#eaddeb]",
     // Toggle track
-    toggleOff:  isDark ? "bg-slate-700" : "bg-slate-300",
+    toggleOff:  isDark ? "bg-[#6d5a87]" : "bg-[#d9c6df]",
     // Dropdown open list
-    dropList:   isDark ? "border-white/10 bg-[#241043]"        : "border-[#ecdff0] bg-white shadow-xl",
-    dropItem:   isDark ? "text-[#f7efff] hover:bg-white/5"     : "text-[#4e3e67] hover:bg-[#fff4f2]",
-    dropSel:    isDark ? "bg-white/10 text-white"              : "bg-[#fff0ef] text-[#ff6b73]",
+    dropList:   isDark ? "border-white/10 bg-[#34155d]"        : "border-[rgba(52,21,93,0.08)] bg-white shadow-xl",
+    dropItem:   isDark ? "text-[#f7efff] hover:bg-white/8"     : "text-[#4e3e67] hover:bg-[#fbf3f6]",
+    dropSel:    isDark ? "bg-white/10 text-white"              : "bg-[#f8f2f6] text-[#34155d]",
     // Breadcrumb/tag pills
-    tagBg:      isDark ? "bg-white/5 border-white/10 text-[#d7c9ea]"  : "bg-[#f7edf4] border-[#ecdff0] text-[#6f6284]",
+    tagBg:      isDark ? "bg-white/6 border-white/10 text-[#e4d6f4]"  : "bg-[#f8f2f6] border-[rgba(52,21,93,0.08)] text-[#6f6284]",
     // Seat btn states
-    seatOpen:   isDark ? "border-white/10 bg-white/5 text-[#f7efff] hover:border-[#ff8a5b]/50 hover:bg-[#ff8a5b]/10"
-                       : "border-[#ecdff0] bg-[#fff8f9] text-[#4e3e67] hover:border-[#ff6b73] hover:bg-[#fff0ef]",
-    seatSel:    isDark ? "border-[#ff8a5b] bg-[#ff8a5b]/30 text-[#fff1ed]"  : "border-[#ff6b73] bg-[#fff0ef] text-[#9e2f4b]",
-    seatTaken:  isDark ? "border-white/5 bg-white/5 text-slate-600 opacity-50" : "border-slate-200 bg-slate-100 text-slate-400 opacity-60",
+    seatOpen:   isDark ? "border-white/10 bg-white/6 text-[#f7efff] hover:border-[#ff6b73]/50 hover:bg-[#ff6b73]/10"
+                       : "border-[rgba(52,21,93,0.08)] bg-[#fff8f9] text-[#4e3e67] hover:border-[#34155d] hover:bg-[#f8f2f6]",
+    seatSel:    isDark ? "border-[#ff6b73] bg-[#ff6b73]/25 text-[#fff4f5]"  : "border-[#34155d] bg-[#f8f2f6] text-[#34155d]",
+    seatTaken:  isDark ? "border-white/8 bg-white/6 text-[#8f7fa8] opacity-55" : "border-[#e7d8df] bg-[#f3e8ed] text-[#b29eaf] opacity-70",
     // Map tile URL
     mapTile:    isDark
       ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -71,19 +71,19 @@ export function themeTokens(isDark) {
 export function pillColor(isDark, color) {
   const dark = {
     emerald: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
-    sky:     "bg-sky-500/20 text-sky-300 border-sky-500/30",
+    sky:     "bg-[#552681]/28 text-[#eadbff] border-[#8f68c2]/40",
     amber:   "bg-amber-500/20 text-amber-300 border-amber-500/30",
-    red:     "bg-red-500/20 text-red-300 border-red-500/30",
-    slate:   "bg-slate-500/20 text-slate-300 border-slate-500/30",
-    indigo:  "bg-[#ff8a5b]/20 text-[#ffd8c9] border-[#ff8a5b]/30",
+    red:     "bg-[#c53b56]/20 text-[#ffd6df] border-[#c53b56]/30",
+    slate:   "bg-white/10 text-[#d7c5e6] border-white/10",
+    indigo:  "bg-[#ff6b73]/22 text-[#fff0f2] border-[#ff6b73]/28",
   };
   const light = {
     emerald: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    sky:     "bg-sky-100 text-sky-700 border-sky-200",
+    sky:     "bg-[#f0e6fb] text-[#552681] border-[#dac7ee]",
     amber:   "bg-amber-100 text-amber-700 border-amber-200",
-    red:     "bg-red-100 text-red-700 border-red-200",
+    red:     "bg-[#fff1f4] text-[#b12f49] border-[#f4c6d0]",
     slate:   "bg-slate-100 text-slate-600 border-slate-200",
-    indigo:  "bg-[#fff0ef] text-[#ff6b73] border-[#f3d7dd]",
+    indigo:  "bg-[#f8f2f6] text-[#34155d] border-[rgba(52,21,93,0.08)]",
   };
   return (isDark ? dark : light)[color] || (isDark ? dark.slate : light.slate);
 }

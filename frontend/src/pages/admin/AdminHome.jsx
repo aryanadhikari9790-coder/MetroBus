@@ -11,7 +11,12 @@ import { themeTokens, pillColor } from "../../lib/theme";
 function GlassCard({ children, className = "", t }) { return <div className={`rounded-xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>{children}</div>; }
 function Pill({ children, color = "slate", isDark }) { return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>{children}</span>; }
 function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
-  const m = { primary: "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(255,107,115,0.16)]", success: "bg-emerald-600 hover:bg-emerald-500 text-white", danger: "bg-red-600 hover:bg-red-500 text-white", ghost: "bg-white/10 hover:bg-white/20 text-white border border-white/10" };
+  const m = {
+    primary: "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.18)]",
+    success: "bg-[linear-gradient(135deg,var(--brand-secondary),var(--brand-accent))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.16)]",
+    danger: "bg-[linear-gradient(135deg,#7a2848,#c53b56)] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.16)]",
+    ghost: "border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-[0_10px_24px_rgba(46,18,79,0.08)]",
+  };
   return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-lg px-5 py-3 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
 function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
@@ -20,7 +25,7 @@ function StatCard({ label, value, sub, accent = "", t }) {
   return <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{label}</p><p className={`mt-2 break-words text-3xl font-black leading-tight ${accent || t.text}`}>{value}</p>{sub && <p className={`mt-1.5 break-words text-xs leading-5 ${t.textSub}`}>{sub}</p>}</GlassCard>;
 }
 function InputField({ label, value, onChange, placeholder, type = "text", t }) {
-  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[#ff6b73] transition ${t.input}`} /></div>;
+  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[var(--brand-primary)] transition ${t.input}`} /></div>;
 }
 function FileField({ label, onChange, file, accept = "image/*", t }) {
   return (
@@ -28,14 +33,14 @@ function FileField({ label, onChange, file, accept = "image/*", t }) {
       <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label>
       <label className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 text-sm transition ${t.input}`}>
         <span className={file ? "font-semibold" : ""}>{file?.name || "Choose file"}</span>
-        <span className="text-xs font-bold uppercase tracking-widest text-[#ff6b73]">Upload</span>
+        <span className="text-xs font-bold uppercase tracking-widest text-[var(--brand-primary)]">Upload</span>
         <input type="file" accept={accept} onChange={e => onChange(e.target.files?.[0] || null)} className="hidden" />
       </label>
     </div>
   );
 }
 function SelectField({ label, value, onChange, options, t }) {
-  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><select value={value} onChange={e => onChange(e.target.value)} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[#ff6b73] transition ${t.input}`} style={{ backgroundColor: "var(--select-bg)", color: "var(--input-text)" }}>{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>;
+  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><select value={value} onChange={e => onChange(e.target.value)} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[var(--brand-primary)] transition ${t.input}`} style={{ backgroundColor: "var(--select-bg)", color: "var(--input-text)" }}>{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>;
 }
 function MapViewport({ points }) {
   const map = useMap();
@@ -530,16 +535,16 @@ export default function AdminHome() {
     }
   };
 
-  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-[#ff6b73] border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading admin dashboard...</p></div></div>;
+  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-[var(--brand-primary)] border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading admin dashboard...</p></div></div>;
 
-  const rowBg = isDark ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-200";
+  const rowBg = isDark ? "bg-white/5 border-white/10" : "bg-[rgba(255,255,255,0.88)] border-[rgba(52,21,93,0.08)]";
 
   return (
       <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
         <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-3 py-3 sm:px-4 ${t.nav}`}>
           <div className="mx-auto flex max-w-[76rem] flex-wrap items-center justify-between gap-3 sm:gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-600 text-sm font-black text-white">MB</div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-sm font-black text-white shadow-[0_10px_24px_rgba(46,18,79,0.16)]">MB</div>
               <div className="min-w-0"><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus Admin</p><p className={`truncate text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Admin"}</p></div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -558,7 +563,7 @@ export default function AdminHome() {
           <div className={`enterprise-inline-scroll mb-6 flex gap-1.5 rounded-2xl border p-1.5 backdrop-blur ${t.tabBar}`}>
             {ADMIN_SECTIONS.map(section => (
               <button key={section.id} type="button" onClick={() => navigate(`/admin/${section.id}`)}
-                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeSection === section.id ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white shadow-[0_18px_34px_rgba(255,107,115,0.24)]" : t.tabInactive}`}>
+                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeSection === section.id ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white shadow-[0_18px_34px_rgba(46,18,79,0.18)]" : t.tabInactive}`}>
                 <span>{section.label}</span>
               </button>
             ))}
@@ -568,7 +573,7 @@ export default function AdminHome() {
         {activeSection === "analytics" && (
           <div className="space-y-5">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers | ${roleCounts.DRIVER || 0} drivers`} accent="text-[#ff6b73]" t={t} />
+              <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers | ${roleCounts.DRIVER || 0} drivers`} accent="text-[var(--brand-primary)]" t={t} />
               <StatCard label="Live Trips" value={trips.live ?? 0} sub={`${trips.total || 0} total`} accent="text-emerald-500" t={t} />
               <StatCard label="Bookings" value={bookings.total ?? 0} sub={`${bookings.confirmed || 0} confirmed`} accent="text-amber-500" t={t} />
               <StatCard label="Revenue" value={fmtMoney(payments.revenue_success ?? 0)} sub={`${payments.success || 0} successful`} t={t} />
@@ -652,7 +657,7 @@ export default function AdminHome() {
                 {paymentRows.map(row => (
                   <div key={row.method} className="flex items-center gap-4">
                     <p className={`w-24 text-xs font-bold flex-shrink-0 ${t.text}`}>{row.method}</p>
-                    <div className={`flex-1 h-2 rounded-full ${isDark ? "bg-white/10" : "bg-slate-200"}`}><div className="h-2 rounded-full bg-[#ff6b73] transition-all" style={{ width: `${row.rate}%` }} /></div>
+                    <div className={`flex-1 h-2 rounded-full ${isDark ? "bg-white/10" : "bg-slate-200"}`}><div className="h-2 rounded-full bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-accent))] transition-all" style={{ width: `${row.rate}%` }} /></div>
                     <div className="flex items-center gap-2 flex-shrink-0"><Pill color={row.rate >= 70 ? "emerald" : row.rate > 0 ? "amber" : "slate"} isDark={isDark}>{row.rate}%</Pill><span className={`text-xs ${t.textMuted}`}>{row.success}/{row.total}</span></div>
                   </div>
                 ))}
@@ -728,7 +733,7 @@ export default function AdminHome() {
                   </div>
                   <div>
                     <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label>
-                    <button type="button" onClick={() => setStopActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${stopActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
+                    <button type="button" onClick={() => setStopActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${stopActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
                       {stopActive ? "Active For Routes" : "Saved As Inactive"}
                     </button>
                   </div>
@@ -747,7 +752,7 @@ export default function AdminHome() {
                   <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" t={t} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
                     <InputField label="City" value={routeCity} onChange={setRouteCity} placeholder="Pokhara" t={t} />
-                    <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
+                    <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
                   </div>
                   {routeMsg ? <p className="text-sm font-semibold text-emerald-600">{routeMsg}</p> : null}
                 </div>
@@ -757,12 +762,12 @@ export default function AdminHome() {
                 {selectedStops.length === 0 ? <p className={`text-sm ${t.textSub}`}>Click map markers to add stops in order.</p>
                   : selectedStops.map((stop, i) => (
                     <div key={stop.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 mb-2 ${rowBg}`}>
-                      <span className="text-xs text-[#ff6b73] font-bold w-5 flex-shrink-0">{i + 1}</span>
+                      <span className="text-xs text-[var(--brand-primary)] font-bold w-5 flex-shrink-0">{i + 1}</span>
                       <span className={`text-sm flex-1 break-words leading-snug ${t.text}`}>{stop.name}</span>
                       <div className="flex gap-1">
                         <button type="button" onClick={() => moveStop(i, -1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Up</button>
                         <button type="button" onClick={() => moveStop(i, 1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Down</button>
-                        <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-red-500/20 px-2 py-1 text-xs text-red-400 hover:bg-red-500/30">Remove</button>
+                        <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-[var(--brand-soft)] px-2 py-1 text-xs text-[var(--brand-primary)] hover:bg-[#efe2f0]">Remove</button>
                       </div>
                     </div>
                   ))}
@@ -771,7 +776,7 @@ export default function AdminHome() {
                 <GlassCard t={t}>
                   <SLabel t={t}>Segment Fares (NPR)</SLabel>
                   {selectedStops.slice(0, -1).map((stop, i) => (
-                    <div key={`${stop.id}-fare`} className="mb-3"><label className={`block text-[10px] mb-1 ${t.textSub}`}>{stop.name} to {selectedStops[i + 1].name}</label><input type="number" min="0" step="0.01" value={segmentFares[i] || ""} placeholder="Enter fare" onChange={e => { const n = [...segmentFares]; n[i] = e.target.value; setSegmentFares(n); }} className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-[#ff6b73] ${t.input}`} /></div>
+                    <div key={`${stop.id}-fare`} className="mb-3"><label className={`block text-[10px] mb-1 ${t.textSub}`}>{stop.name} to {selectedStops[i + 1].name}</label><input type="number" min="0" step="0.01" value={segmentFares[i] || ""} placeholder="Enter fare" onChange={e => { const n = [...segmentFares]; n[i] = e.target.value; setSegmentFares(n); }} className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-[var(--brand-primary)] ${t.input}`} /></div>
                   ))}
                 </GlassCard>
               )}
@@ -804,7 +809,7 @@ export default function AdminHome() {
                         <p className={`text-xs mt-0.5 ${t.textSub}`}>{Number(stop.lat).toFixed(4)}, {Number(stop.lng).toFixed(4)}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        {stop.is_active ? <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-[#fff0ef] px-3 py-2 text-[11px] font-bold text-[#ff6b73]">{selectedStopIds.includes(stop.id) ? "Remove" : "Use"}</button> : null}
+                        {stop.is_active ? <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-[11px] font-bold text-[var(--brand-primary)]">{selectedStopIds.includes(stop.id) ? "Remove" : "Use"}</button> : null}
                         <Pill color={stop.is_active ? "emerald" : "slate"} isDark={isDark}>{stop.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
                       </div>
                     </div>
@@ -1043,7 +1048,7 @@ export default function AdminHome() {
                   <FileField label="Seats Photo" file={busSeatPhoto} onChange={setBusSeatPhoto} t={t} />
                   <div>
                     <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Status</label>
-                    <button type="button" onClick={() => setBusActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${busActive ? "bg-emerald-600 text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
+                    <button type="button" onClick={() => setBusActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${busActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
                       {busActive ? "Active" : "Inactive"}
                     </button>
                   </div>
@@ -1105,7 +1110,7 @@ export default function AdminHome() {
                   {uMgmtMsg ? <p className="text-sm font-semibold text-emerald-600">{uMgmtMsg}</p> : null}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {["DRIVER", "HELPER", "ADMIN"].map(role => (
-                      <button key={role} type="button" onClick={() => setURole(role)} className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                      <button key={role} type="button" onClick={() => setURole(role)} className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
                         {role}
                       </button>
                     ))}
@@ -1133,7 +1138,7 @@ export default function AdminHome() {
                   <SLabel t={t}>Staff Accounts ({staffUsers.length})</SLabel>
                   <div className="flex gap-1">
                     {["ALL", "DRIVER", "HELPER", "ADMIN"].map(r => (
-                      <button key={r} type="button" onClick={() => setStaffFilter(r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${userRoleFilter === r ? "bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                      <button key={r} type="button" onClick={() => setStaffFilter(r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${userRoleFilter === r ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
                         {r}
                       </button>
                     ))}
@@ -1146,7 +1151,7 @@ export default function AdminHome() {
                     <div key={u.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
-                          {u.official_photo_url ? <img src={u.official_photo_url} alt={u.full_name} className="h-14 w-14 rounded-2xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fff0ef] text-sm font-black text-[#ff6b73]">{(u.full_name || "MB").slice(0, 2).toUpperCase()}</div>}
+                          {u.official_photo_url ? <img src={u.official_photo_url} alt={u.full_name} className="h-14 w-14 rounded-2xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-soft)] text-sm font-black text-[var(--brand-primary)]">{(u.full_name || "MB").slice(0, 2).toUpperCase()}</div>}
                           <div className="min-w-0">
                             <p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{u.full_name}</p>
                             <p className={`mt-0.5 break-all text-xs leading-5 ${t.textSub}`}>{u.phone}{u.email ? ` | ${u.email}` : ""}</p>
@@ -1199,7 +1204,7 @@ export default function AdminHome() {
                             type="button"
                             onClick={() => reviewUser(u, { is_active: !u.is_active })}
                             disabled={reviewBusyId === u.id}
-                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.is_active ? "bg-slate-200 text-slate-700 hover:bg-slate-300" : "bg-[#fff0ef] text-[#ff6b73] hover:bg-[#ffe3df]"} disabled:cursor-not-allowed disabled:opacity-50`}
+                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.is_active ? "bg-slate-200 text-slate-700 hover:bg-slate-300" : "bg-[var(--brand-soft)] text-[var(--brand-primary)] hover:bg-[#efe2f0]"} disabled:cursor-not-allowed disabled:opacity-50`}
                           >
                             {u.is_active ? "Set Inactive" : "Activate Account"}
                           </button>

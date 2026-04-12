@@ -5,39 +5,40 @@ import { api } from "../../api";
 import { clearToken } from "../../auth";
 import { useTheme } from "../../ThemeContext";
 import { buildWsUrl } from "../../lib/ws";
+import { PASSENGER_THEME } from "../passenger/passengerUtils";
 
 const LIGHT_THEME = {
-  "--hlp-bg": "#fbf3f6",
-  "--hlp-bg-end": "rgba(245,235,242,0.98)",
-  "--hlp-surface": "rgba(255,255,255,0.92)",
-  "--hlp-soft": "#fbebf0",
-  "--hlp-border": "rgba(52,21,93,0.08)",
-  "--hlp-text": "#27133f",
-  "--hlp-muted": "#7d6b93",
-  "--hlp-purple": "#34155d",
-  "--hlp-purple-2": "#ff6b73",
-  "--hlp-plum": "#2e124f",
-  "--hlp-header": "rgba(252,245,248,0.92)",
-  "--hlp-nav": "rgba(252,245,248,0.94)",
-  "--hlp-shadow": "0 12px 28px rgba(46,18,79,0.08)",
-  "--hlp-shadow-strong": "0 14px 30px rgba(255,107,115,0.16)",
+  "--hlp-bg": PASSENGER_THEME["--mb-bg"],
+  "--hlp-bg-end": PASSENGER_THEME["--mb-bg-alt"],
+  "--hlp-surface": PASSENGER_THEME["--mb-card"],
+  "--hlp-soft": PASSENGER_THEME["--mb-card-soft"],
+  "--hlp-border": PASSENGER_THEME["--mb-border"],
+  "--hlp-text": PASSENGER_THEME["--mb-text"],
+  "--hlp-muted": PASSENGER_THEME["--mb-muted"],
+  "--hlp-purple": PASSENGER_THEME["--mb-purple"],
+  "--hlp-purple-2": PASSENGER_THEME["--mb-accent"],
+  "--hlp-plum": PASSENGER_THEME["--mb-bg-deep"],
+  "--hlp-header": PASSENGER_THEME["--mb-nav"],
+  "--hlp-nav": PASSENGER_THEME["--mb-nav"],
+  "--hlp-shadow": PASSENGER_THEME["--mb-shadow"],
+  "--hlp-shadow-strong": PASSENGER_THEME["--mb-shadow-strong"],
 };
 
 const DARK_THEME = {
-  "--hlp-bg": "#241043",
+  "--hlp-bg": "#2e124f",
   "--hlp-bg-end": "rgba(36,16,67,0.98)",
-  "--hlp-surface": "rgba(57,27,92,0.9)",
-  "--hlp-soft": "rgba(255,107,115,0.12)",
-  "--hlp-border": "rgba(202,161,233,0.14)",
-  "--hlp-text": "#fff7f5",
-  "--hlp-muted": "#d3c3e2",
-  "--hlp-purple": "#ff8a77",
-  "--hlp-purple-2": "#ff9a5c",
-  "--hlp-plum": "#2e124f",
-  "--hlp-header": "rgba(36,16,67,0.92)",
-  "--hlp-nav": "rgba(43,20,78,0.94)",
-  "--hlp-shadow": "0 14px 30px rgba(0,0,0,0.2)",
-  "--hlp-shadow-strong": "0 16px 32px rgba(255,107,115,0.18)",
+  "--hlp-surface": "rgba(64,32,102,0.9)",
+  "--hlp-soft": "rgba(248,242,246,0.10)",
+  "--hlp-border": "rgba(255,255,255,0.10)",
+  "--hlp-text": "#fff7fb",
+  "--hlp-muted": "#d7c5e6",
+  "--hlp-purple": "#552681",
+  "--hlp-purple-2": "#ff6b73",
+  "--hlp-plum": "#1e0b35",
+  "--hlp-header": "rgba(46,18,79,0.92)",
+  "--hlp-nav": "rgba(46,18,79,0.94)",
+  "--hlp-shadow": "0 18px 34px rgba(12,3,29,0.28)",
+  "--hlp-shadow-strong": "0 18px 36px rgba(255,107,115,0.20)",
 };
 
 const TABS = [
@@ -1366,7 +1367,7 @@ Need support with live trip operations.`;
                   <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
                     <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
                     <MapViewport points={mapPoints} />
-                    {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: "#ff6b73", weight: 5, opacity: 0.92 }} /> : null}
+                    {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: theme["--hlp-purple"], weight: 5, opacity: 0.92 }} /> : null}
                     {routeStops.map((stop, index) => {
                       const lat = Number(stop.stop?.lat);
                       const lng = Number(stop.stop?.lng);
@@ -1377,7 +1378,7 @@ Need support with live trip operations.`;
                           key={`${stop.stop_order}-${stop.stop?.name}`}
                           center={[lat, lng]}
                           radius={current ? 8 : 5}
-                          pathOptions={{ color: current ? "#ff6b73" : "#af8bbf", fillColor: current ? "#ff6b73" : "#f4dde7", fillOpacity: 0.95 }}
+                          pathOptions={{ color: current ? theme["--hlp-purple"] : "#af8bbf", fillColor: current ? theme["--hlp-purple"] : theme["--hlp-soft"], fillOpacity: 0.95 }}
                         >
                           <Popup>{stop.stop_order}. {stop.stop?.name}</Popup>
                         </CircleMarker>
