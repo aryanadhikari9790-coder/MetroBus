@@ -12,8 +12,8 @@ function GlassCard({ children, className = "", t }) { return <div className={`ro
 function Pill({ children, color = "slate", isDark }) { return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>{children}</span>; }
 function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
   const m = {
-    primary: "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.18)]",
-    success: "bg-[linear-gradient(135deg,var(--brand-secondary),var(--brand-accent))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.16)]",
+    primary: "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.18)]",
+    success: "bg-[linear-gradient(135deg,var(--brand-secondary),var(--brand-accent-2))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.16)]",
     danger: "bg-[linear-gradient(135deg,#7a2848,#c53b56)] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.16)]",
     ghost: "border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-[0_10px_24px_rgba(46,18,79,0.08)]",
   };
@@ -543,7 +543,7 @@ export default function AdminHome() {
         <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-3 py-3 sm:px-4 ${t.nav}`}>
           <div className="mx-auto flex max-w-[76rem] flex-wrap items-center justify-between gap-3 sm:gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-sm font-black text-white shadow-[0_10px_24px_rgba(46,18,79,0.16)]">MB</div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-sm font-black text-white shadow-[0_10px_24px_rgba(46,18,79,0.16)]">MB</div>
               <div className="min-w-0"><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus Admin</p><p className={`truncate text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Admin"}</p></div>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -561,7 +561,7 @@ export default function AdminHome() {
           <div className={`enterprise-inline-scroll mb-6 flex gap-1.5 rounded-2xl border p-1.5 backdrop-blur ${t.tabBar}`}>
             {ADMIN_SECTIONS.map(section => (
               <button key={section.id} type="button" onClick={() => navigate(`/admin/${section.id}`)}
-                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeSection === section.id ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white shadow-[0_18px_34px_rgba(46,18,79,0.18)]" : t.tabInactive}`}>
+                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeSection === section.id ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white shadow-[0_18px_34px_rgba(46,18,79,0.18)]" : t.tabInactive}`}>
                 <span>{section.label}</span>
               </button>
             ))}
@@ -731,7 +731,7 @@ export default function AdminHome() {
                   </div>
                   <div>
                     <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label>
-                    <button type="button" onClick={() => setStopActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${stopActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
+                    <button type="button" onClick={() => setStopActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${stopActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
                       {stopActive ? "Active For Routes" : "Saved As Inactive"}
                     </button>
                   </div>
@@ -750,7 +750,7 @@ export default function AdminHome() {
                   <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" t={t} />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
                     <InputField label="City" value={routeCity} onChange={setRouteCity} placeholder="Pokhara" t={t} />
-                    <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
+                    <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
                   </div>
                   {routeMsg ? <p className="text-sm font-semibold text-emerald-600">{routeMsg}</p> : null}
                 </div>
@@ -1046,7 +1046,7 @@ export default function AdminHome() {
                   <FileField label="Seats Photo" file={busSeatPhoto} onChange={setBusSeatPhoto} t={t} />
                   <div>
                     <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Status</label>
-                    <button type="button" onClick={() => setBusActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${busActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
+                    <button type="button" onClick={() => setBusActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${busActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
                       {busActive ? "Active" : "Inactive"}
                     </button>
                   </div>
@@ -1108,7 +1108,7 @@ export default function AdminHome() {
                   {uMgmtMsg ? <p className="text-sm font-semibold text-emerald-600">{uMgmtMsg}</p> : null}
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     {["DRIVER", "HELPER", "ADMIN"].map(role => (
-                      <button key={role} type="button" onClick={() => setURole(role)} className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                      <button key={role} type="button" onClick={() => setURole(role)} className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
                         {role}
                       </button>
                     ))}
@@ -1136,7 +1136,7 @@ export default function AdminHome() {
                   <SLabel t={t}>Staff Accounts ({staffUsers.length})</SLabel>
                   <div className="flex gap-1">
                     {["ALL", "DRIVER", "HELPER", "ADMIN"].map(r => (
-                      <button key={r} type="button" onClick={() => setStaffFilter(r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${userRoleFilter === r ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
+                      <button key={r} type="button" onClick={() => setStaffFilter(r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${userRoleFilter === r ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
                         {r}
                       </button>
                     ))}

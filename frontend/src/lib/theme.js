@@ -13,8 +13,8 @@ export function themeTokens(isDark) {
     // Glass card
     card:       isDark ? "bg-[rgba(64,32,102,0.88)] border-white/10 shadow-[0_18px_34px_rgba(12,3,29,0.24)]" : "bg-[rgba(255,255,255,0.96)] border-[rgba(52,21,93,0.08)] shadow-[0_12px_28px_rgba(46,18,79,0.08)]",
     // Elevated card (hero)
-    heroCard:   isDark ? "from-[#34155d] via-[#552681] to-[#ff6b73] border-white/10"
-                       : "from-[#34155d] via-[#552681] to-[#ff6b73] border-transparent text-white",
+    heroCard:   isDark ? "from-[#34155d] via-[#552681] to-[#ff8a5b] border-white/10"
+                       : "from-[#34155d] via-[#552681] to-[#ff8a5b] border-transparent text-white",
     // Inner mini-card inside hero
     heroInner:  isDark ? "bg-white/10 border-white/10"         : "bg-[rgba(255,255,255,0.2)] border-white/20",
     // Section label
