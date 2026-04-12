@@ -157,6 +157,35 @@ const TABS = [
 ];
 
 const APP_SHELL_CLASS = "enterprise-mobile-shell";
+const PRE_TRIP_CHECKLIST = [
+  {
+    id: "vehicle",
+    label: "Vehicle walkaround complete",
+    note: "Doors, mirrors, lights, tires, and the interior are ready for service.",
+  },
+  {
+    id: "safety",
+    label: "Fuel, brakes, and safety gear checked",
+    note: "Fuel level, brakes, horn, extinguisher, and emergency tools are confirmed.",
+  },
+  {
+    id: "documents",
+    label: "Trip documents are ready",
+    note: "Waybill, route assignment, and bus registration are available in the vehicle.",
+  },
+  {
+    id: "helper",
+    label: "Helper is onboard and synced",
+    note: "The assigned helper is present and ready to confirm trip start from their device.",
+  },
+];
+
+function createChecklistState() {
+  return PRE_TRIP_CHECKLIST.reduce((accumulator, item) => {
+    accumulator[item.id] = false;
+    return accumulator;
+  }, {});
+}
 
 export default function DriverHome() {
   const navigate = useNavigate();
@@ -186,9 +215,10 @@ export default function DriverHome() {
   const [routeStops, setRouteStops] = useState([]);
   const [passengerRequests, setPassengerRequests] = useState([]);
   const [roadPolyline, setRoadPolyline] = useState([]);
-  const [activeTab, setActiveTab] = useState("home");
+  const [activeTab, setActiveTab] = useState("active");
   const [expandStops, setExpandStops] = useState(false);
   const [showAllHistoryTrips, setShowAllHistoryTrips] = useState(false);
+  const [preTripChecks, setPreTripChecks] = useState(createChecklistState);
   const locationWatch = useMemo(() => ({ id: null }), []);
   const wsRef = useMemo(() => ({ current: null }), []);
   const queueRef = useMemo(() => ({ current: [] }), []);
@@ -203,6 +233,7 @@ export default function DriverHome() {
     [dashboard?.manual_start_options],
   );
   const nextSchedule = schedules[0] ?? null;
+  const nextScheduleAccepted = Boolean(nextSchedule?.driver_assignment_accepted);
   const routePolyline = useMemo(() => routeStops.map((stop) => [Number(stop.stop?.lat), Number(stop.stop?.lng)]).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)), [routeStops]);
   const displayedPolyline = roadPolyline.length > 1 ? roadPolyline : routePolyline;
   const liveBusPoint = useMemo(() => {
@@ -238,6 +269,15 @@ export default function DriverHome() {
     () => passengerRequests.filter((request) => request.stage === "dropoff"),
     [passengerRequests],
   );
+  const reservedSeatCount = useMemo(
+    () => passengerRequests.reduce((sum, request) => sum + Number(request.seats_count || request.seat_labels?.length || 0), 0),
+    [passengerRequests],
+  );
+  const checklistCompletedCount = useMemo(
+    () => PRE_TRIP_CHECKLIST.filter((item) => preTripChecks[item.id]).length,
+    [preTripChecks],
+  );
+  const checklistComplete = checklistCompletedCount === PRE_TRIP_CHECKLIST.length;
 
   const currentBus = currentTrip?.bus_plate || nextSchedule?.bus_plate || manualOptions.buses.find((bus) => String(bus.id) === busId)?.plate_number || "--";
   const currentRoute = currentTrip?.route_name || nextSchedule?.route_name || manualOptions.routes.find((route) => String(route.id) === routeId)?.name || "--";
@@ -255,7 +295,7 @@ export default function DriverHome() {
   const nextStop = routeStops[Math.min(stopProgressIndex + 1, routeStops.length - 1)]?.stop?.name || routeStops[1]?.stop?.name || "--";
   const previousStop = routeStops[Math.max(stopProgressIndex, 0)]?.stop?.name || "--";
   const capacity = Number(manualOptions.buses.find((bus) => bus.id === currentTrip?.bus)?.capacity || assignedBus?.capacity || 40);
-  const occupied = currentTrip ? Math.min(32, capacity) : Math.min(18, capacity);
+  const occupied = currentTrip ? Math.min(reservedSeatCount, capacity) : 0;
   const occupancyPct = capacity ? Math.round((occupied / capacity) * 100) : 0;
   const plannedTrips = schedules.length || 6;
   const homeStatus = activeTrip ? "Trip Live" : pendingTrip ? "Start Pending" : "On Track";
@@ -304,6 +344,8 @@ export default function DriverHome() {
   const gpsStateLabel = autoShare ? "GPS Live" : latestLocation ? "Manual Mode" : "Waiting";
   const stopsRemaining = routeStops.length ? Math.max(routeStops.length - Math.max(stopProgressIndex + 1, 1), 0) : 0;
   const priorityPassengerStop = pendingPickupRequests[0]?.marker_stop_name || onboardDropRequests[0]?.marker_stop_name || "--";
+  const pickupPassengerCount = pendingPickupRequests.length;
+  const onboardPassengerCount = onboardDropRequests.length;
   const routeProgressPct = routeStops.length > 1 && stopProgressIndex >= 0
     ? Math.min(100, Math.max(12, Math.round((stopProgressIndex / (routeStops.length - 1)) * 100)))
     : liveBusPoint ? 18 : 0;
@@ -313,6 +355,7 @@ export default function DriverHome() {
   const simulationPoint = simulationPoints[Math.min(simulationIndex, Math.max(simulationPoints.length - 1, 0))] || null;
   const simulationTotalPoints = simulationPointsCount || simulationPoints.length;
   const simulationActionLabel = simulationActive ? "Restart Live" : simulationIndex > 0 ? "Resume Simulation" : "Start Simulation";
+  const nextScheduleDepartureLabel = nextSchedule?.scheduled_start_time ? formatDateTime(nextSchedule.scheduled_start_time) : "--";
   const pendingStartLabel = pendingTrip?.helper_start_confirmed
     ? "Helper confirmed. Waiting on driver."
     : pendingTrip?.driver_start_confirmed
@@ -324,6 +367,10 @@ export default function DriverHome() {
       ? "Driver has confirmed trip end. Waiting on helper."
       : "End confirmation has not been requested yet.";
   const visibleHistoryTrips = showAllHistoryTrips ? recentHistoryTrips : recentHistoryTrips.slice(0, 3);
+
+  useEffect(() => {
+    setPreTripChecks(createChecklistState());
+  }, [nextSchedule?.id]);
 
   const loadDashboard = async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -351,14 +398,37 @@ export default function DriverHome() {
     }
   };
 
+  const loadTripContext = useCallback(async (tripId, { clearIfMissing = false } = {}) => {
+    if (!tripId) {
+      if (clearIfMissing) {
+        setRouteStops([]);
+        setPassengerRequests([]);
+        setRoadPolyline([]);
+      }
+      return;
+    }
+    try {
+      const response = await api.get(`/api/trips/${tripId}/`);
+      setRouteStops(response.data.route_stops || []);
+      setPassengerRequests(response.data.passenger_requests || []);
+    } catch {
+      if (clearIfMissing) {
+        setRouteStops([]);
+        setPassengerRequests([]);
+        setRoadPolyline([]);
+      }
+    }
+  }, []);
+
   useEffect(() => { loadDashboard(); loadAssignedBus(); }, []);
   useEffect(() => {
     if (!currentTrip?.id) return undefined;
     const timer = setInterval(() => {
       loadDashboard({ silent: true });
+      loadTripContext(currentTrip.id);
     }, activeTab === "active" || simulationActive ? 1000 : 3000);
     return () => clearInterval(timer);
-  }, [activeTab, currentTrip?.id, simulationActive]);
+  }, [activeTab, currentTrip?.id, simulationActive, loadTripContext]);
   useEffect(() => { if (currentTrip) setActiveTab("active"); }, [currentTrip]);
   useEffect(() => { setExpandStops(false); }, [currentTrip?.id]);
   useEffect(() => {
@@ -372,22 +442,8 @@ export default function DriverHome() {
     if (!helperId && manualOptions.helpers.length) setHelperId(String(manualOptions.helpers[0].id));
   }, [manualOptions, routeId, busId, helperId]);
   useEffect(() => {
-    if (!currentTrip?.id) {
-      setRouteStops([]);
-      setPassengerRequests([]);
-      setRoadPolyline([]);
-      return;
-    }
-    api.get(`/api/trips/${currentTrip.id}/`)
-      .then((response) => {
-        setRouteStops(response.data.route_stops || []);
-        setPassengerRequests(response.data.passenger_requests || []);
-      })
-      .catch(() => {
-        setRouteStops([]);
-        setPassengerRequests([]);
-      });
-  }, [currentTrip?.id]);
+    loadTripContext(currentTrip?.id, { clearIfMissing: true });
+  }, [currentTrip?.id, loadTripContext]);
   useEffect(() => {
     if (routePolyline.length < 2) { setRoadPolyline([]); return; }
     const controller = new AbortController();
@@ -411,6 +467,14 @@ export default function DriverHome() {
   };
 
   const startScheduledTrip = async (id) => {
+    if (!nextScheduleAccepted) {
+      setErr("Accept the admin assignment before starting this scheduled trip.");
+      return;
+    }
+    if (!checklistComplete) {
+      setErr("Complete the pre-trip checklist before you start the trip.");
+      return;
+    }
     await runAction(() => api.post("/api/trips/start/", { schedule_id: id, deviation_mode: deviationMode }), "Trip start request sent.");
     setActiveTab("active");
   };
@@ -435,6 +499,27 @@ export default function DriverHome() {
     } else {
       setActiveTab("history");
     }
+  };
+
+  const acceptAssignment = async (scheduleId) => {
+    if (!scheduleId) return;
+    setBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/trips/schedules/${scheduleId}/accept/`);
+      setMsg(response?.data?.message || "Assignment accepted.");
+      await loadDashboard({ silent: true });
+      setActiveTab("active");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to accept the assignment.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const togglePreTripCheck = (checkId) => {
+    setPreTripChecks((current) => ({ ...current, [checkId]: !current[checkId] }));
   };
 
   const postLocation = useCallback(async (payload) => {
@@ -708,7 +793,7 @@ Please review the earnings breakdown for this shift.`;
                 <SelectField label="Helper / Conductor" value={helperId} onChange={setHelperId} options={helperOptions} />
               </div>
               {!manualOptions.helpers.length ? <p className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700">No helpers are currently available for manual assignment.</p> : null}
-              <ActionButton tone="primary" onClick={() => (nextSchedule ? startScheduledTrip(nextSchedule.id) : startManualTrip())} disabled={busy || (!nextSchedule && (!routeId || !busId || !helperId))} className="mt-5 w-full !py-5 !text-base"><Icon name="play" />{busy ? "Starting Trip" : "Start Trip"}</ActionButton>
+              <ActionButton tone="primary" onClick={startManualTrip} disabled={busy || !routeId || !busId || !helperId} className="mt-5 w-full !py-5 !text-base"><Icon name="play" />{busy ? "Starting Trip" : "Start Manual Trip"}</ActionButton>
             </Panel>
 
             <div className="mt-6">
@@ -725,7 +810,15 @@ Please review the earnings breakdown for this shift.`;
                   <button
                     key={schedule.id}
                     type="button"
-                    onClick={() => startScheduledTrip(schedule.id)}
+                    onClick={() => {
+                      if (currentTrip) return;
+                      if (schedule.driver_assignment_accepted) {
+                        setMsg("Assignment is ready. Complete the checklist from Active Trip to start.");
+                        setActiveTab("active");
+                        return;
+                      }
+                      acceptAssignment(schedule.id);
+                    }}
                     disabled={busy || Boolean(currentTrip)}
                     className={`flex w-full items-start gap-4 rounded-[1.8rem] border px-4 py-4 text-left shadow-[var(--drv-shadow)] transition ${index === 0 ? "border-transparent bg-[var(--drv-soft)]" : "border-[var(--drv-border)] bg-white/72"}`}
                   >
@@ -735,8 +828,13 @@ Please review the earnings breakdown for this shift.`;
                     <div className="min-w-0 flex-1">
                       <p className="break-words text-lg font-black leading-snug">{schedule.route_name}</p>
                       <p className="mt-1 break-words text-sm leading-6 text-[var(--drv-muted)]">{schedule.bus_plate} | {schedule.helper_name || "Helper pending"}</p>
+                      <p className="mt-1 text-xs font-bold uppercase tracking-[0.14em] text-[var(--drv-purple)]">
+                        {schedule.driver_assignment_accepted ? "Assignment accepted" : "Tap to accept assignment"}
+                      </p>
                     </div>
-                    {index === 0 ? <span className="rounded-full bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white">Active</span> : null}
+                    <span className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${schedule.driver_assignment_accepted ? "bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] text-white" : "bg-white text-[var(--drv-purple)]"}`}>
+                      {schedule.driver_assignment_accepted ? "Accepted" : "Pending"}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -747,36 +845,101 @@ Please review the earnings breakdown for this shift.`;
         {activeTab === "active" ? (
           !currentTrip ? (
             <div className="mt-5 space-y-5 pb-32">
-              <Panel>
-                <SectionLabel>Active Trip</SectionLabel>
-                <h2 className="mt-2 text-3xl font-black leading-tight">You are on standby right now</h2>
-                <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
-                  Start a scheduled trip or launch a manual trip from this tab. As soon as the trip goes live, GPS Management and the Route Simulator will appear here.
-                </p>
-              </Panel>
-
               {nextSchedule ? (
-                <Panel className="bg-[rgba(247,224,249,0.82)]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <SectionLabel>Next Scheduled Trip</SectionLabel>
-                      <p className="mt-2 break-words text-2xl font-black leading-snug">{nextSchedule.route_name}</p>
-                      <p className="mt-2 break-words text-sm leading-6 text-[var(--drv-muted)]">{nextSchedule.bus_plate} | {nextSchedule.helper_name || "Helper pending"}</p>
+                <>
+                  <div className="overflow-hidden rounded-[1.8rem] bg-[linear-gradient(135deg,var(--drv-purple),var(--drv-purple-2))] p-5 text-white shadow-[var(--drv-shadow-strong)]">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Assigned Route</p>
+                        <h2 className="mt-3 break-words text-[2.1rem] font-black leading-[1.02] sm:text-4xl">{nextSchedule.route_name}</h2>
+                        <p className="mt-3 break-words text-sm font-semibold leading-6 text-white/82">{nextSchedule.bus_plate} | Helper {nextSchedule.helper_name || "Pending"}</p>
+                      </div>
+                      <span className={`inline-flex items-center rounded-full px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] shadow-[0_10px_22px_rgba(71,39,81,0.18)] ${nextScheduleAccepted ? "bg-white text-[var(--drv-purple)]" : "bg-white/14 text-white"}`}>
+                        {nextScheduleAccepted ? "Accepted" : "Awaiting Acceptance"}
+                      </span>
                     </div>
-                    <Pill tone={minutesToDeparture !== null && minutesToDeparture > 0 ? "warn" : "idle"}>
-                      {minutesToDeparture !== null ? `${Math.max(minutesToDeparture, 0)} min` : "Queued"}
-                    </Pill>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-[1.5rem] bg-white/12 px-4 py-4 backdrop-blur-sm">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/72">Departure</p>
+                        <p className="mt-2 break-words text-lg font-black leading-snug">{nextScheduleDepartureLabel}</p>
+                      </div>
+                      <div className="rounded-[1.5rem] bg-white/12 px-4 py-4 backdrop-blur-sm">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/72">Bus</p>
+                        <p className="mt-2 break-words text-lg font-black leading-snug">{nextSchedule.bus_plate}</p>
+                      </div>
+                      <div className="rounded-[1.5rem] bg-white/12 px-4 py-4 backdrop-blur-sm">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-white/72">Helper</p>
+                        <p className="mt-2 break-words text-lg font-black leading-snug">{nextSchedule.helper_name || "Pending"}</p>
+                      </div>
+                    </div>
+
+                    {!nextScheduleAccepted ? (
+                      <ActionButton tone="ghost" onClick={() => acceptAssignment(nextSchedule.id)} disabled={busy} className="mt-5 w-full !border-white/20 !bg-white/14 !py-4 !text-white">
+                        <Icon name="ticket" className="h-4 w-4" />
+                        {busy ? "Accepting Assignment" : "Accept Assignment"}
+                      </ActionButton>
+                    ) : (
+                      <div className="mt-5 rounded-[1.5rem] bg-white/12 px-4 py-4 text-sm font-semibold text-white/88">
+                        Assignment accepted. Finish the checklist below and then send your driver start confirmation.
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-4 rounded-[1.5rem] bg-white/80 px-4 py-4">
-                    <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">Departure Window</p>
-                    <p className="mt-2 text-lg font-black text-[var(--drv-text)]">{formatTime(nextSchedule.scheduled_start_time)}</p>
-                  </div>
-                  <ActionButton tone="primary" onClick={() => startScheduledTrip(nextSchedule.id)} disabled={busy} className="mt-4 w-full !py-4">
-                    <Icon name="play" className="h-4 w-4" />
-                    {busy ? "Starting Trip" : "Start Scheduled Trip"}
-                  </ActionButton>
+
+                  <Panel>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <SectionLabel>Pre-Trip Checklist</SectionLabel>
+                        <h3 className="mt-2 text-[1.9rem] font-black leading-tight">Driver readiness check</h3>
+                      </div>
+                      <Pill tone={checklistComplete ? "live" : nextScheduleAccepted ? "warn" : "idle"}>
+                        {checklistCompletedCount}/{PRE_TRIP_CHECKLIST.length} Ready
+                      </Pill>
+                    </div>
+
+                    <div className="mt-5 space-y-3">
+                      {PRE_TRIP_CHECKLIST.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => togglePreTripCheck(item.id)}
+                          disabled={!nextScheduleAccepted}
+                          className={`flex w-full items-start gap-4 rounded-[1.5rem] border px-4 py-4 text-left transition ${
+                            preTripChecks[item.id]
+                              ? "border-emerald-200 bg-emerald-50"
+                              : "border-[var(--drv-border)] bg-[var(--drv-soft)]"
+                          } ${!nextScheduleAccepted ? "cursor-not-allowed opacity-60" : ""}`}
+                        >
+                          <span className={`mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 ${
+                            preTripChecks[item.id]
+                              ? "border-emerald-500 bg-emerald-500 text-white"
+                              : "border-[rgba(52,21,93,0.18)] bg-white"
+                          }`}>
+                            {preTripChecks[item.id] ? "OK" : ""}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block break-words text-sm font-black text-[var(--drv-text)]">{item.label}</span>
+                            <span className="mt-1 block break-words text-xs leading-5 text-[var(--drv-muted)]">{item.note}</span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    <ActionButton tone="primary" onClick={() => startScheduledTrip(nextSchedule.id)} disabled={busy || !nextScheduleAccepted || !checklistComplete} className="mt-5 w-full !py-5 !text-base">
+                      <Icon name="play" className="h-4 w-4" />
+                      {busy ? "Sending Start Confirmation" : "Start Scheduled Trip"}
+                    </ActionButton>
+                  </Panel>
+                </>
+              ) : (
+                <Panel>
+                  <SectionLabel>Active Trip</SectionLabel>
+                  <h2 className="mt-2 text-3xl font-black leading-tight">No assigned trip is waiting right now</h2>
+                  <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
+                    You can stay on standby here or launch a manual trip if operations instructs you to do so.
+                  </p>
                 </Panel>
-              ) : null}
+              )}
 
               <Panel>
                 <div className="flex items-start justify-between gap-3">
@@ -815,12 +978,14 @@ Please review the earnings breakdown for this shift.`;
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <SectionLabel>GPS Management</SectionLabel>
-                    <p className="mt-2 text-2xl font-black">Waiting for an active trip</p>
+                    <p className="mt-2 text-2xl font-black">{nextSchedule ? "Trip will unlock after helper confirmation" : "Waiting for an active trip"}</p>
                   </div>
-                  <Pill tone="idle">Standby</Pill>
+                  <Pill tone={nextScheduleAccepted ? "warn" : "idle"}>{nextScheduleAccepted ? "Ready to Start" : "Standby"}</Pill>
                 </div>
                 <p className="mt-3 text-sm leading-6 text-[var(--drv-muted)]">
-                  After you start a trip, this tab will unlock live GPS sharing, manual coordinate sending, and the route simulator for passenger tracking.
+                  {nextSchedule
+                    ? "When the helper confirms your trip start from their device, this page will switch into the live route map with passenger pickup and drop markers."
+                    : "After you start a trip, this tab will unlock live GPS sharing, manual coordinate sending, and the route simulator for passenger tracking."}
                 </p>
                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <button type="button" disabled className="rounded-full border border-[var(--drv-border)] bg-[var(--drv-soft)] px-5 py-4 text-sm font-black uppercase tracking-[0.14em] text-[var(--drv-muted)] opacity-70">
@@ -953,10 +1118,10 @@ Please review the earnings breakdown for this shift.`;
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {[
-                  { label: "Occupancy", value: `${occupancyPct}%`, note: `${occupied}/${capacity} seats` },
+                  { label: "Seat Occupancy", value: `${occupancyPct}%`, note: `${occupied}/${capacity} seats in use` },
+                  { label: "Waiting Pickup", value: pickupPassengerCount, note: pickupPassengerCount ? `Next pickup at ${priorityPassengerStop}` : "No pickup stops pending" },
+                  { label: "On Board", value: onboardPassengerCount, note: onboardPassengerCount ? "Passengers heading to drop points" : "No onboard drop requests yet" },
                   { label: "Next Stop", value: nextStop, note: `Prev: ${previousStop}` },
-                  { label: "GPS Status", value: gpsStateLabel, note: locationStatus || "Waiting for sync" },
-                  { label: "Route Status", value: routeStatusLabel, note: liveBusPoint ? "Live route synced" : "Waiting for GPS" },
                 ].map((card) => (
                   <Panel key={card.label}>
                     <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--drv-muted)]">{card.label}</p>
@@ -1024,8 +1189,8 @@ Please review the earnings breakdown for this shift.`;
                           center={[lat, lng]}
                           radius={isPickup ? 10 : 8}
                           pathOptions={{
-                            color: isPickup ? "#ff8a5b" : "#34155d",
-                            fillColor: isPickup ? "#ffb290" : "#ff6b73",
+                            color: isPickup ? "#059669" : "#dc2626",
+                            fillColor: isPickup ? "#34d399" : "#f87171",
                             fillOpacity: 0.96,
                           }}
                         >
@@ -1181,10 +1346,10 @@ Please review the earnings breakdown for this shift.`;
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <SectionLabel>Passenger Stops</SectionLabel>
-                        <p className="mt-1 text-xl font-black">Upcoming pickup and drop requests</p>
+                        <p className="mt-1 text-xl font-black">Pickup and onboard drop map queue</p>
                       </div>
-                      <Pill tone={pendingPickupRequests.length ? "warn" : "idle"}>
-                        {pendingPickupRequests.length} pickup
+                      <Pill tone={pickupPassengerCount ? "warn" : onboardPassengerCount ? "live" : "idle"}>
+                        {pickupPassengerCount} pickup | {onboardPassengerCount} onboard
                       </Pill>
                     </div>
 
@@ -1195,7 +1360,7 @@ Please review the earnings breakdown for this shift.`;
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="break-words text-sm font-black text-[var(--drv-text)]">{request.passenger_name}</p>
-                                <p className="mt-1 text-xs font-black uppercase tracking-[0.18em] text-[var(--drv-purple)]">{request.stage_label}</p>
+                                <p className={`mt-1 text-xs font-black uppercase tracking-[0.18em] ${request.stage === "pickup" ? "text-emerald-600" : "text-rose-600"}`}>{request.stage === "pickup" ? "Pickup Waiting" : "Onboard Drop"}</p>
                               </div>
                               <span className="rounded-full bg-white px-3 py-1 text-[0.68rem] font-black uppercase tracking-[0.14em] text-[var(--drv-purple)]">
                                 {(request.seat_labels || []).join(", ") || `${request.seats_count} seat`}
