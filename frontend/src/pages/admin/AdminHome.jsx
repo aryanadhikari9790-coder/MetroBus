@@ -20,7 +20,6 @@ function Btn({ children, onClick, disabled, tone = "primary", className = "" }) 
   return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-lg px-5 py-3 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
 function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
-function ThemeToggle({ isDark, toggle }) { return <button type="button" onClick={toggle} style={{ color: "var(--text)", borderColor: "var(--border)", background: "var(--surface)" }} className="flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition hover:opacity-80">{isDark ? "Light Mode" : "Dark Mode"}</button>; }
 function StatCard({ label, value, sub, accent = "", t }) {
   return <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{label}</p><p className={`mt-2 break-words text-3xl font-black leading-tight ${accent || t.text}`}>{value}</p>{sub && <p className={`mt-1.5 break-words text-xs leading-5 ${t.textSub}`}>{sub}</p>}</GlassCard>;
 }
@@ -79,7 +78,7 @@ export default function AdminHome() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { isDark, toggle } = useTheme();
+  const { isDark } = useTheme();
   const t = themeTokens(isDark);
 
   const [dashboard, setDashboard]           = useState(null);
@@ -550,7 +549,6 @@ export default function AdminHome() {
             <div className="flex items-center gap-2 flex-wrap">
               <Pill color="emerald" isDark={isDark}>{trips.live || 0} live</Pill>
               <Pill color="amber" isDark={isDark}>{payments.pending || 0} pending</Pill>
-              <ThemeToggle isDark={isDark} toggle={toggle} />
             <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); loadSched(); }} className="!py-2 !px-3 text-xs">Reload</Btn>
             <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
           </div>

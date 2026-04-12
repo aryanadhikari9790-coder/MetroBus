@@ -191,7 +191,7 @@ function createChecklistState() {
 export default function DriverHome() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { isDark, toggle } = useTheme();
+  const { isDark } = useTheme();
   const theme = useMemo(() => (isDark ? DARK_THEME : LIGHT_THEME), [isDark]);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -742,7 +742,6 @@ Please review the earnings breakdown for this shift.`;
           <div className="flex shrink-0 items-center gap-2">
             <Pill tone={activeTrip ? "live" : pendingTrip ? "warn" : "idle"}>{activeTrip ? "Trip Live" : pendingTrip ? "Start Pending" : "Standby"}</Pill>
             <button type="button" onClick={() => loadDashboard()} className="grid h-10 w-10 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)] sm:h-11 sm:w-11"><Icon name="refresh" /></button>
-            {activeTab !== "home" ? <button type="button" onClick={toggle} className="grid h-10 w-10 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-purple)] shadow-[var(--drv-shadow)] sm:h-11 sm:w-11"><Icon name={isDark ? "sun" : "moon"} /></button> : null}
             <button type="button" onClick={handleLogout} className="grid h-10 w-10 place-items-center rounded-full border border-[var(--drv-border)] bg-white/80 text-[var(--drv-plum)] shadow-[var(--drv-shadow)] sm:h-11 sm:w-11"><Icon name="logout" /></button>
           </div>
         </div>
