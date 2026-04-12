@@ -18,7 +18,13 @@ from .serializers import (
     PassengerCancelBookingSerializer,
 )
 from .permissions import IsPassenger, IsHelper
-from .services import advance_booking_journey_status, validate_seats_available, get_fare_for_segment, get_taken_seat_ids_for_trip
+from .services import (
+    advance_booking_journey_status,
+    validate_seats_available,
+    get_fare_for_segment,
+    get_taken_seat_ids_for_trip,
+    intervals_overlap,
+)
 from .realtime import emit_booking_event
 from .tickets import generate_boarding_otp, parse_ticket_reference
 
@@ -186,16 +192,85 @@ class TripSeatAvailabilityView(APIView):
             fare_per_seat = get_fare_for_segment(trip.route_id, from_order, to_order)
         except ValueError:
             fare_per_seat = None
-        all_seats = Seat.objects.filter(bus=trip.bus).order_by("seat_no").values("id", "seat_no")
+        all_seats = list(Seat.objects.filter(bus=trip.bus).order_by("seat_no").values("id", "seat_no"))
         taken = get_taken_seat_ids_for_trip(trip_id, from_order, to_order)
+        data_by_seat_id = {
+            seat["id"]: {
+                "seat_id": seat["id"],
+                "seat_no": seat["seat_no"],
+                "available": seat["id"] not in taken,
+                "seat_state": "OPEN" if seat["id"] not in taken else "OCCUPIED",
+                "occupant_kind": None,
+                "journey_stage": None,
+                "payment_status": None,
+                "payment_verified": False,
+                "payment_tick": "NONE",
+                "booking_id": None,
+                "offline_boarding_id": None,
+            }
+            for seat in all_seats
+        }
 
-        data = []
-        for s in all_seats:
-            data.append({
-                "seat_id": s["id"],
-                "seat_no": s["seat_no"],
-                "available": s["id"] not in taken,
-            })
+        bookings = (
+            Booking.objects.filter(trip_id=trip_id, status=Booking.Status.CONFIRMED)
+            .select_related("payment")
+            .prefetch_related("booking_seats")
+            .order_by("-checked_in_at", "from_stop_order", "created_at")
+        )
+        for booking in bookings:
+            if not intervals_overlap(booking.from_stop_order, booking.to_stop_order, from_order, to_order):
+                continue
+
+            payment = getattr(booking, "payment", None)
+            payment_status = payment.status if payment else "UNPAID"
+            payment_verified = payment_status == "SUCCESS"
+            journey_stage = "dropoff" if booking.checked_in_at else "pickup"
+            payment_tick = "PAID" if payment_verified else "PENDING"
+
+            for booking_seat in booking.booking_seats.all():
+                seat_payload = data_by_seat_id.get(booking_seat.seat_id)
+                if not seat_payload:
+                    continue
+                seat_payload.update(
+                    {
+                        "available": False,
+                        "seat_state": "OCCUPIED",
+                        "occupant_kind": "ONLINE",
+                        "journey_stage": journey_stage,
+                        "payment_status": payment_status,
+                        "payment_verified": payment_verified,
+                        "payment_tick": payment_tick,
+                        "booking_id": booking.id,
+                    }
+                )
+
+        offline_seats = (
+            OfflineSeat.objects.filter(offline_boarding__trip_id=trip_id)
+            .select_related("offline_boarding")
+            .order_by("-offline_boarding__created_at")
+        )
+        for offline_seat in offline_seats:
+            offline_boarding = offline_seat.offline_boarding
+            if not intervals_overlap(offline_boarding.from_stop_order, offline_boarding.to_stop_order, from_order, to_order):
+                continue
+
+            seat_payload = data_by_seat_id.get(offline_seat.seat_id)
+            if not seat_payload:
+                continue
+            seat_payload.update(
+                {
+                    "available": False,
+                    "seat_state": "OCCUPIED",
+                    "occupant_kind": "OFFLINE",
+                    "journey_stage": "dropoff",
+                    "payment_status": "OFFLINE",
+                    "payment_verified": False,
+                    "payment_tick": "PENDING",
+                    "offline_boarding_id": offline_boarding.id,
+                }
+            )
+
+        data = [data_by_seat_id[seat["id"]] for seat in all_seats]
 
         return Response({
             "trip_id": trip_id,

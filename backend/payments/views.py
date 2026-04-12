@@ -84,13 +84,25 @@ def _sync_booking_payment_state(booking, *, event_type=None, message="", actor=N
             emit_booking_event(booking, event_type, message=message, actor=actor)
         return booking
 
+    update_fields = []
     if payment and payment.status == Payment.Status.SUCCESS:
-        advance_booking_journey_status(booking, Booking.JourneyStatus.PAID)
+        if booking.accepted_by_helper_at and not booking.checked_in_at and booking.status == Booking.Status.CONFIRMED:
+            booking.checked_in_at = timezone.now()
+            booking.checked_in_by = booking.accepted_by_helper or actor
+            advance_booking_journey_status(booking, Booking.JourneyStatus.BOARDED)
+            update_fields.extend(["checked_in_at", "checked_in_by", "journey_status"])
+        else:
+            advance_booking_journey_status(booking, Booking.JourneyStatus.PAID)
+            update_fields.append("journey_status")
     elif booking.payment_requested_at:
         advance_booking_journey_status(booking, Booking.JourneyStatus.PAYMENT_REQUESTED)
+        update_fields.append("journey_status")
     else:
         advance_booking_journey_status(booking, Booking.JourneyStatus.BOOKED)
-    booking.save(update_fields=["journey_status"])
+        update_fields.append("journey_status")
+
+    if update_fields:
+        booking.save(update_fields=list(dict.fromkeys(update_fields)))
 
     if event_type:
         emit_booking_event(booking, event_type, message=message, actor=actor)

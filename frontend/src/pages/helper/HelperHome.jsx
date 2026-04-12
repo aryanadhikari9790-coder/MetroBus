@@ -41,10 +41,10 @@ const DARK_THEME = {
 };
 
 const TABS = [
-  { id: "trip", label: "Trip", icon: "bus" },
-  { id: "boarding", label: "Boarding", icon: "ticket" },
-  { id: "verify", label: "Verify", icon: "shield" },
-  { id: "route", label: "Route", icon: "map" },
+  { id: "route", label: "Live Map", icon: "map" },
+  { id: "boarding", label: "Seats", icon: "ticket" },
+  { id: "verify", label: "Ride OTP", icon: "shield" },
+  { id: "trip", label: "Control", icon: "bus" },
 ];
 
 const APP_SHELL_CLASS = "enterprise-mobile-shell";
@@ -127,19 +127,31 @@ function SelectField({ label, value, onChange, options, disabled = false }) {
 }
 
 function SeatNode({ seat, selected, onClick }) {
-  let className = "border-[var(--hlp-border)] bg-white text-[var(--hlp-text)]";
-  let stateLabel = "Open";
+  let className = "border-emerald-200 bg-emerald-50 text-emerald-700";
+  let stateLabel = "Vacant";
+  let tickClassName = "";
+  let tickLabel = "";
+
   if (!seat.available) {
-    className = "border-transparent bg-[rgba(233,198,244,0.8)] text-[var(--hlp-muted)]";
-    stateLabel = "Taken";
+    className = "border-red-200 bg-red-50 text-red-700";
+    stateLabel = seat.occupant_kind === "OFFLINE" ? "Offline" : "Occupied";
+    tickClassName = seat.payment_verified ? "bg-sky-500 text-white" : "bg-slate-300 text-slate-700";
+    tickLabel = seat.payment_verified ? "Paid" : "Pending";
   } else if (selected) {
     className = "border-transparent bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]";
-    stateLabel = "Marked";
+    stateLabel = "Selected";
   }
+
   return (
-    <button type="button" disabled={!seat.available} onClick={onClick} className={`flex aspect-square min-h-[4.2rem] flex-col items-center justify-center rounded-[1.55rem] border text-center transition ${className} disabled:cursor-not-allowed`}>
+    <button type="button" disabled={!seat.available} onClick={onClick} className={`relative flex aspect-square min-h-[4.2rem] flex-col items-center justify-center rounded-[1.55rem] border text-center transition ${className} disabled:cursor-not-allowed`}>
+      {!seat.available ? (
+        <span className={`absolute right-2 top-2 inline-flex h-5 min-w-[1.35rem] items-center justify-center rounded-full px-1 text-[0.52rem] font-black uppercase tracking-[0.12em] ${tickClassName}`}>
+          {seat.payment_verified ? "✓✓" : "✓"}
+        </span>
+      ) : null}
       <span className="text-base font-black">{seat.seat_no}</span>
       <span className="mt-1 text-[0.54rem] font-black uppercase tracking-[0.18em] opacity-75">{stateLabel}</span>
+      {!seat.available && tickLabel ? <span className="mt-1 text-[0.48rem] font-black uppercase tracking-[0.14em] opacity-70">{tickLabel}</span> : null}
     </button>
   );
 }
@@ -166,6 +178,12 @@ function formatTime(value) {
   }
 }
 
+function formatMoney(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "NPR --";
+  return `NPR ${amount.toLocaleString()}`;
+}
+
 function distanceBetween(a, b) {
   if (!a || !b) return Infinity;
   return Math.sqrt((Number(a[0]) - Number(b[0])) ** 2 + (Number(a[1]) - Number(b[1])) ** 2);
@@ -180,10 +198,17 @@ export default function HelperHome() {
   const [tripId, setTripId] = useState("");
   const [routeStops, setRouteStops] = useState([]);
   const [latestLocation, setLatestLocation] = useState(null);
+  const [passengerRequests, setPassengerRequests] = useState([]);
+  const [passengerSummary, setPassengerSummary] = useState({
+    pending_pickups: 0,
+    onboard_dropoffs: 0,
+    total_active_bookings: 0,
+  });
   const [assignedBus, setAssignedBus] = useState(null);
   const [fromOrder, setFromOrder] = useState("");
   const [toOrder, setToOrder] = useState("");
   const [seats, setSeats] = useState([]);
+  const [segmentFarePerSeat, setSegmentFarePerSeat] = useState(null);
   const [selectedSeatIds, setSelectedSeatIds] = useState([]);
   const [loadingTrips, setLoadingTrips] = useState(true);
   const [loadingAvail, setLoadingAvail] = useState(false);
@@ -195,7 +220,7 @@ export default function HelperHome() {
   const [bookingSocketState, setBookingSocketState] = useState("disconnected");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [activeTab, setActiveTab] = useState("trip");
+  const [activeTab, setActiveTab] = useState("route");
   const bookingSocketRef = useRef(null);
   const ticketLookupRef = useRef(null);
 
@@ -211,6 +236,9 @@ export default function HelperHome() {
   const availableSeats = seats.filter((seat) => seat.available);
   const occupiedCount = seats.length - availableSeats.length;
   const selectedCount = selectedSeatIds.length;
+  const pendingPickupRequests = passengerRequests.filter((request) => request.stage === "pickup");
+  const onboardDropRequests = passengerRequests.filter((request) => request.stage === "dropoff");
+  const selectedSegmentFare = segmentFarePerSeat != null ? Number(segmentFarePerSeat) * Math.max(selectedCount, 1) : null;
   const fromStop = routeStops.find((stop) => String(stop.stop_order) === String(fromOrder)) || null;
   const toStop = routeStops.find((stop) => String(stop.stop_order) === String(toOrder)) || null;
   const selectedSeatLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
@@ -248,6 +276,7 @@ export default function HelperHome() {
   const routeTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A";
   const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
   const routeCondition = livePoint ? "Live movement on route" : tripAwaitingStart ? "Waiting for both start confirmations" : "Waiting for GPS ping";
+  const routeMapBlurred = !activeTrip;
   const verifyPreview = ticketLookup?.payment || { method: "Cash", status: "Pending", amount: 450 };
   const helperTripHeroTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A: Downtown Express";
   const vehicleCapacity = assignedBus?.capacity || seats.length || 32;
@@ -273,6 +302,8 @@ export default function HelperHome() {
   const onboardBookings = helperBookingGroups.onboard ?? [];
   const completedRecentBookings = helperBookingGroups.completed_recent ?? [];
   const helperBookingSummary = helperBookingGroups.summary ?? {};
+  const nextPickupRequest = pendingPickupRequests[0] || null;
+  const nextDropRequest = onboardDropRequests[0] || null;
 
   const pushScanLog = useCallback((text) => {
     setScanLogItems((current) => {
@@ -324,6 +355,12 @@ export default function HelperHome() {
     if (!id) {
       setRouteStops([]);
       setLatestLocation(null);
+      setPassengerRequests([]);
+      setPassengerSummary({
+        pending_pickups: 0,
+        onboard_dropoffs: 0,
+        total_active_bookings: 0,
+      });
       return;
     }
     try {
@@ -333,17 +370,32 @@ export default function HelperHome() {
       ]);
       setRouteStops(detailResponse.data.route_stops || []);
       setLatestLocation(locationResponse?.data || null);
+      setPassengerRequests(detailResponse.data.passenger_requests || []);
+      setPassengerSummary(
+        detailResponse.data.passenger_summary || {
+          pending_pickups: 0,
+          onboard_dropoffs: 0,
+          total_active_bookings: 0,
+        },
+      );
       setErr("");
     } catch (error) {
       setErr(error?.response?.data?.detail || "Unable to load trip context.");
       setRouteStops([]);
       setLatestLocation(null);
+      setPassengerRequests([]);
+      setPassengerSummary({
+        pending_pickups: 0,
+        onboard_dropoffs: 0,
+        total_active_bookings: 0,
+      });
     }
   }, []);
 
   const loadAvailability = useCallback(async (tid, from, to) => {
     if (!tid || !from || !to) {
       setSeats([]);
+      setSegmentFarePerSeat(null);
       setSelectedSeatIds([]);
       return;
     }
@@ -351,11 +403,13 @@ export default function HelperHome() {
     try {
       const response = await api.get(`/api/bookings/trips/${tid}/availability/?from=${from}&to=${to}`);
       setSeats(response.data.seats || []);
+      setSegmentFarePerSeat(response.data.fare_per_seat ?? null);
       setSelectedSeatIds([]);
       setErr("");
     } catch (error) {
       setErr(error?.response?.data?.detail || "Unable to load availability.");
       setSeats([]);
+      setSegmentFarePerSeat(null);
       setSelectedSeatIds([]);
     } finally {
       setLoadingAvail(false);
@@ -520,9 +574,9 @@ export default function HelperHome() {
     );
     if (response?.data?.trip?.status === "LIVE") {
       setTripId(String(response.data.trip.id));
-      setActiveTab("boarding");
+      setActiveTab("route");
     } else {
-      setActiveTab("trip");
+      setActiveTab("route");
     }
   };
 
@@ -537,7 +591,7 @@ export default function HelperHome() {
     );
     if (response?.data?.trip?.status === "LIVE") {
       setTripId(String(response.data.trip.id));
-      setActiveTab("boarding");
+      setActiveTab("route");
     }
   };
 
@@ -998,9 +1052,11 @@ Need support with live trip operations.`;
                 <Chip tone={loadingAvail ? "warn" : "live"}>{loadingAvail ? "Refreshing Seats" : "Seats Ready"}</Chip>
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-5 text-[0.72rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">
-                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full border border-[var(--hlp-border)] bg-white" />Open</span>
-                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[rgba(233,198,244,0.86)]" />Occupied</span>
+                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-emerald-500" />Vacant</span>
+                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-red-500" />Occupied</span>
                 <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))]" />Selected</span>
+                <span className="inline-flex items-center gap-2"><span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-slate-300 px-1 text-[0.45rem] font-black text-slate-700">✓</span>Payment pending</span>
+                <span className="inline-flex items-center gap-2"><span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-sky-500 px-1 text-[0.45rem] font-black text-white">✓✓</span>Payment done</span>
               </div>
             </SurfaceCard>
 
@@ -1014,6 +1070,25 @@ Need support with live trip operations.`;
                 <div className="mx-auto mt-6 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
                   <span className="uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Selected seats:</span>
                   {selectedSeatLabels.length ? selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] px-3 py-1 text-xs text-white">{label}</span>) : <span className="text-[var(--hlp-muted)]">None</span>}
+                </div>
+              </div>
+            </SurfaceCard>
+
+            <SurfaceCard className="bg-[rgba(255,250,255,0.94)]">
+              <SectionLabel>Offline Boarding Summary</SectionLabel>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Pickup</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{fromStop?.stop?.name || "Choose stop"}</p>
+                </div>
+                <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Drop</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{toStop?.stop?.name || "Choose stop"}</p>
+                </div>
+                <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Fare</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{segmentFarePerSeat != null ? `${formatMoney(segmentFarePerSeat)} per seat` : "Fare unavailable"}</p>
+                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{selectedCount ? `${formatMoney(selectedSegmentFare)} total for ${selectedCount} seat${selectedCount > 1 ? "s" : ""}` : "Select seats to preview the offline boarding total."}</p>
                 </div>
               </div>
             </SurfaceCard>
@@ -1218,15 +1293,205 @@ Need support with live trip operations.`;
                 <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeDestination}</p>
               </div>
             </div>
-            {!activeTrip && tripAwaitingStart ? (
-              <SurfaceCard className="bg-[rgba(255,250,255,0.92)]">
-                <SectionLabel>Route Status</SectionLabel>
-                <p className="mt-2 text-2xl font-black">Trip is not LIVE yet</p>
-                <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">
-                  {pendingStartLabel}
-                </p>
-              </SurfaceCard>
+            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <SectionLabel>Route Control</SectionLabel>
+                  <h3 className="mt-3 break-words text-[2.2rem] font-black leading-[0.92] sm:text-[2.8rem]">
+                    {activeTrip ? "Trip LIVE" : tripAwaitingStart ? "Ready To Confirm" : nextSchedule ? "Ready To Start" : "Waiting For Assignment"}
+                  </h3>
+                  <p className="mt-4 max-w-2xl text-sm leading-6 text-white/82">
+                    {activeTrip
+                      ? `${routeTitle} is live. Green markers show pickup passengers and red markers show onboard drop-offs.`
+                      : tripAwaitingStart
+                        ? pendingStartLabel
+                        : nextSchedule
+                          ? `Your next assigned trip is ${nextSchedule.route_name} with bus ${nextSchedule.bus_plate}. Request the start from this page when you're ready.`
+                          : "No assigned trip is ready yet. Once admin assigns a scheduled run, the live map and controls will unlock here."}
+                  </p>
+                </div>
+                <Chip tone={activeTrip ? "live" : tripAwaitingStart ? "warn" : "soft"}>{helperHeaderStatus}</Chip>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[1.4rem] bg-white/12 px-4 py-4">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/72">Waiting Pickup</p>
+                  <p className="mt-2 text-3xl font-black">{passengerSummary.pending_pickups || 0}</p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white/12 px-4 py-4">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/72">Onboard Drop</p>
+                  <p className="mt-2 text-3xl font-black">{passengerSummary.onboard_dropoffs || 0}</p>
+                </div>
+                <div className="rounded-[1.4rem] bg-white/12 px-4 py-4">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/72">Occupied Seats</p>
+                  <p className="mt-2 text-3xl font-black">{occupiedCount}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                {tripAwaitingStart ? (
+                  pendingTrip?.helper_start_confirmed ? (
+                    <div className="flex-1 rounded-[1.4rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
+                      {pendingStartLabel}
+                    </div>
+                  ) : (
+                    <PrimaryButton tone="primary" onClick={confirmPendingStart} className="flex-1 !justify-between !rounded-[1.5rem] !bg-white !px-5 !py-4 !text-[var(--hlp-purple)] !shadow-none">
+                      Confirm Start
+                      <Icon name="shield" className="h-5 w-5" />
+                    </PrimaryButton>
+                  )
+                ) : null}
+                {!currentTrip && nextSchedule ? (
+                  <PrimaryButton tone="primary" onClick={() => requestScheduledStart(nextSchedule.id)} className="flex-1 !justify-between !rounded-[1.5rem] !bg-white !px-5 !py-4 !text-[var(--hlp-purple)] !shadow-none">
+                    Request Start
+                    <Icon name="bus" className="h-5 w-5" />
+                  </PrimaryButton>
+                ) : null}
+                {activeTrip ? (
+                  <PrimaryButton tone={activeTrip.helper_end_confirmed ? "ghost" : "danger"} onClick={requestTripEnd} disabled={activeTrip.helper_end_confirmed} className="flex-1 !justify-between !rounded-[1.5rem] !border-white/25 !bg-white/10 !px-5 !py-4 !text-white !shadow-none">
+                    {activeTrip.driver_end_confirmed ? "Confirm End Trip" : activeTrip.helper_end_confirmed ? "End Requested" : "Request End Trip"}
+                    <Icon name="alert" className="h-5 w-5" />
+                  </PrimaryButton>
+                ) : null}
+              </div>
+            </SurfaceCard>
+
+            <SurfaceCard className="overflow-hidden !p-0">
+              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
+                <SectionLabel>Live Route Map</SectionLabel>
+                <p className="mt-1 text-lg font-black">{routeCondition}</p>
+              </div>
+              <div className="relative h-[23rem] w-full overflow-hidden">
+                <div className={`h-full w-full transition ${routeMapBlurred ? "scale-[1.02] blur-[2px] opacity-70" : ""}`}>
+                  <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+                    <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
+                    <MapViewport points={mapPoints} />
+                    {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: "#ff6b73", weight: 5, opacity: 0.92 }} /> : null}
+                    {routeStops.map((stop, index) => {
+                      const lat = Number(stop.stop?.lat);
+                      const lng = Number(stop.stop?.lng);
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                      const current = index === currentStopIndex;
+                      return (
+                        <CircleMarker
+                          key={`${stop.stop_order}-${stop.stop?.name}`}
+                          center={[lat, lng]}
+                          radius={current ? 8 : 5}
+                          pathOptions={{ color: current ? "#ff6b73" : "#af8bbf", fillColor: current ? "#ff6b73" : "#f4dde7", fillOpacity: 0.95 }}
+                        >
+                          <Popup>{stop.stop_order}. {stop.stop?.name}</Popup>
+                        </CircleMarker>
+                      );
+                    })}
+                    {passengerRequests.map((request) => {
+                      const lat = Number(request.marker_lat);
+                      const lng = Number(request.marker_lng);
+                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                      const pickupStage = request.stage === "pickup";
+                      return (
+                        <CircleMarker
+                          key={`${request.booking_id}-${request.stage}`}
+                          center={[lat, lng]}
+                          radius={8}
+                          pathOptions={{
+                            color: pickupStage ? "#15803d" : "#b91c1c",
+                            fillColor: pickupStage ? "#22c55e" : "#ef4444",
+                            fillOpacity: 0.96,
+                            weight: 2,
+                          }}
+                        >
+                          <Popup>
+                            <div className="min-w-[12rem] space-y-1 text-sm">
+                              <p className="font-black">{request.passenger_name}</p>
+                              <p>{request.stage_label}</p>
+                              <p>Seats: {(request.seat_labels || []).join(", ") || "--"}</p>
+                              <p>{pickupStage ? "Pickup" : "Drop"}: {request.marker_stop_name}</p>
+                            </div>
+                          </Popup>
+                        </CircleMarker>
+                      );
+                    })}
+                    {livePoint ? <CircleMarker center={livePoint} radius={10} pathOptions={{ color: "#7c3aed", fillColor: "#a855f7", fillOpacity: 1 }}><Popup>Live bus location</Popup></CircleMarker> : null}
+                  </MapContainer>
+                </div>
+                {routeMapBlurred ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-[rgba(251,243,246,0.34)] px-5 backdrop-blur-sm">
+                    <div className="w-full max-w-md rounded-[1.6rem] border border-white/70 bg-white/88 px-5 py-5 text-center shadow-[var(--hlp-shadow)]">
+                      <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-purple)]">Route Standby</p>
+                      <h3 className="mt-2 text-2xl font-black text-[var(--hlp-text)]">
+                        {tripAwaitingStart ? "Waiting for trip start confirmations" : nextSchedule ? "Request the trip start to go live" : "No active route yet"}
+                      </h3>
+                      <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">
+                        {tripAwaitingStart ? pendingStartLabel : nextSchedule ? "Once the driver and helper confirm the assigned schedule, this map becomes the live helper console." : "As soon as admin assigns a live route to you, this map will unlock for pickup and drop control."}
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="grid gap-3 border-t border-[var(--hlp-border)] px-5 py-4 sm:grid-cols-3">
+                <div className="rounded-[1.2rem] bg-[var(--hlp-soft)] px-4 py-3">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Next Pickup</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{nextPickupRequest?.passenger_name || "No pickup pending"}</p>
+                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{nextPickupRequest?.marker_stop_name || "Waiting for the next passenger booking"}</p>
+                </div>
+                <div className="rounded-[1.2rem] bg-[var(--hlp-soft)] px-4 py-3">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Next Drop</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{nextDropRequest?.passenger_name || "No drop pending"}</p>
+                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{nextDropRequest?.marker_stop_name || "Onboard passengers will appear here"}</p>
+                </div>
+                <div className="flex items-end">
+                  <PrimaryButton tone="ghost" onClick={openFullMap} className="w-full">Open Full Map</PrimaryButton>
+                </div>
+              </div>
+            </SurfaceCard>
+
+            {passengerRequests.length ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SurfaceCard>
+                  <SectionLabel>Pickup Queue</SectionLabel>
+                  <div className="mt-4 space-y-3">
+                    {pendingPickupRequests.length ? pendingPickupRequests.map((request) => (
+                      <div key={`pickup-${request.booking_id}`} className="rounded-[1.35rem] bg-[var(--hlp-soft)] px-4 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="break-words text-lg font-black">{request.passenger_name}</p>
+                            <p className="mt-1 text-sm leading-6 text-[var(--hlp-muted)]">{request.marker_stop_name} • {(request.seat_labels || []).join(", ") || "--"}</p>
+                          </div>
+                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.16em] text-emerald-700">Pickup</span>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(needsAcceptanceBookings.find((booking) => booking.id === request.booking_id) || awaitingPaymentBookings.find((booking) => booking.id === request.booking_id) || readyToBoardBookings.find((booking) => booking.id === request.booking_id))} className="!flex-1 !px-4 !py-3 !text-sm">
+                            Open OTP
+                          </PrimaryButton>
+                        </div>
+                      </div>
+                    )) : <div className="rounded-[1.35rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No passengers are waiting for pickup right now.</div>}
+                  </div>
+                </SurfaceCard>
+                <SurfaceCard>
+                  <SectionLabel>Drop Queue</SectionLabel>
+                  <div className="mt-4 space-y-3">
+                    {onboardDropRequests.length ? onboardDropRequests.map((request) => (
+                      <div key={`drop-${request.booking_id}`} className="rounded-[1.35rem] bg-[var(--hlp-soft)] px-4 py-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="break-words text-lg font-black">{request.passenger_name}</p>
+                            <p className="mt-1 text-sm leading-6 text-[var(--hlp-muted)]">{request.marker_stop_name} • {(request.seat_labels || []).join(", ") || "--"}</p>
+                          </div>
+                          <span className="rounded-full bg-red-100 px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.16em] text-red-700">Drop</span>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <PrimaryButton tone="primary" onClick={() => completePassengerRide(onboardBookings.find((booking) => booking.id === request.booking_id))} className="!flex-1 !px-4 !py-3 !text-sm">
+                            End Passenger Ride
+                          </PrimaryButton>
+                        </div>
+                      </div>
+                    )) : <div className="rounded-[1.35rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No passengers are onboard for drop-off yet.</div>}
+                  </div>
+                </SurfaceCard>
+              </div>
             ) : null}
+
             <SurfaceCard>
               <div className="space-y-0">
                 {routeStops.length === 0 ? <p className="py-2 text-sm text-[var(--hlp-muted)]">No route stops loaded for this trip yet.</p> : routeStops.map((stop, index) => {
@@ -1253,42 +1518,6 @@ Need support with live trip operations.`;
                     </div>
                   );
                 })}
-              </div>
-            </SurfaceCard>
-            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
-              <div className="flex items-start justify-between gap-4">
-                <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/14"><Icon name="ticket" className="h-7 w-7" /></div>
-                <Chip tone="dark" className="bg-white/18">Active Pass</Chip>
-              </div>
-              <p className="mt-6 text-sm font-medium text-white/76">Registered user</p>
-              <p className="mt-1 text-3xl font-black">Morning Commute</p>
-              <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/18 pt-4 text-sm font-semibold text-white/86">
-                <span>Valid until {formatTime(activeTrip?.started_at || nextSchedule?.scheduled_start_time)}</span>
-                <span className="text-lg font-black">{">"}</span>
-              </div>
-            </SurfaceCard>
-            <SurfaceCard className="overflow-hidden !p-0">
-              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
-                <SectionLabel>Map Preview</SectionLabel>
-                <p className="mt-1 text-lg font-black">{routeCondition}</p>
-              </div>
-              <div className="h-72 w-full">
-                <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-                  <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
-                  <MapViewport points={mapPoints} />
-                  {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: "#ff6b73", weight: 5, opacity: 0.9 }} /> : null}
-                  {routeStops.map((stop, index) => {
-                    const lat = Number(stop.stop?.lat);
-                    const lng = Number(stop.stop?.lng);
-                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-                    const current = index === currentStopIndex;
-                    return <CircleMarker key={`${stop.stop_order}-${stop.stop?.name}`} center={[lat, lng]} radius={current ? 8 : 5} pathOptions={{ color: current ? "#ff6b73" : "#af8bbf", fillColor: current ? "#ff6b73" : "#f4dde7", fillOpacity: 0.95 }}><Popup>{stop.stop_order}. {stop.stop?.name}</Popup></CircleMarker>;
-                  })}
-                  {livePoint ? <CircleMarker center={livePoint} radius={10} pathOptions={{ color: "#10b981", fillColor: "#34d399", fillOpacity: 1 }}><Popup>Latest helper-linked trip location</Popup></CircleMarker> : null}
-                </MapContainer>
-              </div>
-              <div className="px-5 py-4">
-                <PrimaryButton tone="ghost" onClick={openFullMap} className="w-full">Open Full Map</PrimaryButton>
               </div>
             </SurfaceCard>
             <SurfaceCard className="border-dashed">
