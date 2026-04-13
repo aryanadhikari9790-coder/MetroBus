@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.shortcuts import redirect
+from django.conf import settings
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -60,6 +61,32 @@ def frontend_base_url(request=None):
 
 def frontend_url(path: str, request=None):
     return f"{frontend_base_url(request)}{path}"
+
+
+def _is_private_host(hostname: str) -> bool:
+    host = (hostname or "").lower()
+    if host in {"localhost", "127.0.0.1"}:
+        return True
+    return host.startswith("10.") or host.startswith("192.168.") or host.startswith("172.16.") or host.startswith("172.31.")
+
+
+def _validate_khalti_live_request(request) -> None:
+    """
+    Khalti live mode requires HTTPS and a whitelisted domain.
+    Block local HTTP usage early with a clear message instead of letting the gateway return "invalid token".
+    """
+    api_url = getattr(settings, "KHALTI_API_URL", "").strip()
+    if "khalti.com/api/v2" not in api_url:
+        return
+    if request.is_secure():
+        return
+    host = (request.get_host() or "").split(":")[0]
+    if _is_private_host(host):
+        raise GatewayConfigurationError(
+            "Khalti live mode requires HTTPS and a whitelisted domain. "
+            "For local testing, switch to sandbox by setting "
+            "KHALTI_API_URL=https://dev.khalti.com/api/v2 and use sandbox keys."
+        )
 
 
 def payment_result_url(request, **params):
@@ -146,8 +173,11 @@ def _sync_khalti_payment(payment, payload, *, pidx=None, transaction_id="", fall
     elif gateway_status == "User canceled":
         payment.status = Payment.Status.CANCELLED
         update_fields.append("status")
-    else:
+    elif gateway_status in {"Expired", "Refunded", "Partially refunded", "Failed"}:
         payment.status = Payment.Status.FAILED
+        update_fields.append("status")
+    else:
+        payment.status = Payment.Status.PENDING
         update_fields.append("status")
 
     payment.save(update_fields=list(dict.fromkeys(update_fields)))
@@ -179,10 +209,11 @@ class CreatePaymentView(APIView):
 
         existing_payment = getattr(booking, "payment", None)
         if existing_payment:
-            if existing_payment.status in {Payment.Status.FAILED, Payment.Status.CANCELLED}:
+            if existing_payment.status in {Payment.Status.PENDING, Payment.Status.FAILED, Payment.Status.CANCELLED}:
                 existing_payment.delete()
             else:
-                return Response({"detail": "Payment already exists for this booking"}, status=400)
+                return Response({"detail": f"This booking already has a {existing_payment.status} payment record."}, status=400)
+
 
         wallet = _wallet_for(request.user)
         payment = Payment.objects.create(
@@ -355,6 +386,12 @@ class CreatePaymentView(APIView):
 
         # ----- Khalti (backend initiate -> frontend redirect)
         if method == Payment.Method.KHALTI:
+            try:
+                _validate_khalti_live_request(request)
+            except GatewayConfigurationError as error:
+                payment.delete()
+                return Response({"detail": str(error)}, status=400)
+
             # Khalti expects amount in paisa
             amount_paisa = int(Decimal(payment.amount) * 100)
             purchase_order_id = f"MB-{request.user.id}-{new_uuid()[:10].upper()}"
@@ -576,30 +613,38 @@ class KhaltiReturnCallback(APIView):
         pidx = request.GET.get("pidx") or payment.reference
         status_hint = request.GET.get("status") or payment.gateway_status or "Pending"
         transaction_id = request.GET.get("transaction_id") or request.GET.get("transactionId") or ""
+        purchase_order_id = request.GET.get("purchase_order_id") or payment.gateway_order_id or ""
         if pidx:
             payment.reference = pidx
         if transaction_id:
             payment.gateway_transaction_id = transaction_id
         if status_hint:
             payment.gateway_status = status_hint
+        if purchase_order_id:
+            payment.gateway_order_id = purchase_order_id
         payment.gateway_payload = {**(payment.gateway_payload or {}), "callback": dict(request.GET.items())}
-        payment.save(update_fields=["reference", "gateway_transaction_id", "gateway_status", "gateway_payload"])
+        payment.save(update_fields=["reference", "gateway_transaction_id", "gateway_status", "gateway_order_id", "gateway_payload"])
 
         try:
             payload = khalti_lookup(pidx)
             payment = _sync_khalti_payment(payment, payload, pidx=pidx, transaction_id=transaction_id, fallback_status=status_hint)
         except (GatewayConfigurationError, GatewayRequestError):
-            payment.status = Payment.Status.PENDING
-            payment.save(update_fields=["status"])
+            payment = _sync_khalti_payment(
+                payment,
+                {},
+                pidx=pidx,
+                transaction_id=transaction_id,
+                fallback_status=status_hint if status_hint in {"Pending", "Initiated", "User canceled", "Expired"} else "Pending",
+            )
             _sync_booking_payment_state(
                 payment.booking,
-                event_type="PAYMENT_PENDING",
-                message="Khalti payment is still pending.",
+                event_type="PAYMENT_FAILED" if payment.status in {Payment.Status.FAILED, Payment.Status.CANCELLED} else "PAYMENT_PENDING",
+                message="Khalti payment did not complete." if payment.status in {Payment.Status.FAILED, Payment.Status.CANCELLED} else "Khalti payment is still pending.",
             )
             return redirect(
                 payment_result_url(
                     request,
-                    status="pending",
+                    status="failed" if payment.status in {Payment.Status.FAILED, Payment.Status.CANCELLED} else "pending",
                     method="khalti",
                     booking=payment.booking.id,
                     payment=payment.id,
