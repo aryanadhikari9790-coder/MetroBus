@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import {
   createBusIcon,
@@ -76,6 +76,23 @@ export function MetroBusWordmark({ compact = false }) {
       <span className="text-[var(--mb-purple)]">Metro</span>
       <span className="text-[var(--mb-accent)]">Bus</span>
     </div>
+  );
+}
+
+export function KhaltiGatewayMark({ className = "h-10 w-10" }) {
+  return (
+    <svg viewBox="0 0 72 72" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id="khalti-gateway-gradient" x1="12%" y1="8%" x2="92%" y2="92%">
+          <stop offset="0%" stopColor="#4f1f8f" />
+          <stop offset="100%" stopColor="#8f3dff" />
+        </linearGradient>
+      </defs>
+      <rect x="8" y="8" width="56" height="56" rx="18" fill="url(#khalti-gateway-gradient)" />
+      <path d="M24 20v32" stroke="#fff" strokeWidth="8" strokeLinecap="round" />
+      <path d="M47 22 31 38l16 12" fill="none" stroke="#fff" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="53" cy="18" r="5" fill="#f7b2ff" />
+    </svg>
   );
 }
 
@@ -596,7 +613,15 @@ export function SeatButton({ seat, selected, onClick }) {
 function buildPaymentOptions(total, walletSummary) {
   const options = [
     { label: "Cash", method: "CASH", note: "Pay onboard", disabled: false },
-    { label: "Khalti", method: "KHALTI", note: "Fast mobile checkout", disabled: false, featured: true },
+    {
+      label: "Khalti Gateway",
+      method: "KHALTI",
+      note: "Secure Khalti checkout for wallet, mobile banking, and cards",
+      disabled: false,
+      featured: true,
+      badge: "Gateway",
+      helper: "Recommended",
+    },
     { label: "eSewa", method: "ESEWA", note: "Online payment", disabled: false },
     {
       label: "Metro Wallet",
@@ -922,7 +947,8 @@ export function PaymentRequestCard({ booking, paymentBusy, onPay }) {
   const waitingForCash = booking.payment_method === "CASH" && booking.payment_pending_verification;
   const waitingForGateway = booking.payment_pending_verification && booking.payment_method && booking.payment_method !== "CASH";
   const paymentReady = booking.needs_payment_selection;
-  const actionLabel = paymentReady ? "Open Checkout" : "Review Payment";
+  const paymentPending = booking.payment_status === "PENDING";
+  const actionLabel = paymentReady ? "Open Checkout" : paymentPending ? "Change / Pay Now" : "Review Payment";
   const summaryText = paymentReady
       ? booking.payment_requested_by_name
         ? `${booking.payment_requested_by_name} entered your ride OTP and is waiting for your payment choice.`
@@ -1035,6 +1061,7 @@ export function CheckoutPage({
   const waitingForCash = booking.payment_method === "CASH" && booking.payment_pending_verification;
   const waitingForGateway = booking.payment_pending_verification && booking.payment_method && booking.payment_method !== "CASH";
   const paymentComplete = booking.payment_status === "SUCCESS";
+  const khaltiOption = paymentOptions.find((option) => option.method === "KHALTI");
 
   return (
     <section className="space-y-5">
@@ -1103,8 +1130,43 @@ export function CheckoutPage({
           </div>
         </div>
 
-        {booking.needs_payment_selection ? (
-          <div className="mt-5 grid gap-3">
+        {khaltiOption ? (
+          <button
+            type="button"
+            onClick={() => onPay("KHALTI", booking.id)}
+            disabled={paymentBusy}
+            className="mt-5 block w-full overflow-hidden rounded-[24px] bg-[linear-gradient(135deg,#4e1f8a,#7c33e8_55%,#b468ff)] p-5 text-left text-white shadow-[0_18px_38px_rgba(79,31,143,0.22)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_48px_rgba(79,31,143,0.32)] active:translate-y-0 disabled:opacity-72"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="rounded-[18px] bg-white/14 p-2.5 backdrop-blur-sm">
+                  <KhaltiGatewayMark className="h-9 w-9" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Khalti Gateway</p>
+                  <p className="mt-2 text-xl font-black leading-tight">
+                    {paymentBusy ? "Initiating Secure Checkout..." : "Pay with Khalti Gateway"}
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-white/84">
+                    Continue to Khalti for a secure mobile payment. MetroBus will bring you back here once done.
+                  </p>
+                </div>
+              </div>
+              <span className="shrink-0 rounded-full bg-white/16 px-3 py-2 text-[0.62rem] font-black uppercase tracking-[0.18em] text-white">
+                Recommended
+              </span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <span className="rounded-full bg-white/16 px-3 py-2 text-[0.62rem] font-black uppercase tracking-[0.16em] text-white/90">Wallet</span>
+              <span className="rounded-full bg-white/16 px-3 py-2 text-[0.62rem] font-black uppercase tracking-[0.16em] text-white/90">Mobile Banking</span>
+              <span className="rounded-full bg-white/16 px-3 py-2 text-[0.62rem] font-black uppercase tracking-[0.16em] text-white/90">Cards</span>
+            </div>
+          </button>
+        ) : null}
+
+        {(booking.needs_payment_selection || booking.payment_status === "PENDING") && !paymentComplete ? (
+          <div id="payment-methods-list" className="mt-5 grid gap-3">
+
             {paymentOptions.map((option) => (
               <button
                 key={option.method}
@@ -1120,8 +1182,25 @@ export function CheckoutPage({
                 }`}
               >
                 <div className="min-w-0">
-                  <p className="text-base font-black">{paymentBusy ? "Processing..." : option.label}</p>
-                  <p className={`mt-1 text-sm font-medium ${option.featured && !option.disabled ? "text-white/80" : "text-[var(--mb-muted)]"}`}>{option.note}</p>
+                  {option.method === "KHALTI" ? (
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-[16px] bg-white/14 p-2">
+                        <KhaltiGatewayMark className="h-8 w-8" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[0.62rem] font-black uppercase tracking-[0.2em] text-white/72">
+                          {option.helper || "Gateway"}
+                        </p>
+                        <p className="mt-1 text-base font-black">{paymentBusy ? "Processing..." : option.label}</p>
+                        <p className="mt-1 text-sm font-medium text-white/84">{option.note}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-base font-black">{paymentBusy ? "Processing..." : option.label}</p>
+                      <p className={`mt-1 text-sm font-medium ${option.featured && !option.disabled ? "text-white/80" : "text-[var(--mb-muted)]"}`}>{option.note}</p>
+                    </>
+                  )}
                 </div>
                 <div className={`rounded-full px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.18em] ${
                   option.featured && !option.disabled
@@ -1130,7 +1209,7 @@ export function CheckoutPage({
                       ? "bg-white/60 text-[var(--mb-muted)]"
                       : "bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]"
                 }`}>
-                  {option.method === "KHALTI" ? "Fast" : option.method === "CASH" ? "Onboard" : "Select"}
+                  {option.badge || (option.method === "CASH" ? "Onboard" : "Select")}
                 </div>
               </button>
             ))}
@@ -1139,15 +1218,36 @@ export function CheckoutPage({
 
         {waitingForCash ? (
           <div className="mt-5 rounded-[22px] border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-medium leading-6 text-amber-800">
-            Cash was selected for this ride. Please hand the fare to the helper so they can verify the payment and board you.
+            <p>Cash was selected for this ride. Please hand the fare to the helper so they can verify the payment and board you.</p>
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById("payment-methods-list");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="mt-3 font-black underline decoration-amber-300 underline-offset-4"
+            >
+              Choose another payment method instead
+            </button>
           </div>
         ) : null}
 
         {waitingForGateway ? (
           <div className="mt-5 rounded-[22px] border border-[var(--mb-border)] bg-[var(--mb-card-soft)] px-4 py-4 text-sm font-medium leading-6 text-[var(--mb-muted)]">
-            {paymentHandle(booking)} is still pending. If you already completed the payment in the gateway, MetroBus will refresh the booking automatically.
+            <p>{paymentHandle(booking)} is still pending. If you already completed the payment in the gateway, MetroBus will refresh the booking automatically.</p>
+            <button
+              type="button"
+              onClick={() => {
+                const el = document.getElementById("payment-methods-list");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="mt-3 font-black text-[var(--mb-purple)] underline decoration-[var(--mb-purple)] underline-offset-4"
+            >
+              Choose another payment method instead
+            </button>
           </div>
         ) : null}
+
 
         {paymentComplete ? (
           <div className="mt-5 rounded-[22px] border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium leading-6 text-emerald-800">

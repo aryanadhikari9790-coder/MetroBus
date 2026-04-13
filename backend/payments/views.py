@@ -76,6 +76,8 @@ def _validate_khalti_live_request(request) -> None:
     Block local HTTP usage early with a clear message instead of letting the gateway return "invalid token".
     """
     api_url = getattr(settings, "KHALTI_API_URL", "").strip()
+    if "dev.khalti.com" in api_url:
+        return
     if "khalti.com/api/v2" not in api_url:
         return
     if request.is_secure():
@@ -644,7 +646,7 @@ class KhaltiReturnCallback(APIView):
             return redirect(
                 payment_result_url(
                     request,
-                    status="failed" if payment.status in {Payment.Status.FAILED, Payment.Status.CANCELLED} else "pending",
+                    status="cancelled" if payment.status == Payment.Status.CANCELLED else "failed" if payment.status == Payment.Status.FAILED else "pending",
                     method="khalti",
                     booking=payment.booking.id,
                     payment=payment.id,
@@ -654,7 +656,7 @@ class KhaltiReturnCallback(APIView):
         status_map = {
             Payment.Status.SUCCESS: "success",
             Payment.Status.PENDING: "pending",
-            Payment.Status.CANCELLED: "failed",
+            Payment.Status.CANCELLED: "cancelled",
             Payment.Status.FAILED: "failed",
         }
         _sync_booking_payment_state(

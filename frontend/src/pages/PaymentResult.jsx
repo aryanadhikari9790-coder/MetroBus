@@ -1,30 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { api } from "../api";
-import { MetroBusMark, MetroBusWordmark } from "../components/passenger/PassengerUI";
+import { clearToken, getToken, getRefreshToken } from "../auth";
 
-function paymentStatusTone(status) {
-  if (status === "success") {
-    return {
-      badge: "bg-emerald-100 text-emerald-700",
-      title: "Payment Successful",
-      body: "MetroBus verified your payment and attached it to this booking.",
-    };
-  }
-  if (status === "pending") {
-    return {
-      badge: "bg-amber-100 text-amber-700",
-      title: "Payment Pending",
-      body: "MetroBus is still waiting for Khalti to finish or confirm the payment.",
-    };
-  }
-  return {
-    badge: "bg-rose-100 text-rose-700",
-    title: "Payment Failed",
-    body: "The payment did not complete. You can go back to MetroBus and try again on the same booking.",
-  };
-}
+import PaymentErrorView from "../components/payment/PaymentErrorView";
+import PaymentPendingView from "../components/payment/PaymentPendingView";
 
 function normalizeResultStatus(status) {
   const value = String(status || "").toUpperCase();
@@ -33,18 +14,33 @@ function normalizeResultStatus(status) {
   return "failed";
 }
 
+function isTokenInvalidError(err) {
+  const detail = err?.response?.data?.detail;
+  const code = err?.response?.data?.code;
+  return code === "token_not_valid" || detail === "Given token not valid for any token type";
+}
+
 export default function PaymentResult() {
   const { search } = useLocation();
+  const navigate = useNavigate();
   const query = useMemo(() => new URLSearchParams(search), [search]);
 
   const initialStatus = normalizeResultStatus(query.get("status") || "unknown");
   const method = (query.get("method") || "").toLowerCase();
   const bookingId = query.get("booking") || "";
   const paymentId = query.get("payment") || "";
+  
   const [status, setStatus] = useState(initialStatus);
   const [payment, setPayment] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // If the URL already says success (non-Khalti or pre-verified), redirect immediately.
+  useEffect(() => {
+    if (initialStatus === "success" && method !== "khalti") {
+      navigate("/passenger", { replace: true });
+    }
+  }, [initialStatus, method, navigate]);
 
   const verifyKhaltiStatus = useCallback(async () => {
     if (method !== "khalti" || !paymentId) return;
@@ -54,115 +50,50 @@ export default function PaymentResult() {
       const response = await api.post(`/api/payments/khalti/verify/${paymentId}/`);
       const nextPayment = response.data.payment || null;
       setPayment(nextPayment);
-      setStatus(normalizeResultStatus(nextPayment?.status || "unknown"));
+      const nextStatus = normalizeResultStatus(nextPayment?.status || "unknown");
+      setStatus(nextStatus);
+      // On successful Khalti verification, go straight to the passenger dashboard.
+      if (nextStatus === "success") {
+        navigate("/passenger", { replace: true });
+      }
     } catch (err) {
-      setError(err?.response?.data?.detail || "Unable to refresh the Khalti payment status right now.");
+      if (isTokenInvalidError(err)) {
+        clearToken();
+        setError("Your MetroBus session expired. Sign in again to refresh payment status.");
+      } else {
+        setError(err?.response?.data?.detail || "Unable to refresh status.");
+      }
+      setStatus("failed");
     } finally {
       setBusy(false);
     }
-  }, [method, paymentId]);
+  }, [method, navigate, paymentId]);
 
   useEffect(() => {
-    if (method === "khalti" && paymentId) verifyKhaltiStatus();
+    if (method === "khalti" && paymentId && (getToken() || getRefreshToken())) {
+      verifyKhaltiStatus();
+    }
   }, [method, paymentId, verifyKhaltiStatus]);
 
-  const tone = paymentStatusTone(status);
-  const resolvedBookingId = payment?.booking || bookingId;
+  // While verifying Khalti payment, show a pending/loading screen.
+  if (busy || (method === "khalti" && status === "pending" && !error)) {
+    return <PaymentPendingView />;
+  }
 
+  // If for some reason status resolved to success without redirecting, redirect now.
+  if (status === "success") {
+    navigate("/passenger", { replace: true });
+    return <PaymentPendingView />;
+  }
+
+  // Handle errors or failed/cancelled status.
+  const errorType = query.get("status") === "cancelled" ? "cancelled" : "failed";
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#fbf3f6_0%,#f6edf3_45%,#f1e7ef_100%)] px-4 py-8 text-[#27133f]">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md flex-col justify-center">
-        <div className="text-center">
-          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-[1.4rem] bg-white shadow-[0_14px_30px_rgba(46,18,79,0.1)]">
-            <div className="grid h-14 w-14 place-items-center rounded-[1rem] bg-[linear-gradient(135deg,#34155d,#ff6b73)] text-white shadow-[0_10px_22px_rgba(52,21,93,0.16)]">
-              <MetroBusMark className="h-8 w-8" />
-            </div>
-          </div>
-          <div className="mt-5">
-            <MetroBusWordmark />
-          </div>
-          <p className="mt-3 text-lg font-medium text-[#6f607f]">Secure payment return</p>
-        </div>
-
-        <div className="mt-8 rounded-[1.8rem] bg-white p-6 shadow-[0_18px_42px_rgba(46,18,79,0.1)]">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.22em] text-[#34155d]">
-                {method ? `${method.toUpperCase()} Payment` : "MetroBus Payment"}
-              </p>
-              <h1 className="mt-2 text-[2.2rem] font-black leading-tight text-[#27133f]">{tone.title}</h1>
-            </div>
-            <span className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.18em] ${tone.badge}`}>
-              {busy ? "Checking" : status}
-            </span>
-          </div>
-
-          <p className="mt-4 text-base leading-7 text-[#6f607f]">{tone.body}</p>
-
-          {error ? (
-            <div className="mt-4 rounded-[1rem] border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
-              {error}
-            </div>
-          ) : null}
-
-          <div className="mt-6 grid gap-3">
-            <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Booking</p>
-              <p className="mt-2 text-lg font-black text-[#27133f]">{resolvedBookingId ? `#${resolvedBookingId}` : "--"}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Gateway Status</p>
-                <p className="mt-2 text-base font-black text-[#34155d]">{payment?.gateway_status || query.get("status") || "--"}</p>
-              </div>
-              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Amount</p>
-                <p className="mt-2 text-base font-black text-[#27133f]">
-                  {payment?.amount != null ? `NPR ${Number(payment.amount).toLocaleString()}` : "--"}
-                </p>
-              </div>
-            </div>
-            <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Khalti pidx</p>
-              <p className="mt-2 break-all text-sm font-black text-[#34155d]">{payment?.reference || "--"}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Order ID</p>
-                <p className="mt-2 break-all text-sm font-black text-[#27133f]">{payment?.gateway_order_id || "--"}</p>
-              </div>
-              <div className="rounded-[1.1rem] bg-[#f7f1f7] px-4 py-4">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#8b7b99]">Transaction ID</p>
-                <p className="mt-2 break-all text-sm font-black text-[#27133f]">{payment?.gateway_transaction_id || "--"}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 space-y-3">
-            {method === "khalti" ? (
-              <button
-                type="button"
-                onClick={verifyKhaltiStatus}
-                disabled={busy || !paymentId}
-                className="w-full rounded-[1.1rem] border border-[#eddff2] bg-[#f7f1f7] px-6 py-4 text-base font-black text-[#34155d] disabled:opacity-60"
-              >
-                {busy ? "Refreshing Status..." : "Refresh Khalti Status"}
-              </button>
-            ) : null}
-
-            <Link
-              to="/passenger"
-              className="block w-full rounded-[1.1rem] bg-[linear-gradient(135deg,#ff6b73,#ff8a5b)] px-6 py-4 text-center text-base font-black text-white shadow-[0_12px_24px_rgba(255,107,115,0.16)]"
-            >
-              Return to MetroBus
-            </Link>
-          </div>
-
-          <p className="mt-5 text-center text-sm leading-6 text-[#7d6a8a]">
-            If the payment is still pending, keep MetroBus open and try refreshing once more before retrying the payment.
-          </p>
-        </div>
-      </div>
-    </div>
+    <PaymentErrorView 
+      payment={payment} 
+      bookingId={bookingId} 
+      errorType={errorType} 
+      errorMessage={error}
+    />
   );
 }

@@ -660,10 +660,31 @@ class StartTripView(APIView):
         if existing_live_trip:
             return Response({"detail": "You already have a LIVE trip."}, status=400)
 
+        trip_id = request.data.get("trip_id")
         schedule_id = request.data.get("schedule_id")
         deviation_mode = bool(request.data.get("deviation_mode", False))
 
-        if schedule_id:
+        trip = None
+        created = False
+
+        # Option A: Confirming an existing trip (manual or otherwise)
+        if trip_id:
+            try:
+                trip = Trip.objects.select_related("route", "bus", "driver", "helper", "simulation").get(id=trip_id)
+            except Trip.DoesNotExist:
+                return Response({"detail": "Invalid trip_id"}, status=404)
+
+            if not request.user.is_superuser and actor.id not in {trip.driver_id, trip.helper_id}:
+                return Response({"detail": "Not your trip"}, status=403)
+            if trip.status == Trip.Status.ENDED:
+                return Response({"detail": "This trip has already been completed."}, status=400)
+            if trip.status == Trip.Status.CANCELLED:
+                return Response({"detail": "This trip was cancelled."}, status=400)
+            if trip.status != Trip.Status.NOT_STARTED:
+                return Response({"detail": "Only pending trips can be confirmed by trip_id."}, status=400)
+
+        # Option B: Starting via a schedule
+        elif schedule_id:
             try:
                 schedule = TripSchedule.objects.select_related("route", "bus", "helper", "driver").get(id=schedule_id)
             except TripSchedule.DoesNotExist:
@@ -689,8 +710,6 @@ class StartTripView(APIView):
                 return Response({"detail": "This scheduled trip has already been completed."}, status=400)
             if trip and trip.status == Trip.Status.CANCELLED:
                 return Response({"detail": "This scheduled trip was cancelled."}, status=400)
-            if trip and trip.status == Trip.Status.LIVE:
-                return _respond_with_trip(trip, "Trip is already LIVE.", status_code=200)
 
             if not trip:
                 conflict = _live_trip_conflict(bus=schedule.bus, driver=schedule.driver, helper=schedule.helper)
@@ -707,71 +726,70 @@ class StartTripView(APIView):
                     deviation_mode=deviation_mode if role_label == "driver" else False,
                 )
                 created = True
-            else:
-                created = False
-                if role_label == "driver":
-                    trip.deviation_mode = deviation_mode
-                    trip.save(update_fields=["deviation_mode"])
 
-            trip, message = _confirm_trip_start(trip, actor)
-            return _respond_with_trip(trip, message, status_code=201 if created else 200)
-
-        route_id = request.data.get("route_id")
-        bus_id = request.data.get("bus_id")
-        helper_id = request.data.get("helper_id")
-
-        if role_label != "driver":
-            return Response({"detail": "Helpers can only start scheduled trips."}, status=400)
-
-        if not (route_id and bus_id and helper_id):
-            return Response(
-                {"detail": "Provide schedule_id OR route_id, bus_id, helper_id"},
-                status=400,
-            )
-
-        try:
-            route = Route.objects.get(id=route_id, is_active=True)
-            bus = Bus.objects.get(id=bus_id, is_active=True)
-            helper = User.objects.get(id=helper_id, role=User.Role.HELPER, is_active=True)
-        except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
-            return Response({"detail": "Invalid route_id, bus_id, or helper_id"}, status=400)
-
-        pending_trip = (
-            Trip.objects.filter(driver=actor, status=Trip.Status.NOT_STARTED, schedule__isnull=True)
-            .select_related("route", "bus", "driver", "helper", "simulation")
-            .order_by("-created_at")
-            .first()
-        )
-        if pending_trip and (
-            pending_trip.route_id != route.id
-            or pending_trip.bus_id != bus.id
-            or pending_trip.helper_id != helper.id
-        ):
-            return Response({"detail": "You already have a pending manual trip waiting for helper confirmation."}, status=400)
-
-        if not pending_trip:
-            conflict = _live_trip_conflict(bus=bus, driver=actor, helper=helper)
-            if conflict:
-                return Response({"detail": conflict}, status=400)
-
-            pending_trip = Trip.objects.create(
-                schedule=None,
-                route=route,
-                bus=bus,
-                driver=actor,
-                helper=helper,
-                status=Trip.Status.NOT_STARTED,
-                deviation_mode=deviation_mode,
-            )
-            created = True
+        # Option C: Starting a manual trip (Driver only)
         else:
-            created = False
-            if pending_trip.deviation_mode != deviation_mode:
-                pending_trip.deviation_mode = deviation_mode
-                pending_trip.save(update_fields=["deviation_mode"])
+            if role_label != "driver":
+                return Response({"detail": "Helpers can only start established or scheduled trips."}, status=400)
 
-        trip, message = _confirm_trip_start(pending_trip, actor)
+            route_id = request.data.get("route_id")
+            bus_id = request.data.get("bus_id")
+            helper_id = request.data.get("helper_id")
+
+            if not (route_id and bus_id and helper_id):
+                return Response(
+                    {"detail": "Provide schedule_id, trip_id OR route_id, bus_id, helper_id"},
+                    status=400,
+                )
+
+            try:
+                route = Route.objects.get(id=route_id, is_active=True)
+                bus = Bus.objects.get(id=bus_id, is_active=True)
+                helper = User.objects.get(id=helper_id, role=User.Role.HELPER, is_active=True)
+            except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
+                return Response({"detail": "Invalid route_id, bus_id, or helper_id"}, status=400)
+
+            trip = (
+                Trip.objects.filter(driver=actor, status=Trip.Status.NOT_STARTED, schedule__isnull=True)
+                .select_related("route", "bus", "driver", "helper", "simulation")
+                .order_by("-created_at")
+                .first()
+            )
+
+            if trip and (
+                trip.route_id != route.id
+                or trip.bus_id != bus.id
+                or trip.helper_id != helper.id
+            ):
+                return Response({"detail": "You already have a pending manual trip waiting for helper confirmation."}, status=400)
+
+            if not trip:
+                conflict = _live_trip_conflict(bus=bus, driver=actor, helper=helper)
+                if conflict:
+                    return Response({"detail": conflict}, status=400)
+
+                trip = Trip.objects.create(
+                    schedule=None,
+                    route=route,
+                    bus=bus,
+                    driver=actor,
+                    helper=helper,
+                    status=Trip.Status.NOT_STARTED,
+                    deviation_mode=deviation_mode,
+                )
+                created = True
+
+        # Common finalize logic
+        if trip.status == Trip.Status.LIVE:
+            return _respond_with_trip(trip, "Trip is already LIVE.", status_code=200)
+
+        if role_label == "driver" and trip.deviation_mode != deviation_mode:
+            trip.deviation_mode = deviation_mode
+            trip.save(update_fields=["deviation_mode"])
+
+        trip, message = _confirm_trip_start(trip, actor)
         return _respond_with_trip(trip, message, status_code=201 if created else 200)
+
 
 
 class AcceptTripAssignmentView(APIView):

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../api";
-import { setToken } from "../../auth";
+import { setTokens } from "../../auth";
 import { useAuth } from "../../AuthContext";
 import { Icon, MetroBusMark, MetroBusWordmark } from "../../components/passenger/PassengerUI";
 import { PASSENGER_THEME } from "../passenger/passengerUtils";
@@ -34,7 +34,7 @@ export default function Login() {
     setMsg("");
     try {
       const response = await api.post("/api/auth/login/", { phone, password });
-      setToken(response.data.access);
+      setTokens({ access: response.data.access, refresh: response.data.refresh });
       const me = await refreshMe();
       navigate(roleToHome[me?.role] || "/passenger", { replace: true });
     } catch (error) {

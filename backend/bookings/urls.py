@@ -12,6 +12,8 @@ from .views import (
     HelperBoardBookingView,
     HelperRequestBookingPaymentView,
     HelperCompleteBookingView,
+    OfflineCollectCashView,
+    OfflineCompleteView,
 )
 
 urlpatterns = [
@@ -27,4 +29,6 @@ urlpatterns = [
     path("<int:booking_id>/request-payment/", HelperRequestBookingPaymentView.as_view(), name="booking-request-payment"),
     path("<int:booking_id>/board/", HelperBoardBookingView.as_view(), name="booking-board"),
     path("<int:booking_id>/complete/", HelperCompleteBookingView.as_view(), name="booking-complete"),
+    path("offline/<int:offline_boarding_id>/collect-cash/", OfflineCollectCashView.as_view(), name="offline-collect-cash"),
+    path("offline/<int:offline_boarding_id>/complete/", OfflineCompleteView.as_view(), name="offline-complete"),
 ]

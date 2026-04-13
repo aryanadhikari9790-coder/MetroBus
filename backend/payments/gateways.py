@@ -18,6 +18,38 @@ class GatewayRequestError(Exception):
     pass
 
 
+KHALTI_LOOKUP_STATUSES = {
+    "Completed",
+    "Pending",
+    "Initiated",
+    "Refunded",
+    "Expired",
+    "User canceled",
+    "Partially refunded",
+}
+
+
+def _gateway_error_detail(payload, default: str) -> str:
+    if not isinstance(payload, dict):
+        return default
+
+    direct = payload.get("detail") or payload.get("message")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+
+    for key, value in payload.items():
+        if key in {"detail", "message", "error_key", "status_code", "status"}:
+            continue
+        if isinstance(value, list) and value:
+            first = value[0]
+            if isinstance(first, str) and first.strip():
+                return first.strip()
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    return default
+
+
 def esewa_build_form(amount: str, transaction_uuid: str):
     """
     Build eSewa v2 form fields.
@@ -117,8 +149,7 @@ def khalti_initiate(amount_paisa: int, purchase_order_id: str, purchase_order_na
                 payload = exc.response.json()
             except ValueError:
                 payload = None
-            if isinstance(payload, dict):
-                detail = payload.get("detail") or payload.get("message") or detail
+            detail = _gateway_error_detail(payload, detail)
         raise GatewayRequestError(detail) from exc
 
 
@@ -131,13 +162,15 @@ def khalti_lookup(pidx: str):
         return response.json()
     except requests.RequestException as exc:
         detail = "Unable to verify Khalti payment right now."
+        payload = None
         if exc.response is not None:
             try:
                 payload = exc.response.json()
             except ValueError:
                 payload = None
-            if isinstance(payload, dict):
-                detail = payload.get("detail") or payload.get("message") or detail
+            if isinstance(payload, dict) and payload.get("status") in KHALTI_LOOKUP_STATUSES:
+                return payload
+            detail = _gateway_error_detail(payload, detail)
         raise GatewayRequestError(detail) from exc
 
 

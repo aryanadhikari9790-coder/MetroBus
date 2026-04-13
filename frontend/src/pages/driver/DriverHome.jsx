@@ -217,7 +217,7 @@ export default function DriverHome() {
   const [routeStops, setRouteStops] = useState([]);
   const [passengerRequests, setPassengerRequests] = useState([]);
   const [roadPolyline, setRoadPolyline] = useState([]);
-  const [activeTab, setActiveTab] = useState("active");
+  const [activeTab, setActiveTab] = useState("home");
   const [expandStops, setExpandStops] = useState(false);
   const [showAllHistoryTrips, setShowAllHistoryTrips] = useState(false);
   const [preTripChecks, setPreTripChecks] = useState(createChecklistState);
@@ -457,7 +457,13 @@ export default function DriverHome() {
     }, activeTab === "active" || simulationActive || currentTrip?.id ? 1000 : 3000);
     return () => clearInterval(timer);
   }, [activeTab, currentTrip?.id, simulationActive, loadTripContext]);
-  useEffect(() => { if (currentTrip) setActiveTab("active"); }, [currentTrip]);
+  // Ensure active tab doesn't force switch on every dashboard refresh.
+  useEffect(() => {
+    if (activeTrip && activeTab === "home" && !dashboard?.previous_active_trip_id) {
+      // Optional: could auto-switch here only on first load if desired, but user asked for default Home.
+    }
+  }, [activeTrip?.id]);
+  // Removed: useEffect(() => { if (currentTrip) setActiveTab("active"); }, [currentTrip]);
   useEffect(() => { setExpandStops(false); }, [currentTrip?.id]);
   useEffect(() => {
     setSimulationActive(false);
@@ -512,7 +518,12 @@ export default function DriverHome() {
       setErr("Complete the pre-trip checklist before you start the trip.");
       return;
     }
-    const response = await runAction(() => api.post("/api/trips/start/", { schedule_id: id, deviation_mode: deviationMode }), "Trip start request sent.");
+
+    const payload = pendingTrip && pendingTrip.schedule_id === id
+      ? { trip_id: pendingTrip.id, deviation_mode: deviationMode }
+      : { schedule_id: id, deviation_mode: deviationMode };
+
+    const response = await runAction(() => api.post("/api/trips/start/", payload), "Trip start request sent.");
     if (response?.data?.trip?.schedule_id) {
       setSelectedScheduleId(String(response.data.trip.schedule_id));
     }
@@ -524,7 +535,12 @@ export default function DriverHome() {
       setErr("Select route, bus, and helper first.");
       return;
     }
-    await runAction(() => api.post("/api/trips/start/", { route_id: Number(routeId), bus_id: Number(busId), helper_id: Number(helperId), deviation_mode: deviationMode }), "Manual trip start request sent.");
+
+    const payload = pendingTrip && !pendingTrip.schedule_id
+      ? { trip_id: pendingTrip.id, deviation_mode: deviationMode }
+      : { route_id: Number(routeId), bus_id: Number(busId), helper_id: Number(helperId), deviation_mode: deviationMode };
+
+    await runAction(() => api.post("/api/trips/start/", payload), "Manual trip start request sent.");
     setActiveTab("active");
   };
 
@@ -945,17 +961,15 @@ Please review the earnings breakdown for this shift.`;
                           type="button"
                           onClick={() => togglePreTripCheck(item.id)}
                           disabled={!nextScheduleAccepted}
-                          className={`flex w-full items-start gap-4 rounded-[1.5rem] border px-4 py-4 text-left transition ${
-                            preTripChecks[item.id]
+                          className={`flex w-full items-start gap-4 rounded-[1.5rem] border px-4 py-4 text-left transition ${preTripChecks[item.id]
                               ? "border-emerald-200 bg-emerald-50"
                               : "border-[var(--drv-border)] bg-[var(--drv-soft)]"
-                          } ${!nextScheduleAccepted ? "cursor-not-allowed opacity-60" : ""}`}
+                            } ${!nextScheduleAccepted ? "cursor-not-allowed opacity-60" : ""}`}
                         >
-                          <span className={`mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 ${
-                            preTripChecks[item.id]
+                          <span className={`mt-1 grid h-6 w-6 shrink-0 place-items-center rounded-full border-2 ${preTripChecks[item.id]
                               ? "border-emerald-500 bg-emerald-500 text-white"
                               : "border-[rgba(52,21,93,0.18)] bg-white"
-                          }`}>
+                            }`}>
                             {preTripChecks[item.id] ? "OK" : ""}
                           </span>
                           <span className="min-w-0">
@@ -1044,7 +1058,7 @@ Please review the earnings breakdown for this shift.`;
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/72">Trip Confirmation</p>
-                  <h2 className="mt-3 break-words text-[2rem] font-black leading-[1.02] sm:text-4xl">{currentRoute}</h2>
+                    <h2 className="mt-3 break-words text-[2rem] font-black leading-[1.02] sm:text-4xl">{currentRoute}</h2>
                     <p className="mt-3 break-words text-sm font-semibold leading-6 text-white/80">{currentBus} | Helper {helperName}</p>
                   </div>
                   <span className="inline-flex items-center rounded-full bg-white/14 px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] text-white shadow-[0_10px_22px_rgba(71,39,81,0.18)]">
@@ -1064,7 +1078,20 @@ Please review the earnings breakdown for this shift.`;
                     </span>
                   </div>
                 </div>
+
+                {!pendingTrip?.driver_start_confirmed && (
+                  <ActionButton
+                    tone="primary"
+                    onClick={() => pendingTrip?.schedule_id ? startScheduledTrip(pendingTrip.schedule_id) : startManualTrip()}
+                    disabled={busy}
+                    className="mt-5 w-full !border-white/20 !bg-white/20 !py-4 !text-white"
+                  >
+                    <Icon name="play" className="h-4 w-4" />
+                    {busy ? "Confirming..." : "Confirm Trip Start"}
+                  </ActionButton>
+                )}
               </div>
+
               <Panel className="bg-white/80">
                 <div className="flex items-start justify-between gap-3">
                   <div>

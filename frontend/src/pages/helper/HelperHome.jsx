@@ -127,16 +127,22 @@ function SelectField({ label, value, onChange, options, disabled = false }) {
   );
 }
 
-function SeatNode({ seat, selected, onClick }) {
+function SeatNode({ seat, selected, onClick, onOccupiedClick, isOccupiedSelected }) {
   let className = "border-emerald-200 bg-emerald-50 text-emerald-700";
   let stateLabel = "Vacant";
   let tickClassName = "";
   let tickLabel = "";
 
+  const isOccupiedClickable = !seat.available && seat.booking_id && onOccupiedClick;
+
   if (!seat.available) {
-    className = "border-red-200 bg-red-50 text-red-700";
+    if (isOccupiedSelected) {
+      className = "border-transparent bg-[linear-gradient(135deg,#7c3aed,#ff6b73)] text-white shadow-[0_8px_20px_rgba(124,58,237,0.3)] ring-2 ring-[#7c3aed]";
+    } else {
+      className = "border-red-200 bg-red-50 text-red-700";
+    }
     stateLabel = seat.occupant_kind === "OFFLINE" ? "Offline" : "Occupied";
-    tickClassName = seat.payment_verified ? "bg-sky-500 text-white" : "bg-slate-300 text-slate-700";
+    tickClassName = seat.payment_verified ? "bg-sky-500 text-white" : "bg-amber-400 text-white";
     tickLabel = seat.payment_verified ? "Paid" : "Pending";
   } else if (selected) {
     className = "border-transparent bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]";
@@ -144,10 +150,15 @@ function SeatNode({ seat, selected, onClick }) {
   }
 
   return (
-    <button type="button" disabled={!seat.available} onClick={onClick} className={`relative flex aspect-square min-h-[4.2rem] flex-col items-center justify-center rounded-[1.55rem] border text-center transition ${className} disabled:cursor-not-allowed`}>
+    <button
+      type="button"
+      disabled={!seat.available && !isOccupiedClickable}
+      onClick={isOccupiedClickable ? () => onOccupiedClick(seat) : onClick}
+      className={`relative flex aspect-square min-h-[4.2rem] flex-col items-center justify-center rounded-[1.55rem] border text-center transition ${className} disabled:cursor-not-allowed ${isOccupiedClickable ? "cursor-pointer hover:brightness-95 active:scale-95" : ""}`}
+    >
       {!seat.available ? (
         <span className={`absolute right-2 top-2 inline-flex h-5 min-w-[1.35rem] items-center justify-center rounded-full px-1 text-[0.52rem] font-black uppercase tracking-[0.12em] ${tickClassName}`}>
-          {seat.payment_verified ? "✓✓" : "✓"}
+          {seat.payment_verified ? "✓✓" : "!"}
         </span>
       ) : null}
       <span className="text-base font-black">{seat.seat_no}</span>
@@ -223,6 +234,9 @@ export default function HelperHome() {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [activeTab, setActiveTab] = useState("route");
+  const [selectedSeatInfo, setSelectedSeatInfo] = useState(null);
+  const [seatPaymentBusy, setSeatPaymentBusy] = useState(false);
+  const [seatCompleteBusy, setSeatCompleteBusy] = useState(false);
   const bookingSocketRef = useRef(null);
   const ticketLookupRef = useRef(null);
 
@@ -421,11 +435,13 @@ export default function HelperHome() {
     }
   }, []);
 
-  const loadAvailability = useCallback(async (tid, from, to) => {
+  const loadAvailability = useCallback(async (tid, from, to, { silent = false } = {}) => {
     if (!tid || !from || !to) {
-      setSeats([]);
-      setSegmentFarePerSeat(null);
-      setSelectedSeatIds([]);
+      if (!silent) {
+        setSeats([]);
+        setSegmentFarePerSeat(null);
+        setSelectedSeatIds([]);
+      }
       return;
     }
     setLoadingAvail(true);
@@ -434,12 +450,14 @@ export default function HelperHome() {
       setSeats(response.data.seats || []);
       setSegmentFarePerSeat(response.data.fare_per_seat ?? null);
       setSelectedSeatIds([]);
-      setErr("");
+      if (!silent) setErr("");
     } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to load availability.");
-      setSeats([]);
-      setSegmentFarePerSeat(null);
-      setSelectedSeatIds([]);
+      if (!silent) {
+        setErr(error?.response?.data?.detail || "Unable to load availability.");
+        setSeats([]);
+        setSegmentFarePerSeat(null);
+        setSelectedSeatIds([]);
+      }
     } finally {
       setLoadingAvail(false);
     }
@@ -540,7 +558,7 @@ export default function HelperHome() {
       return;
     }
     setFromOrder((current) => current || String(routeStops[0].stop_order));
-    setToOrder((current) => current || String(routeStops[1].stop_order));
+    setToOrder((current) => current || String(routeStops[routeStops.length - 1].stop_order));
   }, [routeStops]);
 
   useEffect(() => {
@@ -550,7 +568,7 @@ export default function HelperHome() {
       setToOrder(nextStopCandidate ? String(nextStopCandidate.stop_order) : "");
       return;
     }
-    loadAvailability(tripId, fromOrder, toOrder);
+    loadAvailability(tripId, fromOrder, toOrder, { silent: true });
   }, [tripId, fromOrder, toOrder, routeStops, loadAvailability]);
 
   const toggleSeat = (seatId) => {
@@ -574,7 +592,7 @@ export default function HelperHome() {
         seat_ids: selectedSeatIds,
       });
       setMsg(`Offline boarding #${response.data.offline_boarding.id} saved.`);
-      await loadAvailability(tripId, fromOrder, toOrder);
+      await loadAvailability(tripId, fromOrder, toOrder, { silent: true });
     } catch (error) {
       setErr(error?.response?.data?.detail || "Offline update failed.");
     } finally {
@@ -623,20 +641,30 @@ export default function HelperHome() {
   };
 
   const confirmPendingStart = async () => {
-    if (!pendingTrip?.schedule_id) {
-      setErr("There is no pending scheduled trip to confirm.");
+    if (!pendingTrip?.id) {
+      setErr("There is no pending trip to confirm.");
       return;
     }
+
+    const payload = pendingTrip.schedule_id
+      ? { schedule_id: pendingTrip.schedule_id }
+      : { trip_id: pendingTrip.id };
+
     const response = await runTripAction(
-      () => api.post("/api/trips/start/", { schedule_id: pendingTrip.schedule_id }),
+      () => api.post("/api/trips/start/", payload),
       "Trip start confirmation sent.",
     );
-    setSelectedScheduleId(String(pendingTrip.schedule_id));
+
+    if (pendingTrip.schedule_id) {
+      setSelectedScheduleId(String(pendingTrip.schedule_id));
+    }
+
     if (response?.data?.trip?.status === "LIVE") {
       setTripId(String(response.data.trip.id));
       setActiveTab("route");
     }
   };
+
 
   const requestTripEnd = async () => {
     if (!activeTrip?.id) {
@@ -717,6 +745,83 @@ export default function HelperHome() {
     }
   }, [loadDashboard, pushScanLog, ticketLookup]);
 
+  const requestPaymentForSeat = useCallback(async (bookingId) => {
+    if (!bookingId) return;
+    setSeatPaymentBusy(true);
+    setErr("");
+    setMsg("");
+    pushScanLog(`Payment request sent for booking #${bookingId} via seat map.`);
+    try {
+      const response = await api.post(`/api/bookings/${bookingId}/request-payment/`);
+      setMsg(response.data.message || `Payment request sent for booking #${bookingId}.`);
+      pushScanLog(`Seat payment request active for booking #${bookingId}.`);
+      // Update selectedSeatInfo to reflect the new payment_requested state
+      setSelectedSeatInfo((current) => current ? { ...current, payment_tick: "PENDING" } : current);
+      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
+    } catch (error) {
+      pushScanLog(`Seat payment request failed for booking #${bookingId}.`);
+      setErr(error?.response?.data?.detail || "Unable to request payment for this seat.");
+    } finally {
+      setSeatPaymentBusy(false);
+    }
+  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
+
+  const completeRideForSeat = useCallback(async (bookingId) => {
+    if (!bookingId) return;
+    setSeatCompleteBusy(true);
+    setErr("");
+    setMsg("");
+    pushScanLog(`Ride completion sent for booking #${bookingId} via seat map.`);
+    try {
+      const response = await api.post(`/api/bookings/${bookingId}/complete/`);
+      setMsg(response.data.message || `Ride ended for booking #${bookingId}.`);
+      pushScanLog(`Seat ride complete for booking #${bookingId}.`);
+      setSelectedSeatInfo(null);
+      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
+    } catch (error) {
+      pushScanLog(`Ride completion failed for booking #${bookingId}.`);
+      setErr(error?.response?.data?.detail || "Unable to complete ride for this seat.");
+    } finally {
+      setSeatCompleteBusy(false);
+    }
+  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
+
+  const collectOfflineCash = useCallback(async (offlineBoardingId) => {
+    if (!offlineBoardingId) return;
+    setSeatPaymentBusy(true);
+    setErr("");
+    setMsg("");
+    pushScanLog(`Cash collection marked for offline boarding #${offlineBoardingId}.`);
+    try {
+      const response = await api.post(`/api/bookings/offline/${offlineBoardingId}/collect-cash/`);
+      setMsg(response.data.message || "Cash marked as collected.");
+      setSelectedSeatInfo((current) => current ? { ...current, payment_verified: true, payment_tick: "PAID" } : current);
+      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to mark cash as collected.");
+    } finally {
+      setSeatPaymentBusy(false);
+    }
+  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
+
+  const completeOfflineRide = useCallback(async (offlineBoardingId) => {
+    if (!offlineBoardingId) return;
+    setSeatCompleteBusy(true);
+    setErr("");
+    setMsg("");
+    pushScanLog(`Ride completion sent for offline boarding #${offlineBoardingId}.`);
+    try {
+      const response = await api.post(`/api/bookings/offline/${offlineBoardingId}/complete/`);
+      setMsg(response.data.message || "Offline passenger ride completed.");
+      setSelectedSeatInfo(null);
+      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to complete offline ride.");
+    } finally {
+      setSeatCompleteBusy(false);
+    }
+  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
+
   const helperPaymentActionLabel = ticketLookup?.can_accept ? "Accept & Request Payment" : "Request Payment";
 
   const acceptPassengerRide = async (bookingOverride) => {
@@ -765,7 +870,7 @@ export default function HelperHome() {
       pushScanLog(`Passenger boarded on booking #${booking.id}.`);
       setMsg(response.data.message || "Passenger marked as boarded.");
       await loadDashboard({ silent: true });
-      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder);
+      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder, { silent: true });
     } catch (error) {
       setErr(error?.response?.data?.detail || "Boarding update failed.");
     } finally {
@@ -788,7 +893,7 @@ export default function HelperHome() {
       pushScanLog(`Ride completed for booking #${booking.id}.`);
       setMsg(response.data.message || "Ride completed.");
       await loadDashboard({ silent: true });
-      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder);
+      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder, { silent: true });
     } catch (error) {
       setErr(error?.response?.data?.detail || "Ride completion failed.");
     } finally {
@@ -1076,74 +1181,147 @@ Need support with live trip operations.`;
                 </p>
               </SurfaceCard>
             ) : null}
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              {terminalChips.map((chip, index) => (
-                <button key={`${chip.label}-${index}`} type="button" onClick={() => chip.value && setFromOrder(chip.value)} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
-                  {chip.label}
-                </button>
-              ))}
-            </div>
+
+            <SurfaceCard className="overflow-hidden !p-0">
+              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <SectionLabel>Live Seat Map</SectionLabel>
+                    <p className="mt-1 text-lg font-black">Tap an occupied seat to manage a passenger</p>
+                  </div>
+                  <Chip tone={loadingAvail ? "warn" : "live"}>{loadingAvail ? "Loading…" : "Live"}</Chip>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-4 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">
+                  <span className="inline-flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded-full bg-emerald-500" />Vacant</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded-full bg-red-500" />Occupied</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="inline-flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-amber-400 px-0.5 text-[0.4rem] font-black text-white">✓</span>Payment pending</span>
+                  <span className="inline-flex items-center gap-1.5"><span className="inline-flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.4rem] font-black text-white">✓✓</span>Paid</span>
+                </div>
+              </div>
+              <div className="bg-[var(--hlp-soft)] px-4 py-5 sm:px-6">
+                {loadingAvail ? (
+                  <div className="rounded-[1.8rem] bg-white/70 px-5 py-10 text-center text-sm font-medium text-[var(--hlp-muted)]">Loading seat map…</div>
+                ) : !activeTrip ? (
+                  <div className="rounded-[1.8rem] bg-white/70 px-5 py-10 text-center text-sm font-medium text-[var(--hlp-muted)]">No active trip. Start a trip to view seats.</div>
+                ) : seats.length === 0 ? (
+                  <div className="rounded-[1.8rem] bg-white/70 px-5 py-10 text-center text-sm font-medium text-[var(--hlp-muted)]">No seats found for this segment.</div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
+                    {seats.map((seat) => (
+                      <SeatNode
+                        key={seat.seat_id}
+                        seat={seat}
+                        selected={selectedSeatIds.includes(seat.seat_id)}
+                        onClick={() => toggleSeat(seat.seat_id)}
+                        onOccupiedClick={(seat.booking_id || seat.offline_boarding_id) ? (s) => setSelectedSeatInfo(s) : undefined}
+                        isOccupiedSelected={selectedSeatInfo?.seat_id === seat.seat_id}
+                      />
+                    ))}
+                  </div>
+                )}
+                {selectedSeatInfo ? (
+                  <div className="mt-5 rounded-[1.6rem] border border-[var(--hlp-border)] bg-white p-4 shadow-[var(--hlp-shadow)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">
+                          Seat {selectedSeatInfo.seat_no}
+                          {selectedSeatInfo.offline_boarding_id ? " · Offline Passenger" : ` · Booking #${selectedSeatInfo.booking_id}`}
+                          {selectedSeatInfo.journey_stage === "dropoff" ? " · Onboard" : " · Awaiting Board"}
+                        </p>
+                        <p className="mt-1 text-lg font-black text-[var(--hlp-text)]">
+                          {selectedSeatInfo.payment_verified
+                            ? (selectedSeatInfo.offline_boarding_id ? "Cash collected" : "Payment confirmed")
+                            : selectedSeatInfo.offline_boarding_id ? "Cash not yet collected" : "Payment pending"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-[0.6rem] font-black uppercase tracking-[0.16em] ${selectedSeatInfo.payment_verified ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-700"}`}>
+                          {selectedSeatInfo.offline_boarding_id
+                            ? (selectedSeatInfo.payment_verified ? "Cash ✓" : "Cash Pending")
+                            : (selectedSeatInfo.payment_verified ? "Paid" : "Unpaid")}
+                        </span>
+                        <button type="button" onClick={() => setSelectedSeatInfo(null)} className="grid h-7 w-7 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-muted)] text-lg font-black">×</button>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {!selectedSeatInfo.offline_boarding_id && !selectedSeatInfo.payment_verified ? (
+                        <PrimaryButton tone="primary" onClick={() => requestPaymentForSeat(selectedSeatInfo.booking_id)} disabled={seatPaymentBusy || seatCompleteBusy} className="w-full !py-4 !text-sm">
+                          <Icon name="money" />{seatPaymentBusy ? "Requesting…" : "Request Payment"}
+                        </PrimaryButton>
+                      ) : null}
+                      {!selectedSeatInfo.offline_boarding_id && selectedSeatInfo.payment_verified ? (
+                        <div className="flex items-center rounded-[1.2rem] bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">✓ Payment confirmed</div>
+                      ) : null}
+                      {selectedSeatInfo.offline_boarding_id && !selectedSeatInfo.payment_verified ? (
+                        <PrimaryButton tone="primary" onClick={() => collectOfflineCash(selectedSeatInfo.offline_boarding_id)} disabled={seatPaymentBusy || seatCompleteBusy} className="w-full !py-4 !text-sm">
+                          <Icon name="money" />{seatPaymentBusy ? "Saving…" : "Mark Cash Collected"}
+                        </PrimaryButton>
+                      ) : null}
+                      {selectedSeatInfo.offline_boarding_id && selectedSeatInfo.payment_verified ? (
+                        <div className="flex items-center rounded-[1.2rem] bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">✓ Cash collected</div>
+                      ) : null}
+                      {selectedSeatInfo.journey_stage === "dropoff" ? (
+                        <PrimaryButton tone="danger" onClick={() => selectedSeatInfo.offline_boarding_id ? completeOfflineRide(selectedSeatInfo.offline_boarding_id) : completeRideForSeat(selectedSeatInfo.booking_id)} disabled={seatCompleteBusy || seatPaymentBusy} className="w-full !py-4 !text-sm">
+                          <Icon name="ticket" />{seatCompleteBusy ? "Ending Ride…" : "End Ride"}
+                        </PrimaryButton>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+                {selectedSeatIds.length > 0 ? (
+                  <div className="mx-auto mt-5 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
+                    <span className="uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Selected:</span>
+                    {selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] px-3 py-1 text-xs text-white">{label}</span>)}
+                  </div>
+                ) : null}
+              </div>
+            </SurfaceCard>
 
             <SurfaceCard className="overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(246,219,252,0.95),rgba(255,255,255,0.94)_45%)]">
-              <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
+              <SectionLabel>Filter by Segment / Offline Boarding</SectionLabel>
+              <p className="mt-1 text-sm text-[var(--hlp-muted)]">Change segment to filter the seat map or to record offline passengers.</p>
+              <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+                {terminalChips.map((chip, index) => (
+                  <button key={`${chip.label}-${index}`} type="button" onClick={() => chip.value && setFromOrder(chip.value)} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
                 <SelectField label="From" value={fromOrder} onChange={setFromOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
-                <button type="button" onClick={() => { const currentFrom = fromOrder; setFromOrder(toOrder); setToOrder(currentFrom); }} className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]">
+                <button type="button" onClick={() => { const f = fromOrder; setFromOrder(toOrder); setToOrder(f); }} className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]">
                   <Icon name="swap" className="h-6 w-6" />
                 </button>
                 <SelectField label="To" value={toOrder} onChange={setToOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
               </div>
               <div className="mt-4 rounded-[1.4rem] bg-white/80 px-4 py-3 text-sm font-semibold text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
-                {fromStop && toStop ? `Segment: ${fromStop.stop?.name} to ${toStop.stop?.name}` : "Choose a route segment to continue."}
-              </div>
-              <div className="mt-4 flex items-center justify-between gap-3">
-                <SectionLabel>Segment Status</SectionLabel>
-                <Chip tone={loadingAvail ? "warn" : "live"}>{loadingAvail ? "Refreshing Seats" : "Seats Ready"}</Chip>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-5 text-[0.72rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">
-                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-emerald-500" />Vacant</span>
-                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-red-500" />Occupied</span>
-                <span className="inline-flex items-center gap-2"><span className="h-4 w-4 rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))]" />Selected</span>
-                <span className="inline-flex items-center gap-2"><span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-slate-300 px-1 text-[0.45rem] font-black text-slate-700">✓</span>Payment pending</span>
-                <span className="inline-flex items-center gap-2"><span className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-sky-500 px-1 text-[0.45rem] font-black text-white">✓✓</span>Payment done</span>
-              </div>
-            </SurfaceCard>
-
-            <SurfaceCard className="overflow-hidden !p-0">
-              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
-                <SectionLabel>Seat Map</SectionLabel>
-                <p className="mt-1 text-lg font-black">Offline boarding workspace</p>
-              </div>
-              <div className="bg-[var(--hlp-soft)] px-4 py-5 sm:px-6">
-                {seats.length === 0 ? <div className="rounded-[1.8rem] bg-white/70 px-5 py-8 text-center text-sm font-medium text-[var(--hlp-muted)]">Select a live trip and a valid segment to load available seats.</div> : <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">{seats.map((seat) => <SeatNode key={seat.seat_id} seat={seat} selected={selectedSeatIds.includes(seat.seat_id)} onClick={() => toggleSeat(seat.seat_id)} />)}</div>}
-                <div className="mx-auto mt-6 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
-                  <span className="uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Selected seats:</span>
-                  {selectedSeatLabels.length ? selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] px-3 py-1 text-xs text-white">{label}</span>) : <span className="text-[var(--hlp-muted)]">None</span>}
-                </div>
+                {fromStop && toStop ? `Segment: ${fromStop.stop?.name} → ${toStop.stop?.name}` : "Choose a route segment."}
               </div>
             </SurfaceCard>
 
             <SurfaceCard className="bg-[rgba(255,250,255,0.94)]">
-              <SectionLabel>Offline Boarding Summary</SectionLabel>
+              <SectionLabel>Offline Boarding</SectionLabel>
+              <p className="mt-1 text-sm text-[var(--hlp-muted)]">Select vacant seats above, then save to record passengers boarding without the app.</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Pickup</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{fromStop?.stop?.name || "Choose stop"}</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{fromStop?.stop?.name || "—"}</p>
                 </div>
                 <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Drop</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{toStop?.stop?.name || "Choose stop"}</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{toStop?.stop?.name || "—"}</p>
                 </div>
                 <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Fare</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{segmentFarePerSeat != null ? `${formatMoney(segmentFarePerSeat)} per seat` : "Fare unavailable"}</p>
-                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{selectedCount ? `${formatMoney(selectedSegmentFare)} total for ${selectedCount} seat${selectedCount > 1 ? "s" : ""}` : "Select seats to preview the offline boarding total."}</p>
+                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{segmentFarePerSeat != null ? `${formatMoney(segmentFarePerSeat)} / seat` : "—"}</p>
+                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{selectedCount ? `${formatMoney(selectedSegmentFare)} total for ${selectedCount} seat${selectedCount > 1 ? "s" : ""}` : "Select seats above."}</p>
                 </div>
               </div>
             </SurfaceCard>
 
             <PrimaryButton tone="primary" onClick={submitOffline} disabled={offlineBusy || !selectedSeatIds.length} className="w-full !py-5 !text-base">
               <Icon name="ticket" />
-              {offlineBusy ? "Saving Offline Boarding" : "Save Offline Boarding"}
+              {offlineBusy ? "Saving Offline Boarding…" : "Save Offline Boarding"}
             </PrimaryButton>
             <p className="text-center text-sm font-medium uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Your boarding pass will remain accessible without an active internet connection.</p>
           </div>
@@ -1213,15 +1391,48 @@ Need support with live trip operations.`;
               ) : null}
             </SurfaceCard>
 
+            {/* Primary two-action choice — shown right after OTP scan */}
+            {ticketLookup && (ticketLookup.can_accept || ticketLookup.can_request_payment) ? (
+              <div className="overflow-hidden rounded-[1.8rem] border border-[var(--hlp-border)] bg-white shadow-[var(--hlp-shadow)]">
+                <div className="border-b border-[var(--hlp-border)] px-5 py-4">
+                  <SectionLabel>Choose an action for this passenger</SectionLabel>
+                  <p className="mt-1 text-[0.82rem] font-medium text-[var(--hlp-muted)]">Mark onboard to board now and collect payment later, or request payment from the passenger app immediately.</p>
+                </div>
+                <div className="grid sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={acceptPassengerRide}
+                    disabled={verifyBusy || !ticketLookup?.can_accept}
+                    className="flex flex-col items-center gap-3 px-6 py-7 text-center transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 sm:border-r sm:border-[var(--hlp-border)]"
+                  >
+                    <span className="grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-600">
+                      <Icon name="ticket" className="h-7 w-7" />
+                    </span>
+                    <span>
+                      <p className="text-base font-black text-[var(--hlp-text)]">Mark Onboard</p>
+                      <p className="mt-1 text-[0.72rem] font-medium text-[var(--hlp-muted)]">Board now — collect payment later via seat map</p>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={requestPassengerPayment}
+                    disabled={verifyBusy || !ticketLookup?.can_request_payment}
+                    className="flex flex-col items-center gap-3 px-6 py-7 text-center transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="grid h-14 w-14 place-items-center rounded-full bg-[rgba(52,21,93,0.08)] text-[var(--hlp-purple)]">
+                      <Icon name="money" className="h-7 w-7" />
+                    </span>
+                    <span>
+                      <p className="text-base font-black text-[var(--hlp-text)]">Request Payment</p>
+                      <p className="mt-1 text-[0.72rem] font-medium text-[var(--hlp-muted)]">Passenger pays now via MetroBus app</p>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Secondary action buttons */}
             <div className="grid gap-3 sm:grid-cols-2">
-              <PrimaryButton tone="ghost" onClick={acceptPassengerRide} disabled={verifyBusy || !ticketLookup?.can_accept} className="w-full !py-5 !text-base">
-                Accept Ride
-                <Icon name="shield" />
-              </PrimaryButton>
-              <PrimaryButton tone="primary" onClick={requestPassengerPayment} disabled={verifyBusy || !ticketLookup?.can_request_payment} className="w-full !py-5 !text-base">
-                {helperPaymentActionLabel}
-                <Icon name="money" />
-              </PrimaryButton>
               <PrimaryButton tone="danger" onClick={verifyCash} disabled={verifyBusy || !ticketLookup?.can_verify_cash} className="w-full !py-5 !text-base">
                 Confirm Cash
                 <Icon name="shield" />

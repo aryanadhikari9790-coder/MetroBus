@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { clearToken } from "../../auth";
 import { useAuth } from "../../AuthContext";
 import { api } from "../../api";
@@ -28,15 +28,16 @@ import {
   TrackMap,
 } from "../../components/passenger/PassengerUI";
 import { buildFormPost, distKm, downloadInvoice, estimateEta, PASSENGER_THEME, toLocPoint, toPoint, useSplash } from "./passengerUtils";
-
 export default function PassengerHome() {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const { user, setUser } = useAuth();
   const showSplash = useSplash();
   const [activeView, setActiveView] = useState("home");
   const [stops, setStops] = useState([]);
   const [trips, setTrips] = useState([]);
   const [routeFeed, setRouteFeed] = useState([]);
+
   const [tripContexts, setTripContexts] = useState({});
   const [pickupStopId, setPickupStopId] = useState("");
   const [dropStopId, setDropStopId] = useState("");
@@ -127,6 +128,19 @@ export default function PassengerHome() {
   useEffect(() => {
     localStorage.setItem("metrobus_passenger_settings", JSON.stringify(settings));
   }, [settings]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const view = params.get("view");
+    const bId = params.get("bookingId");
+
+    if (view === "checkout") {
+      setActiveView("checkout");
+      if (bId) setTicketBookingId(Number(bId));
+      setCheckoutOriginView("home");
+    }
+  }, [search]);
+
 
   useEffect(() => {
     try {

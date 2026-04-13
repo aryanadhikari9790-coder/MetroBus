@@ -143,6 +143,9 @@ class OfflineBoarding(models.Model):
     to_stop_order = models.PositiveIntegerField()
 
     seats_count = models.PositiveIntegerField(default=1)
+    cash_collected = models.BooleanField(default=False)
+    cash_collected_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

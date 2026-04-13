@@ -262,11 +262,12 @@ class TripSeatAvailabilityView(APIView):
                     "available": False,
                     "seat_state": "OCCUPIED",
                     "occupant_kind": "OFFLINE",
-                    "journey_stage": "dropoff",
-                    "payment_status": "OFFLINE",
-                    "payment_verified": False,
-                    "payment_tick": "PENDING",
+                    "journey_stage": "dropoff" if not offline_boarding.completed_at else "completed",
+                    "payment_status": "OFFLINE_PAID" if offline_boarding.cash_collected else "OFFLINE",
+                    "payment_verified": offline_boarding.cash_collected,
+                    "payment_tick": "PAID" if offline_boarding.cash_collected else "PENDING",
                     "offline_boarding_id": offline_boarding.id,
+                    "offline_completed": offline_boarding.completed_at is not None,
                 }
             )
 
@@ -668,5 +669,53 @@ class HelperCompleteBookingView(APIView):
 
         return Response(
             {"message": "Ride completed and the seat is now free for the next segment.", "booking": HelperBookingTicketSerializer(booking).data},
+            status=200,
+        )
+
+
+class OfflineCollectCashView(APIView):
+    """Helper marks cash as collected for an offline-boarded passenger."""
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request, offline_boarding_id: int):
+        ob = OfflineBoarding.objects.select_related("trip").filter(id=offline_boarding_id).first()
+        if not ob:
+            return Response({"detail": "Offline boarding record not found."}, status=404)
+        # Ensure this helper is assigned to the trip
+        if ob.trip.helper_id and ob.trip.helper_id != request.user.id:
+            return Response({"detail": "This offline boarding does not belong to your trip."}, status=403)
+        if ob.completed_at:
+            return Response({"detail": "This offline passenger ride is already completed."}, status=400)
+
+        if ob.cash_collected:
+            return Response({"detail": "Cash has already been marked as collected.", "offline_boarding_id": ob.id}, status=200)
+
+        ob.cash_collected = True
+        ob.cash_collected_at = timezone.now()
+        ob.save(update_fields=["cash_collected", "cash_collected_at"])
+        return Response(
+            {"message": "Cash collected for offline passenger.", "offline_boarding_id": ob.id, "cash_collected": True},
+            status=200,
+        )
+
+
+class OfflineCompleteView(APIView):
+    """Helper ends the ride for an offline-boarded passenger, freeing the seat."""
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def post(self, request, offline_boarding_id: int):
+        ob = OfflineBoarding.objects.select_related("trip").filter(id=offline_boarding_id).first()
+        if not ob:
+            return Response({"detail": "Offline boarding record not found."}, status=404)
+        if ob.trip.helper_id and ob.trip.helper_id != request.user.id:
+            return Response({"detail": "This offline boarding does not belong to your trip."}, status=403)
+
+        if ob.completed_at:
+            return Response({"detail": "This offline passenger ride is already completed.", "offline_boarding_id": ob.id}, status=200)
+
+        ob.completed_at = timezone.now()
+        ob.save(update_fields=["completed_at"])
+        return Response(
+            {"message": "Offline passenger ride completed. Seat is now free.", "offline_boarding_id": ob.id},
             status=200,
         )
