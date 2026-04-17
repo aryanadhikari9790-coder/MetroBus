@@ -1,5 +1,5 @@
 import AdminWorkspace from "./AdminWorkspace";
 
 export default function StationManagement() {
-  return <AdminWorkspace />;
+  return <AdminWorkspace sectionOverride="stops" />;
 }

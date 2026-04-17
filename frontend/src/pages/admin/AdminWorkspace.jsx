@@ -56,7 +56,7 @@ const DARK = {
 };
 
 function GlassCard({ children, className = "" }) { return <div className={`rounded-[1.6rem] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] backdrop-blur-xl ${className}`}>{children}</div>; }
-function Pill({ children, color = "slate" }) {
+function Pill({ children, color = "slate", isDark: _isDark }) {
   const tones = {
     emerald: "border-[rgba(23,165,103,0.18)] bg-[rgba(23,165,103,0.12)] text-[var(--success)]",
     sky: "border-[rgba(51,133,255,0.16)] bg-[rgba(51,133,255,0.12)] text-[#2c73d2]",
@@ -77,13 +77,13 @@ function Btn({ children, onClick, disabled, tone = "primary", className = "" }) 
   return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-[1rem] px-5 py-3 text-sm font-black tracking-[0.04em] transition disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
 function SLabel({ children }) { return <p className="mb-3 text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--muted)]">{children}</p>; }
-function StatCard({ label, value, sub, accent = "" }) {
+function StatCard({ label, value, sub, accent = "", t: _t }) {
   return <GlassCard className="h-full"><p className="text-[0.68rem] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p><p className={`mt-2 break-words text-3xl font-black leading-tight ${accent || "text-[var(--text)]"}`}>{value}</p>{sub && <p className="mt-1.5 break-words text-xs leading-5 text-[var(--muted)]">{sub}</p>}</GlassCard>;
 }
-function InputField({ label, value, onChange, placeholder, type = "text" }) {
+function InputField({ label, value, onChange, placeholder, type = "text", t: _t }) {
   return <div><label className="mb-1.5 block text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--primary)]" /></div>;
 }
-function FileField({ label, onChange, file, accept = "image/*" }) {
+function FileField({ label, onChange, file, accept = "image/*", t: _t }) {
   return (
     <div>
       <label className="mb-1.5 block text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">{label}</label>
@@ -95,7 +95,7 @@ function FileField({ label, onChange, file, accept = "image/*" }) {
     </div>
   );
 }
-function SelectField({ label, value, onChange, options }) {
+function SelectField({ label, value, onChange, options, t: _t }) {
   return <div><label className="mb-1.5 block text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">{label}</label><select value={value} onChange={e => onChange(e.target.value)} className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] outline-none transition focus:border-[var(--primary)]">{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>;
 }
 function Icon({ name, className = "h-5 w-5" }) {
@@ -258,12 +258,37 @@ function toLocalDatetimeInput(value) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
-export default function AdminWorkspace() {
+export default function AdminWorkspace({ sectionOverride = null }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, setUser } = useAuth();
   const { isDark } = useTheme();
   const theme = useMemo(() => (isDark ? DARK : LIGHT), [isDark]);
+  const t = useMemo(() => (isDark ? ({
+    page: "bg-slate-950 text-slate-100",
+    nav: "border-slate-800 bg-slate-950/95",
+    tabBar: "border-slate-800 bg-slate-900/70",
+    tabInactive: "text-slate-300 hover:bg-slate-800/80",
+    label: "text-slate-400",
+    text: "text-slate-100",
+    textSub: "text-slate-300",
+    textMuted: "text-slate-400",
+    divider: "border-slate-800",
+    input: "border-slate-700 bg-slate-900 text-slate-100",
+    mapTile: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  }) : ({
+    page: "bg-[#f4f6f8] text-slate-900",
+    nav: "border-slate-200 bg-white/95",
+    tabBar: "border-slate-200 bg-white",
+    tabInactive: "text-slate-600 hover:bg-slate-100",
+    label: "text-slate-500",
+    text: "text-slate-900",
+    textSub: "text-slate-600",
+    textMuted: "text-slate-500",
+    divider: "border-slate-200",
+    input: "border-slate-200 bg-white text-slate-900",
+    mapTile: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+  })), [isDark]);
 
   const [dashboard, setDashboard]           = useState(null);
   const [loading, setLoading]               = useState(true);
@@ -396,10 +421,10 @@ export default function AdminWorkspace() {
   const handleLogout = () => { clearToken(); setUser(null); navigate("/auth/login", { replace: true }); };
 
   const activeSection = useMemo(() => {
-    const rawSection = location.pathname.split("/")[2] || DEFAULT_ADMIN_SECTION;
+    const rawSection = sectionOverride || location.pathname.split("/")[2] || DEFAULT_ADMIN_SECTION;
     const section = LEGACY_SECTION_ALIASES[rawSection] || rawSection;
     return ADMIN_SECTIONS.some((item) => item.id === section) ? section : DEFAULT_ADMIN_SECTION;
-  }, [location.pathname]);
+  }, [location.pathname, sectionOverride]);
   useEffect(() => {
     if (editingUserId) return;
     if (activeSection === "drivers" && uRole !== "DRIVER") setURole("DRIVER");

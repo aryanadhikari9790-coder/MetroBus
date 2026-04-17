@@ -1,5 +1,5 @@
 import AdminWorkspace from "./AdminWorkspace";
 
 export default function AssignmentManagement() {
-  return <AdminWorkspace />;
+  return <AdminWorkspace sectionOverride="assignments" />;
 }
