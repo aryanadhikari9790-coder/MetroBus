@@ -1,5 +1,15 @@
 from rest_framework import serializers
+
 from .models import Booking, BookingSeat, OfflineBoarding, OfflineSeat
+
+
+def booking_payment_status_label(booking):
+    payment = getattr(booking, "payment", None)
+    if payment:
+        return payment.status
+    if booking.checked_in_at or booking.payment_requested_at:
+        return "PENDING"
+    return "UNPAID"
 class BookingSeatSerializer(serializers.ModelSerializer):
     seat_no = serializers.CharField(source="seat.seat_no", read_only=True)
 
@@ -28,6 +38,9 @@ class PaymentSummaryFieldMixin:
             route_stops = list(obj.trip.route.route_stops.select_related("stop").order_by("stop_order"))
         match = next((item for item in route_stops if item.stop_order == order), None)
         return match.stop.name if match else f"Stop {order}"
+
+    def _payment_status_label(self, obj):
+        return booking_payment_status_label(obj)
 
 
 class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
@@ -116,8 +129,7 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
         return self._payment_summary(obj)
 
     def get_payment_status(self, obj):
-        payment = getattr(obj, "payment", None)
-        return payment.status if payment else "UNPAID"
+        return self._payment_status_label(obj)
 
     def get_payment_method(self, obj):
         payment = getattr(obj, "payment", None)
@@ -221,8 +233,7 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
         )
 
     def get_payment_status(self, obj):
-        payment = getattr(obj, "payment", None)
-        return payment.status if payment else "UNPAID"
+        return self._payment_status_label(obj)
 
     def get_payment_method(self, obj):
         payment = getattr(obj, "payment", None)
@@ -271,6 +282,21 @@ class CreateBookingSerializer(serializers.Serializer):
         return attrs
 
 
+class SeatHoldSyncSerializer(serializers.Serializer):
+    from_stop_order = serializers.IntegerField(min_value=1)
+    to_stop_order = serializers.IntegerField(min_value=2)
+    seat_ids = serializers.ListField(child=serializers.IntegerField(), required=False, default=list)
+
+    def validate(self, attrs):
+        if attrs["to_stop_order"] <= attrs["from_stop_order"]:
+            raise serializers.ValidationError("to_stop_order must be greater than from_stop_order")
+        seat_ids = attrs.get("seat_ids") or []
+        if len(set(seat_ids)) != len(seat_ids):
+            raise serializers.ValidationError("Duplicate seat ids not allowed")
+        attrs["seat_ids"] = seat_ids
+        return attrs
+
+
 class OfflineCreateSerializer(serializers.Serializer):
     from_stop_order = serializers.IntegerField(min_value=1)
     to_stop_order = serializers.IntegerField(min_value=2)
@@ -293,6 +319,10 @@ class OfflineBoardingSerializer(serializers.ModelSerializer):
 
 class HelperLookupSerializer(serializers.Serializer):
     reference = serializers.CharField()
+
+
+class HelperBoardBookingActionSerializer(serializers.Serializer):
+    request_payment = serializers.BooleanField(required=False, default=False)
 
 
 class PassengerCancelBookingSerializer(serializers.Serializer):
@@ -325,6 +355,8 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     passenger_name = serializers.CharField(source="passenger.full_name", read_only=True)
     passenger_phone = serializers.CharField(source="passenger.phone", read_only=True)
     payment = serializers.SerializerMethodField()
+    payment_status = serializers.SerializerMethodField()
+    payment_method = serializers.SerializerMethodField()
     pickup_stop_name = serializers.SerializerMethodField()
     destination_stop_name = serializers.SerializerMethodField()
     seat_labels = serializers.SerializerMethodField()
@@ -357,6 +389,8 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
             "destination_stop_name",
             "seat_labels",
             "fare_total",
+            "payment_status",
+            "payment_method",
             "scanned_at",
             "scanned_by_name",
             "payment_requested_at",
@@ -379,6 +413,13 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
 
     def get_payment(self, obj):
         return self._payment_summary(obj)
+
+    def get_payment_status(self, obj):
+        return self._payment_status_label(obj)
+
+    def get_payment_method(self, obj):
+        payment = getattr(obj, "payment", None)
+        return payment.method if payment else None
 
     def get_journey_status_label(self, obj):
         return obj.get_journey_status_display()
@@ -404,21 +445,21 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
         return bool(obj.accepted_by_helper_at and payment and payment.method == "CASH" and payment.status == "PENDING")
 
     def get_can_board(self, obj):
-        payment = getattr(obj, "payment", None)
         return bool(
             obj.status == Booking.Status.CONFIRMED
             and obj.accepted_by_helper_at
             and not obj.checked_in_at
-            and payment
-            and payment.status == "SUCCESS"
         )
 
     def get_can_complete(self, obj):
+        payment = getattr(obj, "payment", None)
         return bool(
             obj.status == Booking.Status.CONFIRMED
             and obj.accepted_by_helper_at
             and obj.checked_in_at
             and not obj.completed_at
+            and payment
+            and payment.status == "SUCCESS"
         )
 
     def get_can_request_payment(self, obj):
@@ -426,7 +467,6 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
         return bool(
             obj.status == Booking.Status.CONFIRMED
             and not obj.completed_at
-            and not obj.checked_in_at
             and (
                 not payment
                 or payment.status in {"FAILED", "CANCELLED"}

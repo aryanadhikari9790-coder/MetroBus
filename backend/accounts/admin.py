@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
-from .models import PhoneOTP, User
+from .models import AuthOTP, User
 
 
 @admin.register(User)
@@ -48,9 +48,9 @@ class UserAdmin(DjangoUserAdmin):
     )
 
 
-@admin.register(PhoneOTP)
-class PhoneOTPAdmin(admin.ModelAdmin):
+@admin.register(AuthOTP)
+class AuthOTPAdmin(admin.ModelAdmin):
     ordering = ("-created_at",)
-    list_display = ("id", "phone", "purpose", "expires_at", "consumed_at", "created_at")
-    search_fields = ("phone",)
+    list_display = ("id", "phone", "email", "purpose", "expires_at", "consumed_at", "created_at")
+    search_fields = ("phone", "email")
     list_filter = ("purpose",)

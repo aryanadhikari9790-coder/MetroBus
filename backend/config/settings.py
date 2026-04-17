@@ -205,3 +205,12 @@ KHALTI_API_URL = os.getenv("KHALTI_API_URL", "https://dev.khalti.com/api/v2").rs
 KHALTI_PUBLIC_KEY = os.getenv("KHALTI_PUBLIC_KEY", "").strip()
 KHALTI_SECRET_KEY = os.getenv("KHALTI_SECRET_KEY", "").strip()
 
+# Email settings (SMTP)
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "aryanadhikari2062@gmail.com")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = f"MetroBus <{EMAIL_HOST_USER}>"
+

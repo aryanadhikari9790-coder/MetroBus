@@ -439,9 +439,9 @@ export default function PassengerHome() {
   }, [syncTripSeatMeta]);
 
   const buildRouteFeed = useCallback(async (liveTrips) => {
-    const ctxMap = await ensureCtx(liveTrips);
     const cards = await Promise.all(liveTrips.map(async (trip) => {
-      const rows = ctxMap[trip.id]?.route_stops || [];
+      // Use route_stops embedded directly in the live trips response
+      const rows = trip.route_stops || [];
       const first = rows[0];
       const last = rows[rows.length - 1];
       let openSeats = null;
@@ -480,7 +480,7 @@ export default function PassengerHome() {
     }));
     setRouteFeed(cards);
     setSelectedTripId((current) => current || String(cards[0]?.id || ""));
-  }, [ensureCtx]);
+  }, []);
 
   const loadBase = useCallback(async ({ silent = false } = {}) => {
     if (!silent) setLoading(true);
@@ -490,6 +490,14 @@ export default function PassengerHome() {
       const liveTrips = tripsResponse.data || [];
       setStops(liveStops);
       setTrips(liveTrips);
+      // Pre-populate tripContexts from embedded route_stops in live trips
+      setTripContexts((current) => {
+        const merged = { ...current };
+        liveTrips.forEach((trip) => {
+          if (trip.route_stops) merged[trip.id] = { route_stops: trip.route_stops };
+        });
+        return merged;
+      });
       await buildRouteFeed(liveTrips);
       setErr("");
     } catch (error) {
@@ -721,7 +729,14 @@ export default function PassengerHome() {
       setSelectedSeatIds([]);
       if (!matches.length) {
         setHomeStage("planner");
-        setErr("No live buses found for that route right now.");
+        // Build helpful message showing available stop pairs
+        const validStops = trips.map((trip) => {
+          const ctx = ctxMap[trip.id]?.route_stops || trip.route_stops || [];
+          const names = ctx.map((r) => r.stop?.name).filter(Boolean);
+          return names.length ? `${trip.route_name || trip.bus_plate}: ${names.join(" → ")}` : null;
+        }).filter(Boolean);
+        const hint = validStops.length ? ` Available routes: ${validStops.join("; ")}` : "";
+        setErr("No live buses match your pickup → drop selection." + hint);
       } else {
         setHomeStage("matches");
         setMsg(`${matches.length} live bus${matches.length !== 1 ? "es" : ""} found.`);

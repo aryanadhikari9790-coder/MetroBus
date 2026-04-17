@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.settings import api_settings
 
-from .models import PhoneOTP
+from .models import AuthOTP
 from .utils import build_full_name, normalize_nepal_phone, phone_lookup_candidates
 
 User = get_user_model()
@@ -61,54 +61,39 @@ class PhoneTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class RegisterOTPRequestSerializer(serializers.Serializer):
-    phone = serializers.CharField()
+    email = serializers.EmailField()
 
-    def validate_phone(self, value):
-        try:
-            phone = normalize_nepal_phone(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(exc.messages[0])
-
-        if User.objects.filter(phone=phone).exists():
-            raise serializers.ValidationError("An account with this phone number already exists.")
-        return phone
+    def validate_email(self, value):
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value.lower().strip()
 
 
 class PasswordResetOTPRequestSerializer(serializers.Serializer):
-    phone = serializers.CharField()
+    email = serializers.EmailField()
 
-    def validate_phone(self, value):
-        lookup_candidates = phone_lookup_candidates(value)
-        try:
-            phone = normalize_nepal_phone(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(exc.messages[0])
-
-        user = User.objects.filter(phone__in=lookup_candidates, role=User.Role.PASSENGER, is_active=True).order_by("id").first()
+    def validate_email(self, value):
+        email = value.lower().strip()
+        user = User.objects.filter(email__iexact=email, role=User.Role.PASSENGER, is_active=True).order_by("id").first()
         if not user:
-            raise serializers.ValidationError("No active passenger account was found for this phone number.")
+            raise serializers.ValidationError("No active passenger account was found for this email.")
         self.context["reset_user"] = user
-        return phone
+        return email
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    phone = serializers.CharField()
+    email = serializers.EmailField()
     otp_code = serializers.CharField(write_only=True, min_length=4, max_length=4)
     password = serializers.CharField(write_only=True, min_length=6)
     password_confirm = serializers.CharField(write_only=True, min_length=6)
 
-    def validate_phone(self, value):
-        lookup_candidates = phone_lookup_candidates(value)
-        try:
-            phone = normalize_nepal_phone(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(exc.messages[0])
-
-        user = User.objects.filter(phone__in=lookup_candidates, role=User.Role.PASSENGER, is_active=True).order_by("id").first()
+    def validate_email(self, value):
+        email = value.lower().strip()
+        user = User.objects.filter(email__iexact=email, role=User.Role.PASSENGER, is_active=True).order_by("id").first()
         if not user:
-            raise serializers.ValidationError("No active passenger account was found for this phone number.")
+            raise serializers.ValidationError("No active passenger account was found for this email.")
         self.context["reset_user"] = user
-        return phone
+        return email
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -116,9 +101,9 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
 
         otp = (
-            PhoneOTP.objects.filter(
-                phone=attrs["phone"],
-                purpose=PhoneOTP.Purpose.PASSWORD_RESET,
+            AuthOTP.objects.filter(
+                email=attrs["email"],
+                purpose=AuthOTP.Purpose.PASSWORD_RESET,
                 consumed_at__isnull=True,
                 expires_at__gt=timezone.now(),
             )
@@ -229,9 +214,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             attrs["school_lng"] = None
 
         otp = (
-            PhoneOTP.objects.filter(
-                phone=attrs["phone"],
-                purpose=PhoneOTP.Purpose.REGISTER,
+            AuthOTP.objects.filter(
+                email=attrs["email"],
+                purpose=AuthOTP.Purpose.REGISTER,
                 consumed_at__isnull=True,
                 expires_at__gt=timezone.now(),
             )
@@ -263,7 +248,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             full_name=validated_data["full_name"],
             email=validated_data.get("email"),
             role=User.Role.PASSENGER,
-            phone_verified=True,
+            email_verified=True,
             is_active=True,
             home_location_label=validated_data["home_location_label"],
             home_lat=validated_data["home_lat"],

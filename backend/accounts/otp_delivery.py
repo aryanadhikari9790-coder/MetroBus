@@ -1,7 +1,8 @@
 import os
-
 import requests
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.mail import send_mail
+from django.conf import settings
 
 from .utils import normalize_nepal_phone
 
@@ -11,10 +12,8 @@ class OTPDeliveryError(Exception):
 
 
 def _render_message(code: str, template_env_key: str = "OTP_MESSAGE_TEMPLATE") -> str:
-    template = os.getenv(
-        template_env_key,
-        "MetroBus OTP is {code}. Valid for 5 minutes. Do not share it.",
-    ).strip() or "MetroBus OTP is {code}. Valid for 5 minutes. Do not share it."
+    default_text = "MetroBus OTP is {code}. Valid for 5 minutes. Do not share it."
+    template = os.getenv(template_env_key, default_text).strip() or default_text
     try:
         return template.format(code=code)
     except KeyError as exc:
@@ -38,12 +37,34 @@ def _sparrow_recipient(phone: str) -> str:
     return recipient
 
 
-def _send_console(phone: str, code: str, purpose_label: str):
-    print(f"[MetroBus OTP][console] {purpose_label} OTP for {phone}: {code}")
+def _send_console(identifier: str, code: str, purpose_label: str):
+    print(f"[MetroBus OTP][console] {purpose_label} OTP for {identifier}: {code}")
     return {
         "delivery": "console",
-        "detail": "Sparrow SMS is not configured yet. Using console OTP for now.",
+        "detail": f"OTP sent to console for {identifier}.",
         "dev_code": code,
+    }
+
+
+def _send_email_otp(email: str, code: str, purpose_label: str, template_env_key: str = "OTP_MESSAGE_TEMPLATE"):
+    subject = f"MetroBus {purpose_label} OTP"
+    message = _render_message(code, template_env_key=template_env_key)
+    
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+    except Exception as exc:
+        raise OTPDeliveryError(f"Failed to send email OTP: {str(exc)}")
+
+    print(f"[MetroBus OTP][email] {purpose_label} OTP sent to {email}")
+    return {
+        "delivery": "email",
+        "detail": f"OTP sent via email to {email}.",
     }
 
 
@@ -97,32 +118,40 @@ def _send_sparrow(phone: str, code: str, purpose_label: str, template_env_key: s
 
 
 def _dispatch_otp(
-    phone: str,
+    identifier: str,
     code: str,
     *,
     purpose_label: str,
     template_env_key: str = "OTP_MESSAGE_TEMPLATE",
 ):
     provider = os.getenv("OTP_PROVIDER", "console").strip().lower() or "console"
+    
+    # Force email if identifier looks like an email
+    if "@" in identifier:
+        if provider == "console":
+            return _send_console(identifier, code, purpose_label)
+        return _send_email_otp(identifier, code, purpose_label, template_env_key=template_env_key)
+
     if provider == "console":
-        return _send_console(phone, code, purpose_label)
+        return _send_console(identifier, code, purpose_label)
     if provider == "sparrow":
-        return _send_sparrow(phone, code, purpose_label, template_env_key=template_env_key)
+        return _send_sparrow(identifier, code, purpose_label, template_env_key=template_env_key)
+    
     raise OTPDeliveryError(f"Unsupported OTP provider: {provider}")
 
 
-def send_registration_otp(phone: str, code: str):
+def send_registration_otp(identifier: str, code: str):
     return _dispatch_otp(
-        phone,
+        identifier,
         code,
         purpose_label="Registration",
         template_env_key="OTP_MESSAGE_TEMPLATE",
     )
 
 
-def send_password_reset_otp(phone: str, code: str):
+def send_password_reset_otp(identifier: str, code: str):
     return _dispatch_otp(
-        phone,
+        identifier,
         code,
         purpose_label="Password reset",
         template_env_key="PASSWORD_RESET_OTP_MESSAGE_TEMPLATE",

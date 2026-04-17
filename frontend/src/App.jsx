@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
-import PassengerHome from "./pages/passenger/PassengerHome";
+import PassengerHome from "./pages/passenger/PassengerHomeRedesigned";
 import HelperHome from "./pages/helper/HelperHome";
 import DriverHome from "./pages/driver/DriverHome";
 import AdminHome from "./pages/admin/AdminHome";

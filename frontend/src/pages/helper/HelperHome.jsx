@@ -1,556 +1,433 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
+import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
+import MetroSeatBoard from "../../components/shared/MetroSeatBoard";
 import { useTheme } from "../../ThemeContext";
-import { buildWsUrl } from "../../lib/ws";
-import { PASSENGER_THEME } from "../passenger/passengerUtils";
 
-const LIGHT_THEME = {
-  "--hlp-bg": PASSENGER_THEME["--mb-bg"],
-  "--hlp-bg-end": PASSENGER_THEME["--mb-bg-alt"],
-  "--hlp-surface": PASSENGER_THEME["--mb-card"],
-  "--hlp-soft": PASSENGER_THEME["--mb-card-soft"],
-  "--hlp-border": PASSENGER_THEME["--mb-border"],
-  "--hlp-text": PASSENGER_THEME["--mb-text"],
-  "--hlp-muted": PASSENGER_THEME["--mb-muted"],
-  "--hlp-purple": PASSENGER_THEME["--mb-purple"],
-  "--hlp-purple-2": PASSENGER_THEME["--mb-accent-2"],
-  "--hlp-plum": PASSENGER_THEME["--mb-bg-deep"],
-  "--hlp-header": PASSENGER_THEME["--mb-nav"],
-  "--hlp-nav": PASSENGER_THEME["--mb-nav"],
-  "--hlp-shadow": PASSENGER_THEME["--mb-shadow"],
-  "--hlp-shadow-strong": PASSENGER_THEME["--mb-shadow-strong"],
+const LIGHT = {
+  "--bg": "#f7efe7",
+  "--bg-soft": "#fff7f0",
+  "--surface": "rgba(255,255,255,0.92)",
+  "--surface-strong": "rgba(255,255,255,0.98)",
+  "--border": "rgba(73,39,94,0.10)",
+  "--text": "#2d1838",
+  "--muted": "#756681",
+  "--primary": "#4b2666",
+  "--accent": "#ff8a1f",
+  "--accent-soft": "#fff1df",
+  "--success": "#17a567",
+  "--danger": "#db3d4f",
+  "--header": "rgba(255,250,245,0.88)",
+  "--footer": "rgba(255,251,247,0.96)",
+  "--shadow": "0 20px 38px rgba(73,39,94,0.12)",
+  "--shadow-strong": "0 24px 44px rgba(75,38,102,0.18)",
 };
 
-const DARK_THEME = {
-  "--hlp-bg": "#2e124f",
-  "--hlp-bg-end": "rgba(36,16,67,0.98)",
-  "--hlp-surface": "rgba(64,32,102,0.9)",
-  "--hlp-soft": "rgba(248,242,246,0.10)",
-  "--hlp-border": "rgba(255,255,255,0.10)",
-  "--hlp-text": "#fff7fb",
-  "--hlp-muted": "#d7c5e6",
-  "--hlp-purple": "#552681",
-  "--hlp-purple-2": "#ff8a5b",
-  "--hlp-plum": "#1e0b35",
-  "--hlp-header": "rgba(46,18,79,0.92)",
-  "--hlp-nav": "rgba(46,18,79,0.94)",
-  "--hlp-shadow": "0 18px 34px rgba(12,3,29,0.28)",
-  "--hlp-shadow-strong": "0 18px 36px rgba(255,107,115,0.20)",
+const DARK = {
+  "--bg": "#190f24",
+  "--bg-soft": "#24152f",
+  "--surface": "rgba(37,24,49,0.90)",
+  "--surface-strong": "rgba(44,27,58,0.96)",
+  "--border": "rgba(255,255,255,0.09)",
+  "--text": "#fff5ef",
+  "--muted": "#c8b8c7",
+  "--primary": "#8d5abf",
+  "--accent": "#ff962d",
+  "--accent-soft": "rgba(255,150,45,0.16)",
+  "--success": "#1fcf81",
+  "--danger": "#ff6474",
+  "--header": "rgba(25,15,36,0.84)",
+  "--footer": "rgba(27,17,39,0.95)",
+  "--shadow": "0 22px 42px rgba(0,0,0,0.28)",
+  "--shadow-strong": "0 26px 48px rgba(0,0,0,0.34)",
 };
 
 const TABS = [
-  { id: "route", label: "Live Map", icon: "map" },
-  { id: "boarding", label: "Seats", icon: "ticket" },
-  { id: "verify", label: "Ride OTP", icon: "shield" },
-  { id: "trip", label: "Control", icon: "bus" },
+  { id: "home", label: "Home", icon: "home" },
+  { id: "riders", label: "Riders", icon: "users" },
+  { id: "payments", label: "Payments", icon: "wallet" },
+  { id: "account", label: "Account", icon: "account" },
 ];
-
-const APP_SHELL_CLASS = "enterprise-mobile-shell";
 
 function Icon({ name, className = "h-5 w-5" }) {
   const common = { className, fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", viewBox: "0 0 24 24" };
   switch (name) {
-    case "refresh": return <svg {...common}><path d="M20 11a8 8 0 1 1-2.35-5.66" /><path d="M20 4v5h-5" /></svg>;
-    case "sun": return <svg {...common}><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.9 4.9 1.4 1.4" /><path d="m17.7 17.7 1.4 1.4" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m4.9 19.1 1.4-1.4" /><path d="m17.7 6.3 1.4-1.4" /></svg>;
-    case "moon": return <svg {...common}><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3 6.8 6.8 0 0 0 21 12.8Z" /></svg>;
-    case "logout": return <svg {...common}><path d="M15 17 20 12 15 7" /><path d="M20 12H9" /><path d="M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" /></svg>;
-    case "profile": return <svg {...common}><circle cx="12" cy="8" r="3.2" /><path d="M5 19a7 7 0 0 1 14 0" /></svg>;
-    case "bus": return <svg {...common}><rect x="5" y="5" width="14" height="11" rx="3" /><path d="M7.5 16v3" /><path d="M16.5 16v3" /><path d="M7 10h10" /></svg>;
+    case "home": return <svg {...common}><path d="M4 10.5 12 4l8 6.5" /><path d="M7 10v8h10v-8" /></svg>;
+    case "users": return <svg {...common}><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" /><circle cx="9.5" cy="7" r="3" /><path d="M20 21v-2a4 4 0 0 0-3-3.87" /><path d="M16.5 4.13a3 3 0 0 1 0 5.74" /></svg>;
+    case "wallet": return <svg {...common}><rect x="4" y="6" width="16" height="12" rx="3" /><path d="M14 11h6" /><path d="M16.5 11h.01" /></svg>;
+    case "account": return <svg {...common}><circle cx="12" cy="8" r="3.2" /><path d="M5 19a7 7 0 0 1 14 0" /></svg>;
+    case "play": return <svg {...common}><path d="m8 6 10 6-10 6V6Z" /></svg>;
+    case "stop": return <svg {...common}><rect x="7" y="7" width="10" height="10" rx="2" /></svg>;
     case "money": return <svg {...common}><path d="M4 7h16v10H4z" /><path d="M8 12h8" /><path d="M9 9v6" /><path d="M15 9v6" /></svg>;
     case "shield": return <svg {...common}><path d="M12 3 5 6v5c0 4.4 3 8.3 7 10 4-1.7 7-5.6 7-10V6l-7-3Z" /><path d="m9.5 12 1.7 1.7 3.3-3.7" /></svg>;
     case "ticket": return <svg {...common}><path d="M5 9a2 2 0 0 0 0 6v3h14v-3a2 2 0 0 0 0-6V6H5v3Z" /><path d="M12 6v12" /></svg>;
-    case "map": return <svg {...common}><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2V6Z" /><path d="M9 4v14" /><path d="M15 6v14" /></svg>;
-    case "swap": return <svg {...common}><path d="M7 7h11" /><path d="m14 4 4 3-4 3" /><path d="M17 17H6" /><path d="m10 14-4 3 4 3" /></svg>;
-    case "broadcast": return <svg {...common}><path d="M4 12a8 8 0 0 1 8-8" /><path d="M4 12a8 8 0 0 0 8 8" /><path d="M12 6a6 6 0 0 1 6 6" /><path d="M12 18a6 6 0 0 0 6-6" /><circle cx="12" cy="12" r="1.5" /></svg>;
-    case "headset": return <svg {...common}><path d="M4 12a8 8 0 0 1 16 0" /><rect x="4" y="12" width="3" height="6" rx="1.5" /><rect x="17" y="12" width="3" height="6" rx="1.5" /><path d="M7 18a5 5 0 0 0 5 3h2" /></svg>;
-    case "pin": return <svg {...common}><path d="M12 21s6-5.4 6-11a6 6 0 1 0-12 0c0 5.6 6 11 6 11Z" /><circle cx="12" cy="10" r="2.3" /></svg>;
-    case "clock": return <svg {...common}><circle cx="12" cy="12" r="8" /><path d="M12 8v5l3 2" /></svg>;
-    case "alert": return <svg {...common}><path d="M12 4 3.5 18h17L12 4Z" /><path d="M12 9v4" /><path d="M12 16h.01" /></svg>;
-    case "thermo": return <svg {...common}><path d="M14 14.8V5a2 2 0 1 0-4 0v9.8a4 4 0 1 0 4 0Z" /><path d="M12 11v5" /></svg>;
+    case "back": return <svg {...common}><path d="m15 18-6-6 6-6" /></svg>;
     default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>;
   }
 }
 
-function SurfaceCard({ children, className = "" }) {
-  return <div className={`rounded-[1.35rem] border border-[var(--hlp-border)] bg-[var(--hlp-surface)] p-4 shadow-[var(--hlp-shadow)] backdrop-blur-xl sm:rounded-[1.5rem] sm:p-5 ${className}`}>{children}</div>;
-}
-
-function HeaderButton({ children, className = "", ...props }) {
-  return <button type="button" className={`grid h-10 w-10 place-items-center rounded-full border border-[var(--hlp-border)] bg-white/75 text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)] sm:h-11 sm:w-11 ${className}`} {...props}>{children}</button>;
-}
-
-function Chip({ children, tone = "soft", className = "" }) {
-  const tones = {
-    soft: "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]",
-    live: "bg-[rgba(16,185,129,0.12)] text-emerald-600",
-    warn: "bg-[rgba(245,158,11,0.14)] text-amber-600",
-    dark: "bg-[var(--hlp-plum)] text-white",
-  };
-  return <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.18em] ${tones[tone] || tones.soft} ${className}`}>{children}</span>;
-}
-
-function PrimaryButton({ children, tone = "primary", className = "", ...props }) {
-  const tones = {
-    primary: "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]",
-    danger: "bg-[var(--hlp-plum)] text-white shadow-[0_18px_40px_rgba(71,39,81,0.24)]",
-    ghost: "border border-[var(--hlp-border)] bg-white/82 text-[var(--hlp-text)]",
-  };
-  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-[0.95rem] px-4 py-3 text-sm font-bold tracking-[0.04em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-50 sm:px-5 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
-}
-
-function SectionLabel({ children }) {
-  return <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-purple)]">{children}</p>;
-}
-
-function StatCard({ label, value, note, icon }) {
+function LogoMark() {
   return (
-    <SurfaceCard className="min-h-[9.5rem]">
-      <div className="text-[var(--hlp-purple)]"><Icon name={icon} /></div>
-      <p className="mt-8 text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{label}</p>
-      <p className="mt-2 text-[2rem] font-black leading-none text-[var(--hlp-text)]">{value}</p>
-      <p className="mt-2 text-xs text-[var(--hlp-muted)]">{note}</p>
-    </SurfaceCard>
+    <div className="relative grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-[1.1rem] bg-[linear-gradient(180deg,#4b2666_0%,#6d3d9b_50%,#ff8a1f_100%)] shadow-[0_14px_30px_rgba(75,38,102,0.24)]">
+      <div className="absolute right-1 top-1 h-8 w-8 rounded-full border-[6px] border-[rgba(255,143,31,0.95)] border-l-transparent border-b-transparent rotate-[28deg]" />
+      <div className="relative text-white">
+        <svg className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
+          <rect x="5" y="7" width="14" height="10" rx="3" />
+          <path d="M7 12h10" />
+          <path d="M8 17v2" />
+          <path d="M16 17v2" />
+          <path d="M3 9h2" />
+          <path d="M1 13h4" />
+        </svg>
+      </div>
+    </div>
   );
+}
+
+function SurfaceCard({ children, className = "" }) {
+  return <section className={`rounded-[1.8rem] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow)] backdrop-blur-xl ${className}`}>{children}</section>;
+}
+
+function StatusPill({ children, tone = "default" }) {
+  const tones = {
+    default: "bg-[var(--accent-soft)] text-[var(--primary)]",
+    live: "bg-[rgba(23,165,103,0.14)] text-[var(--success)]",
+    waiting: "bg-[rgba(255,150,45,0.16)] text-[var(--accent)]",
+    danger: "bg-[rgba(219,61,79,0.12)] text-[var(--danger)]",
+  };
+  return <span className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[0.68rem] font-black uppercase tracking-[0.16em] ${tones[tone] || tones.default}`}>{children}</span>;
+}
+
+function ActionButton({ children, tone = "primary", className = "", ...props }) {
+  const tones = {
+    primary: "bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-[var(--shadow-strong)]",
+    secondary: "border border-[var(--border)] bg-[var(--surface-strong)] text-[var(--text)]",
+    danger: "bg-[linear-gradient(135deg,#a92b3c,#ff6e55)] text-white shadow-[var(--shadow-strong)]",
+  };
+  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-[1.2rem] px-5 py-4 text-sm font-black tracking-[0.04em] transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:opacity-55 ${tones[tone] || tones.primary} ${className}`} {...props}>{children}</button>;
 }
 
 function SelectField({ label, value, onChange, options, disabled = false }) {
   return (
     <div>
-      <label className="mb-2 block text-[0.66rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">{label}</label>
-      <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="w-full rounded-[1.4rem] border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-semibold text-[var(--hlp-text)] outline-none transition focus:border-[var(--hlp-purple)] disabled:opacity-60">
+      <label className="mb-2 block text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--muted)]">{label}</label>
+      <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="w-full rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3.5 text-sm font-semibold text-[var(--text)] outline-none disabled:opacity-60">
         {options.map((option) => <option key={`${option.value}-${option.label}`} value={option.value}>{option.label}</option>)}
       </select>
     </div>
   );
 }
 
-function SeatNode({ seat, selected, onClick, onOccupiedClick, isOccupiedSelected }) {
-  let className = "border-emerald-200 bg-emerald-50 text-emerald-700";
-  let stateLabel = "Vacant";
-  let tickClassName = "";
-  let tickLabel = "";
-
-  const isOccupiedClickable = !seat.available && seat.booking_id && onOccupiedClick;
-
-  if (!seat.available) {
-    if (isOccupiedSelected) {
-      className = "border-transparent bg-[linear-gradient(135deg,#7c3aed,#ff6b73)] text-white shadow-[0_8px_20px_rgba(124,58,237,0.3)] ring-2 ring-[#7c3aed]";
-    } else {
-      className = "border-red-200 bg-red-50 text-red-700";
-    }
-    stateLabel = seat.occupant_kind === "OFFLINE" ? "Offline" : "Occupied";
-    tickClassName = seat.payment_verified ? "bg-sky-500 text-white" : "bg-amber-400 text-white";
-    tickLabel = seat.payment_verified ? "Paid" : "Pending";
-  } else if (selected) {
-    className = "border-transparent bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]";
-    stateLabel = "Selected";
-  }
-
+function PlaceholderPanel({ tabLabel }) {
   return (
-    <button
-      type="button"
-      disabled={!seat.available && !isOccupiedClickable}
-      onClick={isOccupiedClickable ? () => onOccupiedClick(seat) : onClick}
-      className={`relative flex aspect-square min-h-[4.2rem] flex-col items-center justify-center rounded-[1.55rem] border text-center transition ${className} disabled:cursor-not-allowed ${isOccupiedClickable ? "cursor-pointer hover:brightness-95 active:scale-95" : ""}`}
-    >
-      {!seat.available ? (
-        <span className={`absolute right-2 top-2 inline-flex h-5 min-w-[1.35rem] items-center justify-center rounded-full px-1 text-[0.52rem] font-black uppercase tracking-[0.12em] ${tickClassName}`}>
-          {seat.payment_verified ? "✓✓" : "!"}
-        </span>
-      ) : null}
-      <span className="text-base font-black">{seat.seat_no}</span>
-      <span className="mt-1 text-[0.54rem] font-black uppercase tracking-[0.18em] opacity-75">{stateLabel}</span>
-      {!seat.available && tickLabel ? <span className="mt-1 text-[0.48rem] font-black uppercase tracking-[0.14em] opacity-70">{tickLabel}</span> : null}
-    </button>
+    <SurfaceCard className="mt-4 p-6">
+      <p className="text-[0.72rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Helper Navigation</p>
+      <h2 className="mt-3 text-[2rem] font-black leading-tight text-[var(--text)]">{tabLabel} page is ready for the next step</h2>
+      <p className="mt-4 text-sm leading-7 text-[var(--muted)]">The helper footer navigation is in place now. We can design this page next when you are ready.</p>
+    </SurfaceCard>
   );
 }
 
-function MapViewport({ points }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!points.length) return;
-    if (points.length === 1) {
-      map.setView(points[0], 14);
-      return;
-    }
-    map.fitBounds(points, { padding: [24, 24] });
-  }, [map, points]);
-  return null;
-}
-
-function formatTime(value) {
+const fmtTime = (value) => {
   if (!value) return "--";
-  try {
-    return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  } catch {
-    return value;
-  }
-}
+  try { return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch { return value; }
+};
 
-function formatMoney(value) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "NPR --";
-  return `NPR ${amount.toLocaleString()}`;
-}
+const fmtDateTime = (value) => {
+  if (!value) return "--";
+  try { return new Date(value).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }); } catch { return value; }
+};
 
-function distanceBetween(a, b) {
-  if (!a || !b) return Infinity;
-  return Math.sqrt((Number(a[0]) - Number(b[0])) ** 2 + (Number(a[1]) - Number(b[1])) ** 2);
-}
+const initials = (name) => {
+  if (!name) return "HP";
+  return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() || "").join("") || "HP";
+};
+
+const getStopName = (stops, order) => stops.find((item) => String(item.stop_order) === String(order))?.stop?.name || "--";
+const sanitizeOtp = (value) => String(value || "").replace(/\D/g, "").slice(0, 4);
+
+const helperPaymentState = (booking) => {
+  const status = booking?.payment_status || booking?.payment?.status || "UNPAID";
+  if (status === "SUCCESS") return { label: "Paid", tone: "live" };
+  if (status === "PENDING") return { label: "Pending Payment", tone: "waiting" };
+  if (status === "FAILED" || status === "CANCELLED") return { label: "Payment Retry", tone: "danger" };
+  return { label: "Unpaid", tone: "default" };
+};
+
+const helperJourneyLabel = (booking) => {
+  if (!booking) return "Waiting for OTP details";
+  if (booking.completed_at) return "Ride completed";
+  if (booking.checked_in_at) return "Passenger onboard";
+  if (booking.accepted_by_helper_at) return "Ready to board";
+  if (booking.scanned_at) return "OTP scanned";
+  return "Waiting for helper action";
+};
 
 export default function HelperHome() {
   const navigate = useNavigate();
+  const { user, setUser } = useAuth();
   const { isDark } = useTheme();
-  const theme = useMemo(() => (isDark ? DARK_THEME : LIGHT_THEME), [isDark]);
+  const theme = useMemo(() => (isDark ? DARK : LIGHT), [isDark]);
+  const shell = "enterprise-mobile-shell";
 
   const [dashboard, setDashboard] = useState(null);
-  const [tripId, setTripId] = useState("");
-  const [selectedScheduleId, setSelectedScheduleId] = useState("");
-  const [routeStops, setRouteStops] = useState([]);
-  const [latestLocation, setLatestLocation] = useState(null);
-  const [passengerRequests, setPassengerRequests] = useState([]);
-  const [passengerSummary, setPassengerSummary] = useState({
-    pending_pickups: 0,
-    onboard_dropoffs: 0,
-    total_active_bookings: 0,
-  });
-  const [assignedBus, setAssignedBus] = useState(null);
-  const [fromOrder, setFromOrder] = useState("");
-  const [toOrder, setToOrder] = useState("");
-  const [seats, setSeats] = useState([]);
-  const [segmentFarePerSeat, setSegmentFarePerSeat] = useState(null);
-  const [selectedSeatIds, setSelectedSeatIds] = useState([]);
-  const [loadingTrips, setLoadingTrips] = useState(true);
-  const [loadingAvail, setLoadingAvail] = useState(false);
-  const [offlineBusy, setOfflineBusy] = useState(false);
-  const [verifyBusy, setVerifyBusy] = useState(false);
-  const [verifyBookingId, setVerifyBookingId] = useState("");
-  const [ticketLookup, setTicketLookup] = useState(null);
-  const [scanLogItems, setScanLogItems] = useState([]);
-  const [bookingSocketState, setBookingSocketState] = useState("disconnected");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [seatBusy, setSeatBusy] = useState(false);
+  const [otpBusy, setOtpBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
-  const [activeTab, setActiveTab] = useState("route");
-  const [selectedSeatInfo, setSelectedSeatInfo] = useState(null);
-  const [seatPaymentBusy, setSeatPaymentBusy] = useState(false);
-  const [seatCompleteBusy, setSeatCompleteBusy] = useState(false);
-  const bookingSocketRef = useRef(null);
-  const ticketLookupRef = useRef(null);
+  const [tab, setTab] = useState("home");
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
+  const [routeStops, setRouteStops] = useState([]);
+  const [seats, setSeats] = useState([]);
+  const [loadingSeats, setLoadingSeats] = useState(false);
+  const [fromOrder, setFromOrder] = useState("");
+  const [toOrder, setToOrder] = useState("");
+  const [seatSheet, setSeatSheet] = useState(null);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpBooking, setOtpBooking] = useState(null);
 
   const activeTrip = dashboard?.active_trip ?? null;
   const pendingTrip = dashboard?.pending_trip ?? null;
+  const trip = activeTrip || pendingTrip;
+  const seatLayoutTripId = trip?.id ?? null;
+  const showSeatLayout = tab === "home" && Boolean(activeTrip);
   const schedules = dashboard?.schedules ?? [];
-  const helperBookingGroups = dashboard?.helper_bookings ?? {};
-  const trips = useMemo(() => (activeTrip ? [activeTrip] : []), [activeTrip]);
-  const selectedTrip = useMemo(() => trips.find((trip) => String(trip.id) === String(tripId)) || activeTrip || null, [trips, tripId, activeTrip]);
-  const currentTrip = selectedTrip || pendingTrip || null;
-  const tripAwaitingStart = Boolean(pendingTrip && !activeTrip);
-  const contextTripId = activeTrip?.id || pendingTrip?.id || "";
-  const actionableSchedule = useMemo(() => {
-    const preferredScheduleId = currentTrip?.schedule_id
-      ? String(currentTrip.schedule_id)
-      : selectedScheduleId;
-    if (preferredScheduleId) {
-      const matchedSchedule = schedules.find((schedule) => String(schedule.id) === preferredScheduleId);
-      if (matchedSchedule) return matchedSchedule;
-    }
-    return schedules.find((schedule) => schedule.driver_assignment_accepted) || schedules[0] || null;
-  }, [currentTrip?.schedule_id, schedules, selectedScheduleId]);
-  const availableSeats = seats.filter((seat) => seat.available);
-  const occupiedCount = seats.length - availableSeats.length;
-  const selectedCount = selectedSeatIds.length;
-  const pendingPickupRequests = passengerRequests.filter((request) => request.stage === "pickup");
-  const onboardDropRequests = passengerRequests.filter((request) => request.stage === "dropoff");
-  const selectedSegmentFare = segmentFarePerSeat != null ? Number(segmentFarePerSeat) * Math.max(selectedCount, 1) : null;
-  const fromStop = routeStops.find((stop) => String(stop.stop_order) === String(fromOrder)) || null;
-  const toStop = routeStops.find((stop) => String(stop.stop_order) === String(toOrder)) || null;
-  const selectedSeatLabels = seats.filter((seat) => selectedSeatIds.includes(seat.seat_id)).map((seat) => seat.seat_no);
-  const stopOptions = routeStops.map((stop) => ({ value: String(stop.stop_order), label: `${stop.stop_order}. ${stop.stop?.name || "--"}` }));
-  const terminalChips = routeStops.length
-    ? routeStops.slice(0, 3).map((stop) => ({ label: stop.stop?.name || `Stop ${stop.stop_order}`, value: String(stop.stop_order) }))
-    : [{ label: "Main Terminal", value: "" }, { label: "Midtown Hub", value: "" }, { label: "Lakeside", value: "" }];
-  const mapPolyline = useMemo(() => routeStops.map((stop) => [Number(stop.stop?.lat), Number(stop.stop?.lng)]).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)), [routeStops]);
-  const livePoint = useMemo(() => {
-    if (!latestLocation) return null;
-    const lat = Number(latestLocation.lat);
-    const lng = Number(latestLocation.lng);
-    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
-  }, [latestLocation]);
-  const mapPoints = useMemo(() => {
-    const points = [...mapPolyline];
-    if (livePoint) points.push(livePoint);
-    return points;
-  }, [mapPolyline, livePoint]);
-  const currentStopIndex = useMemo(() => {
-    if (!livePoint || !mapPolyline.length) return 0;
-    let bestIndex = 0;
-    let bestDistance = Infinity;
-    mapPolyline.forEach((point, index) => {
-      const distance = distanceBetween(point, livePoint);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bestIndex = index;
-      }
-    });
-    return bestIndex;
-  }, [livePoint, mapPolyline]);
-  const upcomingStop = routeStops[Math.min(currentStopIndex + 1, routeStops.length - 1)] || null;
-  const nextSchedule = actionableSchedule;
-  const nextScheduleReady = Boolean(actionableSchedule?.driver_assignment_accepted);
-  const routeTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A";
-  const routeDestination = routeStops[routeStops.length - 1]?.stop?.name || "Lakeside";
-  const routeCondition = livePoint ? "Live movement on route" : tripAwaitingStart ? "Waiting for both start confirmations" : "Waiting for GPS ping";
-  const routeMapBlurred = !activeTrip;
-  const verifyPreview = ticketLookup?.payment || { method: "Cash", status: "Pending", amount: 450 };
-  const helperTripHeroTitle = currentTrip?.route_name || nextSchedule?.route_name || "Route 42A: Downtown Express";
-  const vehicleCapacity = assignedBus?.capacity || seats.length || 32;
-  const occupancyPercent = vehicleCapacity ? Math.round((occupiedCount / vehicleCapacity) * 100) : 56;
-  const helperDashboardMarked = selectedCount || 2;
-  const tripStarted = formatTime(activeTrip?.started_at || nextSchedule?.scheduled_start_time) || "08:30 AM";
-  const assignedDriverName = currentTrip?.driver_name || nextSchedule?.driver_name || "Robert Fox";
-  const driverBadgeId = currentTrip?.id ? `ID-MB-${currentTrip.id}` : "ID-MB-782";
-  const helperHeaderStatus = activeTrip ? "Trip Live" : pendingTrip ? "Start Pending" : schedules.length ? "Standby" : "Standby";
-  const pendingStartLabel = pendingTrip?.driver_start_confirmed
-    ? "Driver confirmed. Your helper confirmation will make this trip LIVE."
-    : pendingTrip?.helper_start_confirmed
-      ? "You already confirmed. Waiting for the driver."
-      : "This trip is waiting for both staff confirmations.";
-  const pendingEndLabel = activeTrip?.driver_end_confirmed
-    ? "Driver confirmed the trip end. Your confirmation will complete it."
-    : activeTrip?.helper_end_confirmed
-      ? "You already confirmed the trip end. Waiting for the driver."
-      : "No end request has been sent yet.";
-  const needsAcceptanceBookings = helperBookingGroups.needs_acceptance ?? [];
-  const awaitingPaymentBookings = helperBookingGroups.awaiting_payment ?? [];
-  const readyToBoardBookings = helperBookingGroups.ready_to_board ?? [];
-  const onboardBookings = helperBookingGroups.onboard ?? [];
-  const completedRecentBookings = helperBookingGroups.completed_recent ?? [];
-  const helperBookingSummary = helperBookingGroups.summary ?? {};
-  const nextPickupRequest = pendingPickupRequests[0] || null;
-  const nextDropRequest = onboardDropRequests[0] || null;
-
-  const pushScanLog = useCallback((text) => {
-    setScanLogItems((current) => {
-      const entry = {
-        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        text,
-      };
-      return [entry, ...current].slice(0, 8);
-    });
-  }, []);
+  const helperBookings = dashboard?.helper_bookings ?? {};
 
   useEffect(() => {
-    ticketLookupRef.current = ticketLookup;
-  }, [ticketLookup]);
+    if (!msg) return undefined;
+    const timer = setTimeout(() => setMsg(""), 4000);
+    return () => clearTimeout(timer);
+  }, [msg]);
+
+  const selectedSchedule = useMemo(() => {
+    const preferred = trip?.schedule_id ? String(trip.schedule_id) : selectedScheduleId;
+    if (preferred) {
+      const matched = schedules.find((item) => String(item.id) === preferred);
+      if (matched) return matched;
+    }
+    return schedules.find((item) => item.driver_assignment_accepted) || schedules[0] || null;
+  }, [trip?.schedule_id, schedules, selectedScheduleId]);
+
+  const seatBookingList = useMemo(() => [
+    ...(helperBookings.needs_acceptance ?? []),
+    ...(helperBookings.awaiting_payment ?? []),
+    ...(helperBookings.ready_to_board ?? []),
+    ...(helperBookings.onboard ?? []),
+  ], [helperBookings.awaiting_payment, helperBookings.needs_acceptance, helperBookings.onboard, helperBookings.ready_to_board]);
+
+  const bookingById = useMemo(() => Object.fromEntries(seatBookingList.map((booking) => [booking.id, booking])), [seatBookingList]);
+  const selectedBooking = seatSheet?.booking_id ? bookingById[seatSheet.booking_id] || null : null;
+  const otpLoadedBooking = otpBooking?.id ? bookingById[otpBooking.id] || otpBooking : otpBooking;
+  const otpPayment = helperPaymentState(otpLoadedBooking);
+  const availableSeats = seats.filter((seat) => seat.available).length;
+  const occupiedSeats = seats.length - availableSeats;
+  const paidSeats = seats.filter((seat) => !seat.available && seat.payment_verified).length;
+  const stopOptions = routeStops.map((stop) => ({ value: String(stop.stop_order), label: `${stop.stop_order}. ${stop.stop?.name || "--"}` }));
+  const selectedFromName = getStopName(routeStops, fromOrder);
+  const selectedToName = getStopName(routeStops, toOrder);
+
+  const homeStatus = activeTrip
+    ? "Trip Live"
+    : pendingTrip
+      ? pendingTrip.helper_start_confirmed
+        ? "Waiting for Driver"
+        : pendingTrip.driver_start_confirmed
+          ? "Ready to Confirm"
+          : "Start Pending"
+      : selectedSchedule
+        ? selectedSchedule.driver_assignment_accepted
+          ? "Ready to Start"
+          : "Waiting for Driver"
+        : "Standby";
+
+  const startLabel = pendingTrip?.driver_start_confirmed && !pendingTrip.helper_start_confirmed
+    ? "Confirm Start Ride"
+    : pendingTrip?.helper_start_confirmed
+      ? "Waiting for Driver"
+      : "Start Ride";
+
+  const endLabel = activeTrip?.driver_end_confirmed
+    ? "Confirm End Trip"
+    : activeTrip?.helper_end_confirmed
+      ? "Waiting for Driver"
+      : "End Trip";
 
   const loadDashboard = useCallback(async ({ silent = false } = {}) => {
-    if (!silent) setLoadingTrips(true);
+    if (!silent) setLoading(true);
     try {
       const response = await api.get("/api/trips/helper/dashboard/");
       setDashboard(response.data);
-      setLatestLocation(response.data.latest_location || null);
       setErr("");
-      setTripId((current) => {
-        const activeOrPendingTripId = response.data.active_trip?.id || response.data.pending_trip?.id;
-        const normalizedTripId = activeOrPendingTripId ? String(activeOrPendingTripId) : "";
-        if (!normalizedTripId) return "";
-        if (!current) return normalizedTripId;
-        if (current !== normalizedTripId) {
-          return normalizedTripId;
-        }
-        return current;
-      });
     } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to load helper dashboard.");
+      setErr(error?.response?.data?.detail || "Failed to load helper dashboard.");
     } finally {
-      if (!silent) setLoadingTrips(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    const preferredScheduleId = currentTrip?.schedule_id
-      ? String(currentTrip.schedule_id)
-      : selectedScheduleId;
-    if (preferredScheduleId && schedules.some((schedule) => String(schedule.id) === preferredScheduleId)) {
-      if (preferredScheduleId !== selectedScheduleId) setSelectedScheduleId(preferredScheduleId);
+  const loadTripContext = useCallback(async (tripId, { clearIfMissing = false } = {}) => {
+    if (!tripId) {
+      if (clearIfMissing) {
+        setRouteStops([]);
+        setSeats([]);
+        setSeatSheet(null);
+      }
       return;
     }
-    const fallbackSchedule = schedules.find((schedule) => schedule.driver_assignment_accepted) || schedules[0] || null;
-    const fallbackScheduleId = fallbackSchedule ? String(fallbackSchedule.id) : "";
-    if (fallbackScheduleId !== selectedScheduleId) {
-      setSelectedScheduleId(fallbackScheduleId);
-    }
-  }, [currentTrip?.schedule_id, schedules, selectedScheduleId]);
-
-  const loadAssignedBus = useCallback(async () => {
     try {
-      const response = await api.get("/api/transport/my-bus/");
-      setAssignedBus(response.data.bus || null);
+      const response = await api.get(`/api/trips/${tripId}/`);
+      setRouteStops(response.data.route_stops || []);
+      setErr("");
     } catch {
-      // Optional helper assignment.
+      if (clearIfMissing) {
+        setRouteStops([]);
+        setSeats([]);
+        setSeatSheet(null);
+      }
     }
   }, []);
 
-  const loadTripContext = useCallback(async (id) => {
-    if (!id) {
-      setRouteStops([]);
-      setLatestLocation(null);
-      setPassengerRequests([]);
-      setPassengerSummary({
-        pending_pickups: 0,
-        onboard_dropoffs: 0,
-        total_active_bookings: 0,
-      });
-      return;
-    }
-    try {
-      const [detailResponse, locationResponse] = await Promise.all([
-        api.get(`/api/trips/${id}/`),
-        api.get(`/api/trips/${id}/location/latest/`).catch(() => null),
-      ]);
-      setRouteStops(detailResponse.data.route_stops || []);
-      setLatestLocation(locationResponse?.data || null);
-      setPassengerRequests(detailResponse.data.passenger_requests || []);
-      setPassengerSummary(
-        detailResponse.data.passenger_summary || {
-          pending_pickups: 0,
-          onboard_dropoffs: 0,
-          total_active_bookings: 0,
-        },
-      );
-      setErr("");
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to load trip context.");
-      setRouteStops([]);
-      setLatestLocation(null);
-      setPassengerRequests([]);
-      setPassengerSummary({
-        pending_pickups: 0,
-        onboard_dropoffs: 0,
-        total_active_bookings: 0,
-      });
-    }
-  }, []);
-
-  const loadAvailability = useCallback(async (tid, from, to, { silent = false } = {}) => {
-    if (!tid || !from || !to) {
+  const loadSeats = useCallback(async (tripId, from = "", to = "", { silent = false } = {}) => {
+    if (!tripId) {
       if (!silent) {
         setSeats([]);
-        setSegmentFarePerSeat(null);
-        setSelectedSeatIds([]);
+        setSeatSheet(null);
       }
       return;
     }
-    setLoadingAvail(true);
+    setLoadingSeats(true);
     try {
-      const response = await api.get(`/api/bookings/trips/${tid}/availability/?from=${from}&to=${to}`);
+      const query = from && to ? `?from=${from}&to=${to}` : "";
+      const response = await api.get(`/api/bookings/trips/${tripId}/availability/${query}`);
       setSeats(response.data.seats || []);
-      setSegmentFarePerSeat(response.data.fare_per_seat ?? null);
-      setSelectedSeatIds([]);
-      if (!silent) setErr("");
+      if (response.data.from_stop_order) setFromOrder(String(response.data.from_stop_order));
+      if (response.data.to_stop_order) setToOrder(String(response.data.to_stop_order));
+      setErr("");
     } catch (error) {
       if (!silent) {
-        setErr(error?.response?.data?.detail || "Unable to load availability.");
+        setErr(error?.response?.data?.detail || "Unable to load seat layout.");
         setSeats([]);
-        setSegmentFarePerSeat(null);
-        setSelectedSeatIds([]);
       }
     } finally {
-      setLoadingAvail(false);
+      setLoadingSeats(false);
     }
   }, []);
 
-  const refreshBookingDetail = useCallback(async (bookingId, { silent = true } = {}) => {
-    if (!bookingId) return null;
-    if (!silent) {
-      setVerifyBusy(true);
-      setErr("");
-      setMsg("");
-    }
+  const refreshAfterSeatAction = useCallback(async () => {
+    await Promise.all([
+      loadDashboard({ silent: true }),
+      loadTripContext(seatLayoutTripId, { clearIfMissing: true }),
+      loadSeats(seatLayoutTripId, fromOrder, toOrder, { silent: true }),
+    ]);
+  }, [fromOrder, loadDashboard, loadSeats, loadTripContext, seatLayoutTripId, toOrder]);
+
+  const runTripAction = useCallback(async (requestFn, successMessage) => {
+    setBusy(true);
+    setErr("");
+    setMsg("");
     try {
-      const response = await api.get(`/api/bookings/${bookingId}/`);
-      setTicketLookup(response.data.booking);
-      return response.data.booking;
+      const response = await requestFn();
+      setMsg(response?.data?.message || successMessage);
+      await loadDashboard({ silent: true });
+      if (response?.data?.trip?.id) await loadTripContext(response.data.trip.id, { clearIfMissing: true });
+      return response;
     } catch (error) {
-      if (!silent) setErr(error?.response?.data?.detail || "Booking refresh failed.");
+      setErr(error?.response?.data?.detail || "Trip action failed.");
       return null;
     } finally {
-      if (!silent) setVerifyBusy(false);
+      setBusy(false);
     }
-  }, []);
+  }, [loadDashboard, loadTripContext]);
+
+  const runSeatAction = useCallback(async (requestFn, successMessage, { closeSheet = false } = {}) => {
+    setSeatBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await requestFn();
+      setMsg(response?.data?.message || successMessage);
+      if (closeSheet) setSeatSheet(null);
+      await refreshAfterSeatAction();
+      return response;
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Seat action failed.");
+      return null;
+    } finally {
+      setSeatBusy(false);
+    }
+  }, [refreshAfterSeatAction]);
+
+  const loadOtpBookingDetails = useCallback(async () => {
+    const reference = sanitizeOtp(otpCode);
+    if (reference.length !== 4) {
+      setErr("Enter the passenger 4-digit ride OTP.");
+      return;
+    }
+    setOtpBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post("/api/bookings/otp/verify/", { reference });
+      setOtpBooking(response.data.booking || null);
+      setOtpCode(reference);
+      setMsg(response.data.message || "Passenger ride details loaded.");
+      await loadDashboard({ silent: true });
+    } catch (error) {
+      setOtpBooking(null);
+      setErr(error?.response?.data?.detail || "Unable to load passenger ride details.");
+    } finally {
+      setOtpBusy(false);
+    }
+  }, [loadDashboard, otpCode]);
+
+  const runOtpBoardingAction = useCallback(async (requestPayment) => {
+    if (!otpLoadedBooking?.id) {
+      setErr("Load the passenger OTP first.");
+      return null;
+    }
+    setOtpBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post(`/api/bookings/${otpLoadedBooking.id}/board/`, { request_payment: requestPayment });
+      setOtpBooking(response.data.booking || otpLoadedBooking);
+      setMsg(response.data.message || (requestPayment ? "Passenger boarded and payment request sent." : "Passenger boarded."));
+      await refreshAfterSeatAction();
+      return response;
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to update this passenger ride.");
+      return null;
+    } finally {
+      setOtpBusy(false);
+    }
+  }, [otpLoadedBooking, refreshAfterSeatAction]);
+
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      loadDashboard({ silent: true });
+      if (trip?.id) loadTripContext(trip.id);
+    }, trip?.id ? 2500 : 4000);
+    return () => clearInterval(timer);
+  }, [trip?.id, loadDashboard, loadTripContext]);
 
   useEffect(() => {
-    loadDashboard();
-    loadAssignedBus();
-    const intervalId = setInterval(() => loadDashboard({ silent: true }), 3000);
-    return () => clearInterval(intervalId);
-  }, [loadDashboard, loadAssignedBus]);
+    const preferred = trip?.schedule_id
+      ? String(trip.schedule_id)
+      : schedules.find((item) => item.driver_assignment_accepted)?.id
+        ? String(schedules.find((item) => item.driver_assignment_accepted)?.id)
+        : schedules[0]?.id
+          ? String(schedules[0].id)
+          : "";
+    if (preferred !== selectedScheduleId) setSelectedScheduleId(preferred);
+  }, [trip?.schedule_id, schedules, selectedScheduleId]);
 
-  useEffect(() => {
-    let subscribed = true;
-    let reconnectTimer = null;
-
-    const connect = () => {
-      setBookingSocketState("connecting");
-      const socket = new WebSocket(buildWsUrl("/ws/bookings/stream/"));
-      bookingSocketRef.current = socket;
-
-      socket.onopen = () => {
-        setBookingSocketState("connected");
-        pushScanLog("Booking socket connected.");
-      };
-
-      socket.onerror = () => {
-        pushScanLog("Booking socket error detected.");
-      };
-
-      socket.onmessage = async (event) => {
-        try {
-          const payload = JSON.parse(event.data);
-          if (payload.type === "SOCKET_CONNECTED") {
-            pushScanLog("Real-time booking channel is ready.");
-            return;
-          }
-          pushScanLog(`Realtime event: ${payload.type} for booking #${payload.booking_id}.`);
-          await loadDashboard({ silent: true });
-          if (payload.booking_id && ticketLookupRef.current?.id === payload.booking_id) {
-            const updated = await refreshBookingDetail(payload.booking_id, { silent: true });
-            if (updated && payload.type === "PAYMENT_CONFIRMED") {
-              setMsg(`Payment confirmed for ${updated.passenger_name}.`);
-            }
-          }
-        } catch {
-          pushScanLog("Received an unreadable realtime booking message.");
-        }
-      };
-
-      socket.onclose = () => {
-        setBookingSocketState("disconnected");
-        if (subscribed) {
-          pushScanLog("Booking socket disconnected. Reconnecting...");
-          reconnectTimer = setTimeout(connect, 3000);
-        }
-      };
-    };
-
-    connect();
-    return () => {
-      subscribed = false;
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (bookingSocketRef.current) bookingSocketRef.current.close();
-    };
-  }, [loadDashboard, pushScanLog, refreshBookingDetail]);
-
-  useEffect(() => {
-    loadTripContext(contextTripId);
-    if (!contextTripId) return undefined;
-    const intervalId = setInterval(() => loadTripContext(contextTripId), 3000);
-    return () => clearInterval(intervalId);
-  }, [contextTripId, loadTripContext]);
-
+  useEffect(() => { loadTripContext(trip?.id, { clearIfMissing: true }); }, [trip?.id, loadTripContext]);
   useEffect(() => {
     if (routeStops.length < 2) {
       setFromOrder("");
@@ -562,1248 +439,348 @@ export default function HelperHome() {
   }, [routeStops]);
 
   useEffect(() => {
-    if (!fromOrder || !toOrder) return;
-    if (Number(toOrder) <= Number(fromOrder)) {
-      const nextStopCandidate = routeStops.find((stop) => Number(stop.stop_order) > Number(fromOrder));
-      setToOrder(nextStopCandidate ? String(nextStopCandidate.stop_order) : "");
+    if (!seatLayoutTripId) {
+      setSeats([]);
+      setSeatSheet(null);
       return;
     }
-    loadAvailability(tripId, fromOrder, toOrder, { silent: true });
-  }, [tripId, fromOrder, toOrder, routeStops, loadAvailability]);
+    loadSeats(seatLayoutTripId, fromOrder, toOrder, { silent: seats.length > 0 });
+  }, [fromOrder, loadSeats, seatLayoutTripId, toOrder]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toggleSeat = (seatId) => {
-    setSelectedSeatIds((current) => (
-      current.includes(seatId) ? current.filter((item) => item !== seatId) : [...current, seatId]
-    ));
-  };
+  useEffect(() => {
+    if (!seatLayoutTripId) return undefined;
+    const timer = setInterval(() => loadSeats(seatLayoutTripId, fromOrder, toOrder, { silent: true }), 4000);
+    return () => clearInterval(timer);
+  }, [fromOrder, loadSeats, seatLayoutTripId, toOrder]);
 
-  const submitOffline = async () => {
-    if (!tripId || !fromOrder || !toOrder || !selectedSeatIds.length) {
-      setErr("Choose trip, segment, and at least one seat.");
-      return;
-    }
-    setOfflineBusy(true);
-    setErr("");
-    setMsg("");
-    try {
-      const response = await api.post(`/api/bookings/trips/${tripId}/offline/`, {
-        from_stop_order: Number(fromOrder),
-        to_stop_order: Number(toOrder),
-        seat_ids: selectedSeatIds,
-      });
-      setMsg(`Offline boarding #${response.data.offline_boarding.id} saved.`);
-      await loadAvailability(tripId, fromOrder, toOrder, { silent: true });
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Offline update failed.");
-    } finally {
-      setOfflineBusy(false);
-    }
-  };
+  useEffect(() => {
+    if (trip?.id) return;
+    setOtpBooking(null);
+    setOtpCode("");
+  }, [trip?.id]);
 
-  const runTripAction = async (requestFn, fallbackMessage) => {
-    setErr("");
-    setMsg("");
-    try {
-      const response = await requestFn();
-      setMsg(response?.data?.message || fallbackMessage);
-      await loadDashboard({ silent: true });
-      if (response?.data?.trip?.id) {
-        setTripId(String(response.data.trip.id));
-        await loadTripContext(response.data.trip.id);
-      }
-      return response;
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Trip action failed.");
-      return null;
-    }
-  };
-
-  const requestScheduledStart = async (scheduleId = actionableSchedule?.id) => {
-    if (!scheduleId) {
-      setErr("There is no scheduled trip selected right now.");
-      return;
-    }
-    if (!nextScheduleReady) {
-      setErr("Wait for the driver to accept the assignment before requesting trip start.");
-      return;
-    }
-    const response = await runTripAction(
-      () => api.post("/api/trips/start/", { schedule_id: scheduleId }),
-      "Trip start confirmation sent.",
-    );
-    setSelectedScheduleId(String(scheduleId));
-    if (response?.data?.trip?.status === "LIVE") {
-      setTripId(String(response.data.trip.id));
-      setActiveTab("route");
-    } else {
-      setActiveTab("route");
-    }
+  const requestScheduledStart = async () => {
+    if (!selectedSchedule?.id) return setErr("There is no scheduled trip selected right now.");
+    if (!selectedSchedule.driver_assignment_accepted) return setErr("Wait for the driver to accept the assignment before starting.");
+    return runTripAction(() => api.post("/api/trips/start/", { schedule_id: selectedSchedule.id }), "Trip start confirmation sent.");
   };
 
   const confirmPendingStart = async () => {
-    if (!pendingTrip?.id) {
-      setErr("There is no pending trip to confirm.");
-      return;
-    }
-
-    const payload = pendingTrip.schedule_id
-      ? { schedule_id: pendingTrip.schedule_id }
-      : { trip_id: pendingTrip.id };
-
-    const response = await runTripAction(
-      () => api.post("/api/trips/start/", payload),
-      "Trip start confirmation sent.",
-    );
-
-    if (pendingTrip.schedule_id) {
-      setSelectedScheduleId(String(pendingTrip.schedule_id));
-    }
-
-    if (response?.data?.trip?.status === "LIVE") {
-      setTripId(String(response.data.trip.id));
-      setActiveTab("route");
-    }
+    if (!pendingTrip?.id) return setErr("There is no pending trip to confirm.");
+    const payload = pendingTrip.schedule_id ? { schedule_id: pendingTrip.schedule_id } : { trip_id: pendingTrip.id };
+    return runTripAction(() => api.post("/api/trips/start/", payload), "Trip start confirmation sent.");
   };
-
 
   const requestTripEnd = async () => {
-    if (!activeTrip?.id) {
-      setErr("There is no LIVE trip to end right now.");
-      return;
-    }
-    await runTripAction(
-      () => api.post(`/api/trips/${activeTrip.id}/end/`),
-      "Trip end confirmation sent.",
-    );
+    if (!activeTrip?.id) return setErr("There is no live trip to end right now.");
+    return runTripAction(() => api.post(`/api/trips/${activeTrip.id}/end/`), "Trip end confirmation sent.");
   };
 
-  const lookupTicket = useCallback(async (referenceOverride) => {
-    const reference = String(referenceOverride ?? verifyBookingId).replace(/\D/g, "").slice(0, 4);
-    if (reference.length !== 4) {
-      setErr("Enter the passenger 4-digit ride OTP first.");
+  const onboardOfflinePassenger = (seat) => {
+    if (!activeTrip?.id) return setErr("Start the ride first to onboard an offline passenger.");
+    if (!(fromOrder && toOrder && Number(toOrder) > Number(fromOrder))) return setErr("Choose a valid segment before onboarding an offline passenger.");
+    return runSeatAction(() => api.post(`/api/bookings/trips/${activeTrip.id}/offline/`, { from_stop_order: Number(fromOrder), to_stop_order: Number(toOrder), seat_ids: [seat.seat_id] }), `Offline passenger onboarded in seat ${seat.seat_no}.`, { closeSheet: true });
+  };
+
+  const requestPaymentForSeat = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/request-payment/`), `Payment request sent for booking #${bookingId}.`);
+  const verifyCashForSeat = (bookingId) => runSeatAction(() => api.post(`/api/payments/cash/verify/${bookingId}/`), `Cash payment verified for booking #${bookingId}.`);
+  const acceptPassenger = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/accept/`), `Passenger accepted for booking #${bookingId}.`);
+  const boardPassengerForSeat = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/board/`), `Passenger boarded for booking #${bookingId}.`);
+  const completeRideForSeat = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/complete/`), `Ride ended for booking #${bookingId}.`, { closeSheet: true });
+  const collectOfflineCash = (offlineBoardingId) => runSeatAction(() => api.post(`/api/bookings/offline/${offlineBoardingId}/collect-cash/`), "Cash collected for offline passenger.");
+  const completeOfflineRide = (offlineBoardingId) => runSeatAction(() => api.post(`/api/bookings/offline/${offlineBoardingId}/complete/`), "Offline passenger ride completed.", { closeSheet: true });
+
+  const seatAction = useMemo(() => {
+    if (!seatSheet) return null;
+    if (!activeTrip?.id) return null;
+    if (seatSheet.available) return { label: "Onboard Offline Passenger", tone: "primary", onClick: () => onboardOfflinePassenger(seatSheet) };
+    if (seatSheet.offline_boarding_id) {
+      if (!seatSheet.payment_verified) return { label: "Mark Cash Collected", tone: "primary", onClick: () => collectOfflineCash(seatSheet.offline_boarding_id) };
+      if (seatSheet.journey_stage === "dropoff") return { label: "End Passenger Ride", tone: "danger", onClick: () => completeOfflineRide(seatSheet.offline_boarding_id) };
       return null;
     }
-    setVerifyBusy(true);
-    setErr("");
-    setMsg("");
-    pushScanLog(`Ride OTP verification requested for ${reference}.`);
-    try {
-      const response = await api.post("/api/bookings/otp/verify/", { reference });
-      setVerifyBookingId(reference);
-      setTicketLookup(response.data.booking);
-      pushScanLog(`Booking #${response.data.booking.id} loaded from OTP ${reference}.`);
-      setMsg(response.data.message || `Ride loaded for ${response.data.booking.passenger_name}.`);
-      return response.data.booking;
-    } catch (error) {
-      pushScanLog(`Ride OTP verification failed: ${error?.response?.data?.detail || "unknown error"}.`);
-      setErr(error?.response?.data?.detail || "Ride OTP lookup failed.");
-      return null;
-    } finally {
-      setVerifyBusy(false);
-    }
-  }, [pushScanLog, verifyBookingId]);
+    if (selectedBooking?.can_accept) return { label: "Accept Passenger", tone: "primary", onClick: () => acceptPassenger(seatSheet.booking_id) };
+    if (selectedBooking?.can_verify_cash) return { label: "Verify Cash Payment", tone: "primary", onClick: () => verifyCashForSeat(seatSheet.booking_id) };
+    if (selectedBooking?.can_request_payment) return { label: "Request Payment", tone: "primary", onClick: () => requestPaymentForSeat(seatSheet.booking_id) };
+    if (selectedBooking?.can_board) return { label: "Board Passenger", tone: "primary", onClick: () => boardPassengerForSeat(seatSheet.booking_id) };
+    if (selectedBooking?.can_complete || (seatSheet.payment_verified && seatSheet.journey_stage === "dropoff")) return { label: "End Passenger Ride", tone: "danger", onClick: () => completeRideForSeat(seatSheet.booking_id) };
+    return null;
+  }, [acceptPassenger, boardPassengerForSeat, collectOfflineCash, completeOfflineRide, completeRideForSeat, onboardOfflinePassenger, requestPaymentForSeat, seatSheet, selectedBooking?.can_accept, selectedBooking?.can_board, selectedBooking?.can_complete, selectedBooking?.can_request_payment, selectedBooking?.can_verify_cash, verifyCashForSeat]);
 
-  const verifyCash = async () => {
-    const booking = ticketLookup || await lookupTicket();
-    if (!booking?.id) return;
-    setVerifyBusy(true);
-    setErr("");
-    setMsg("");
-    try {
-      const response = await api.post(`/api/payments/cash/verify/${booking.id}/`);
-      setTicketLookup(response.data.booking);
-      pushScanLog(`Cash payment confirmed for booking #${booking.id}.`);
-      setMsg(response.data.message || `Payment verified for booking #${booking.id}.`);
-      await loadDashboard({ silent: true });
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Verification failed.");
-    } finally {
-      setVerifyBusy(false);
-    }
-  };
-
-  const requestPassengerPayment = useCallback(async () => {
-    if (!ticketLookup?.id) {
-      setErr("Load a ride OTP before requesting passenger payment.");
-      return;
-    }
-    setVerifyBusy(true);
-    setErr("");
-    setMsg("");
-    pushScanLog(`Payment request sent for booking #${ticketLookup.id}.`);
-    try {
-      const response = await api.post(`/api/bookings/${ticketLookup.id}/request-payment/`);
-      setTicketLookup(response.data.booking);
-      setMsg(response.data.message || "Payment request sent to the passenger.");
-      pushScanLog(`Passenger payment request is active for booking #${response.data.booking.id}.`);
-      await loadDashboard({ silent: true });
-    } catch (error) {
-      pushScanLog(`Payment request failed for booking #${ticketLookup.id}.`);
-      setErr(error?.response?.data?.detail || "Unable to request payment.");
-    } finally {
-      setVerifyBusy(false);
-    }
-  }, [loadDashboard, pushScanLog, ticketLookup]);
-
-  const requestPaymentForSeat = useCallback(async (bookingId) => {
-    if (!bookingId) return;
-    setSeatPaymentBusy(true);
-    setErr("");
-    setMsg("");
-    pushScanLog(`Payment request sent for booking #${bookingId} via seat map.`);
-    try {
-      const response = await api.post(`/api/bookings/${bookingId}/request-payment/`);
-      setMsg(response.data.message || `Payment request sent for booking #${bookingId}.`);
-      pushScanLog(`Seat payment request active for booking #${bookingId}.`);
-      // Update selectedSeatInfo to reflect the new payment_requested state
-      setSelectedSeatInfo((current) => current ? { ...current, payment_tick: "PENDING" } : current);
-      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
-    } catch (error) {
-      pushScanLog(`Seat payment request failed for booking #${bookingId}.`);
-      setErr(error?.response?.data?.detail || "Unable to request payment for this seat.");
-    } finally {
-      setSeatPaymentBusy(false);
-    }
-  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
-
-  const completeRideForSeat = useCallback(async (bookingId) => {
-    if (!bookingId) return;
-    setSeatCompleteBusy(true);
-    setErr("");
-    setMsg("");
-    pushScanLog(`Ride completion sent for booking #${bookingId} via seat map.`);
-    try {
-      const response = await api.post(`/api/bookings/${bookingId}/complete/`);
-      setMsg(response.data.message || `Ride ended for booking #${bookingId}.`);
-      pushScanLog(`Seat ride complete for booking #${bookingId}.`);
-      setSelectedSeatInfo(null);
-      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
-    } catch (error) {
-      pushScanLog(`Ride completion failed for booking #${bookingId}.`);
-      setErr(error?.response?.data?.detail || "Unable to complete ride for this seat.");
-    } finally {
-      setSeatCompleteBusy(false);
-    }
-  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
-
-  const collectOfflineCash = useCallback(async (offlineBoardingId) => {
-    if (!offlineBoardingId) return;
-    setSeatPaymentBusy(true);
-    setErr("");
-    setMsg("");
-    pushScanLog(`Cash collection marked for offline boarding #${offlineBoardingId}.`);
-    try {
-      const response = await api.post(`/api/bookings/offline/${offlineBoardingId}/collect-cash/`);
-      setMsg(response.data.message || "Cash marked as collected.");
-      setSelectedSeatInfo((current) => current ? { ...current, payment_verified: true, payment_tick: "PAID" } : current);
-      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to mark cash as collected.");
-    } finally {
-      setSeatPaymentBusy(false);
-    }
-  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
-
-  const completeOfflineRide = useCallback(async (offlineBoardingId) => {
-    if (!offlineBoardingId) return;
-    setSeatCompleteBusy(true);
-    setErr("");
-    setMsg("");
-    pushScanLog(`Ride completion sent for offline boarding #${offlineBoardingId}.`);
-    try {
-      const response = await api.post(`/api/bookings/offline/${offlineBoardingId}/complete/`);
-      setMsg(response.data.message || "Offline passenger ride completed.");
-      setSelectedSeatInfo(null);
-      await Promise.all([loadDashboard({ silent: true }), loadAvailability(tripId, fromOrder, toOrder, { silent: true })]);
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to complete offline ride.");
-    } finally {
-      setSeatCompleteBusy(false);
-    }
-  }, [fromOrder, loadAvailability, loadDashboard, pushScanLog, toOrder, tripId]);
-
-  const helperPaymentActionLabel = ticketLookup?.can_accept ? "Accept & Request Payment" : "Request Payment";
-
-  const acceptPassengerRide = async (bookingOverride) => {
-    const booking = bookingOverride || ticketLookup;
-    if (!booking?.id) {
-      setErr("Load a ride OTP before accepting the passenger ride.");
-      return;
-    }
-    setVerifyBusy(true);
-    setErr("");
-    setMsg("");
-    try {
-      const response = await api.post(`/api/bookings/${booking.id}/accept/`);
-      setTicketLookup(response.data.booking);
-      pushScanLog(`Helper accepted booking #${booking.id}.`);
-      setMsg(response.data.message || "Passenger ride accepted.");
-      await loadDashboard({ silent: true });
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Unable to accept the passenger ride.");
-    } finally {
-      setVerifyBusy(false);
-    }
-  };
-
-  const openBookingInVerify = (booking) => {
-    if (!booking) return;
-    setTicketLookup(booking);
-    setVerifyBookingId(String(booking.boarding_otp || "").slice(0, 4));
-    setActiveTab("verify");
-    setErr("");
-    setMsg("");
-  };
-
-  const boardPassenger = async (bookingOverride) => {
-    const booking = bookingOverride || ticketLookup;
-    if (!booking?.id) {
-      setErr("Load a ride OTP before boarding the passenger.");
-      return;
-    }
-    setVerifyBusy(true);
-    setErr("");
-    setMsg("");
-    try {
-      const response = await api.post(`/api/bookings/${booking.id}/board/`);
-      setTicketLookup(response.data.booking);
-      pushScanLog(`Passenger boarded on booking #${booking.id}.`);
-      setMsg(response.data.message || "Passenger marked as boarded.");
-      await loadDashboard({ silent: true });
-      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder, { silent: true });
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Boarding update failed.");
-    } finally {
-      setVerifyBusy(false);
-    }
-  };
-
-  const completePassengerRide = async (bookingOverride) => {
-    const booking = bookingOverride || ticketLookup;
-    if (!booking?.id) {
-      setErr("Load a ride OTP before completing the ride.");
-      return;
-    }
-    setVerifyBusy(true);
-    setErr("");
-    setMsg("");
-    try {
-      const response = await api.post(`/api/bookings/${booking.id}/complete/`);
-      setTicketLookup(response.data.booking);
-      pushScanLog(`Ride completed for booking #${booking.id}.`);
-      setMsg(response.data.message || "Ride completed.");
-      await loadDashboard({ silent: true });
-      if (tripId && fromOrder && toOrder) await loadAvailability(tripId, fromOrder, toOrder, { silent: true });
-    } catch (error) {
-      setErr(error?.response?.data?.detail || "Ride completion failed.");
-    } finally {
-      setVerifyBusy(false);
-    }
-  };
-
-  const copyToClipboard = useCallback(async (text) => {
-    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return false;
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      return false;
-    }
-  }, []);
-
-  const shareHelperUpdate = useCallback(async (title, text) => {
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({ title, text });
-        return "shared";
-      } catch {
-        // Fall back to clipboard when the share sheet is dismissed or unsupported.
-      }
-    }
-    const copied = await copyToClipboard(text);
-    return copied ? "copied" : "ready";
-  }, [copyToClipboard]);
-
-  const openVehicleLogs = () => {
-    setErr("");
-    setActiveTab("route");
-    setMsg(`Vehicle log preview loaded for ${assignedBus?.plate_number || currentTrip?.bus_plate || "the assigned bus"}.`);
-  };
-
-  const broadcastUpdate = async () => {
-    setErr("");
-    const updateText = `MetroBus helper update
-Route: ${routeTitle}
-Bus: ${assignedBus?.plate_number || currentTrip?.bus_plate || "--"}
-Status: ${helperHeaderStatus}
-Current stop: ${routeStops[currentStopIndex]?.stop?.name || routeStops[0]?.stop?.name || "--"}
-Next stop: ${upcomingStop?.stop?.name || routeDestination}`;
-    const result = await shareHelperUpdate("MetroBus helper update", updateText);
-    setMsg(result === "shared" ? "Live trip update shared." : result === "copied" ? "Trip update copied. Paste it into your dispatch channel." : "Trip update is ready to send.");
-  };
-
-  const contactDispatch = async () => {
-    setErr("");
-    const dispatchNote = `MetroBus dispatch note
-Route: ${routeTitle}
-Bus: ${assignedBus?.plate_number || currentTrip?.bus_plate || "--"}
-Driver: ${assignedDriverName}
-Status: ${helperHeaderStatus}
-Current stop: ${routeStops[currentStopIndex]?.stop?.name || routeStops[0]?.stop?.name || "--"}
-Need support with live trip operations.`;
-    const copied = await copyToClipboard(dispatchNote);
-    setMsg(copied ? "Dispatch note copied. Opening your messaging app." : "Dispatch note prepared for messaging.");
-    if (typeof window !== "undefined") {
-      window.location.href = `sms:?body=${encodeURIComponent(dispatchNote)}`;
-    }
-  };
-
-  const openFullMap = () => {
-    const focusPoint = livePoint || mapPolyline[Math.min(currentStopIndex, Math.max(mapPolyline.length - 1, 0))] || mapPolyline[0];
-    if (!focusPoint) {
-      setErr("No route map is available yet.");
-      return;
-    }
-    const [lat, lng] = focusPoint;
-    setErr("");
-    setMsg("Opened the live route in a full map.");
-    if (typeof window !== "undefined") {
-      window.open(`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=15/${lat}/${lng}`, "_blank", "noopener,noreferrer");
-    }
-  };
-
+  const seatStatusText = seatSheet?.available
+    ? activeTrip?.id ? "Vacant and ready for an offline passenger" : "Vacant seat. Helper actions unlock after the trip goes fully live."
+    : seatSheet?.offline_boarding_id
+      ? seatSheet.payment_verified ? "Offline passenger onboard with cash collected" : "Offline passenger onboard with cash pending"
+      : seatSheet?.payment_verified
+        ? seatSheet.journey_stage === "dropoff" ? "Passenger is onboard and ready for drop completion" : "Passenger payment is complete"
+        : "Passenger payment is still pending";
   const handleLogout = () => {
     clearToken();
-    navigate("/auth/login");
+    setUser(null);
+    navigate("/auth/login", { replace: true });
   };
 
-  if (loadingTrips) {
+  if (loading) {
     return (
-      <div style={theme} className="flex min-h-screen items-center justify-center bg-[var(--hlp-bg)] text-[var(--hlp-text)]">
+      <div style={theme} className="flex min-h-screen items-center justify-center bg-[var(--bg)] text-[var(--text)]">
         <div className="text-center">
-          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--hlp-purple)] border-t-transparent" />
-          <p className="mt-4 text-sm font-medium text-[var(--hlp-muted)]">Loading helper workspace...</p>
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" />
+          <p className="mt-4 text-sm font-medium text-[var(--muted)]">Loading helper workspace...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--hlp-bg),var(--hlp-bg-end))] text-[var(--hlp-text)]">
-      <header className="sticky top-0 z-30 border-b border-[var(--hlp-border)] bg-[var(--hlp-header)] px-3 py-3 backdrop-blur-xl sm:px-4 sm:py-4">
-        <div className={`${APP_SHELL_CLASS} flex items-center justify-between gap-3`}>
-          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-            <HeaderButton onClick={() => loadDashboard()}>
-              <Icon name="refresh" />
-            </HeaderButton>
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[1rem] bg-white shadow-[var(--hlp-shadow)] sm:h-11 sm:w-11 sm:rounded-2xl">
-              <span className="text-[0.6rem] font-black uppercase tracking-[0.2em] text-[var(--hlp-purple)]">MB</span>
-            </div>
+    <div style={theme} className="min-h-screen bg-[radial-gradient(circle_at_top,#fff5eb_0%,var(--bg)_42%,var(--bg-soft)_100%)] text-[var(--text)]">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-[radial-gradient(circle_at_top_right,rgba(255,150,45,0.18),transparent_48%),radial-gradient(circle_at_top_left,rgba(75,38,102,0.18),transparent_42%)]" />
+
+      <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--header)] backdrop-blur-xl">
+        <div className={`${shell} flex items-center justify-between px-4 py-4 sm:px-5`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <LogoMark />
             <div className="min-w-0">
-              <p className="truncate text-[0.92rem] font-black tracking-[0.01em] text-[var(--hlp-purple)] sm:text-[1rem]">MetroBus Helper</p>
-              <p className="truncate text-[0.58rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)] sm:text-[0.6rem] sm:tracking-[0.18em]">Staff Operations</p>
+              <p className="text-lg font-black leading-none text-[var(--primary)]">MetroBus</p>
+              <p className="mt-1 text-[0.72rem] font-black uppercase tracking-[0.22em] text-[var(--muted)]">Helper Home</p>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <Chip tone={activeTrip ? "live" : pendingTrip ? "warn" : "soft"} className="px-2.5 py-2 sm:px-3">
-              {helperHeaderStatus}
-            </Chip>
-            <HeaderButton onClick={handleLogout}>
-              <Icon name="logout" />
-            </HeaderButton>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={handleLogout} className="rounded-full border border-[rgba(219,61,79,0.18)] bg-[rgba(219,61,79,0.10)] px-4 py-2 text-[0.7rem] font-black uppercase tracking-[0.16em] text-[var(--danger)] shadow-[var(--shadow)]">Logout</button>
+            <button type="button" className="grid h-12 w-12 place-items-center rounded-full border border-[var(--border)] bg-[var(--surface-strong)] text-sm font-black text-[var(--primary)] shadow-[var(--shadow)]" aria-label="Helper account">{initials(user?.full_name)}</button>
           </div>
         </div>
       </header>
 
-      <main className={`${APP_SHELL_CLASS} px-4 py-4 pb-28 sm:px-5 sm:py-5 sm:pb-32`}>
-        {err ? <p className="mb-4 text-sm font-semibold text-red-600">{err}</p> : null}
-        {msg ? <p className="mb-4 text-sm font-semibold text-emerald-600">{msg}</p> : null}
+      <main className={`${shell} relative px-4 pb-32 pt-4 sm:px-5 sm:pt-5`}>
+        {err ? <div className="mb-4 rounded-[1.25rem] border border-[rgba(219,61,79,0.18)] bg-[rgba(219,61,79,0.10)] px-4 py-3 text-sm font-semibold text-[var(--danger)]">{err}</div> : null}
+        {msg ? <div className="mb-4 rounded-[1.25rem] border border-[rgba(23,165,103,0.16)] bg-[rgba(23,165,103,0.10)] px-4 py-3 text-sm font-semibold text-[var(--success)]">{msg}</div> : null}
 
-        {activeTab === "trip" ? <>
-          <section className="relative overflow-hidden rounded-[1.6rem] bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] p-5 text-white shadow-[var(--hlp-shadow-strong)] sm:rounded-[1.9rem] sm:p-6">
-            <div className="absolute inset-y-0 right-0 w-36 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.14),transparent_62%)]" />
-            <p className="text-[0.68rem] font-black uppercase tracking-[0.28em] text-white/74">Shift Dashboard</p>
-            <h1 className="mt-3 text-[2.7rem] font-black leading-[0.92] whitespace-pre-line sm:text-5xl">{activeTrip ? "LIVE\nSUPPORT" : pendingTrip ? "START\nPENDING" : "READY ON\nSHIFT"}</h1>
-            <p className="mt-4 text-sm font-medium leading-6 text-white/84 sm:text-base sm:leading-7">
-              {activeTrip ? `${activeTrip.route_name} is ready for boarding, payment checks, and route support.` : pendingTrip ? pendingStartLabel : "Waiting for a live trip in Pokhara. Stay ready for boarding and cash verification."}
-            </p>
-            <div className="mt-6 rounded-[1.4rem] border border-white/20 bg-white/10 p-4 backdrop-blur">
-              <div className="flex items-center gap-4">
-                <div className="grid h-14 w-14 place-items-center rounded-full bg-white/14 text-white"><Icon name="bus" className="h-7 w-7" /></div>
+        {tab === "riders" ? (
+          <SurfaceCard className="overflow-hidden">
+            <div className="border-b border-[var(--border)] px-5 py-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-white/74">Assigned Bus</p>
-                  <p className="mt-1 break-words text-2xl font-black leading-snug">{assignedBus?.plate_number || currentTrip?.bus_plate || nextSchedule?.bus_plate || "--"}</p>
-                  <p className="mt-1 break-words text-sm leading-6 text-white/78">{assignedBus?.capacity || "--"} seats | Driver: {currentTrip?.driver_name || nextSchedule?.driver_name || assignedBus?.driver_name || "--"}</p>
+                  <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--primary)]">Passenger OTP</p>
+                  <h2 className="mt-3 text-[2rem] font-black leading-tight text-[var(--text)]">Load ride details with the passenger OTP</h2>
+                  <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Enter the 4-digit ride OTP, load the ticket, then either onboard the passenger directly or onboard and trigger the payment prompt on the passenger dashboard.</p>
                 </div>
+                <StatusPill tone={activeTrip ? "live" : "waiting"}>{activeTrip ? "Trip Live" : "Start Trip First"}</StatusPill>
               </div>
             </div>
-          </section>
 
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <StatCard label="Open Seats" value={availableSeats.length} note="Current segment" icon="ticket" />
-            <StatCard label="Occupied" value={occupiedCount} note="Already reserved" icon="shield" />
-            <StatCard label="Marked" value={selectedCount} note="Offline seats" icon="money" />
-          </div>
-        </> : null}
-
-        {activeTab === "trip" ? (
-            <div className="mt-5 space-y-5">
-            <div className="px-1">
-                <h2 className="text-[1.35rem] font-black">Helper Dashboard</h2>
-              </div>
-
-            <div className="max-w-[15rem]">
-              <SelectField label="Switch Active Trip" value={tripId} onChange={(value) => { setTripId(value); setMsg(""); setErr(""); setTicketLookup(null); }} options={trips.length ? trips.map((trip) => ({ value: String(trip.id), label: `${trip.route_name} - ${trip.bus_plate}` })) : [{ value: "", label: tripAwaitingStart ? "Trip is waiting for driver/helper confirmation" : "No live trips available" }]} disabled={!trips.length} />
-            </div>
-
-            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
-              <Chip tone="dark" className="bg-white/18">{activeTrip ? "Active Trip" : pendingTrip ? "Start Pending" : "Shift Ready"}</Chip>
-                <h3 className="mt-6 break-words text-[2.3rem] font-black leading-[0.94] sm:text-[3rem]">{helperTripHeroTitle}</h3>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? `Started ${tripStarted}` : nextSchedule ? `Scheduled ${formatTime(nextSchedule.scheduled_start_time)}` : "Waiting for trip"}</span>
-                <span className="rounded-full bg-white/14 px-4 py-2 text-sm font-black uppercase tracking-[0.14em]">{activeTrip ? "On Time" : pendingTrip ? "Confirm Start" : "Standby"}</span>
-              </div>
-              <div className="mt-6 rounded-[1.8rem] border border-white/18 bg-white/10 p-4">
-                <div className="flex items-center gap-4">
-                  <div className="grid h-14 w-14 place-items-center rounded-full bg-white/16 text-base font-black">{assignedDriverName.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</div>
-                  <div>
-                    <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-white/72">Assigned Driver</p>
-                    <p className="mt-1 break-words text-2xl font-black leading-snug">{assignedDriverName}</p>
-                    <p className="mt-1 break-all text-sm text-white/78">{driverBadgeId}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5 space-y-3">
-                {tripAwaitingStart ? (
-                  pendingTrip?.helper_start_confirmed ? (
-                    <div className="rounded-[1.6rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
-                      {pendingStartLabel}
-                    </div>
-                  ) : (
-                    <PrimaryButton tone="primary" onClick={confirmPendingStart} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
-                      Confirm Trip Start
-                      <Icon name="shield" className="h-5 w-5" />
-                    </PrimaryButton>
-                  )
-                ) : null}
-                {!currentTrip && nextScheduleReady ? (
-                  <PrimaryButton tone="primary" onClick={() => requestScheduledStart(nextSchedule.id)} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
-                    Start Scheduled Trip
-                    <Icon name="bus" className="h-5 w-5" />
-                  </PrimaryButton>
-                ) : null}
-                {!currentTrip && nextSchedule && !nextScheduleReady ? (
-                  <div className="rounded-[1.6rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
-                    Waiting for the driver to accept this assignment before helper start can be requested.
-                  </div>
-                ) : null}
-                {activeTrip ? (
-                  <PrimaryButton tone={activeTrip.helper_end_confirmed ? "ghost" : "danger"} onClick={requestTripEnd} disabled={activeTrip.helper_end_confirmed} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">
-                    {activeTrip.driver_end_confirmed ? "Confirm End Trip" : activeTrip.helper_end_confirmed ? "End Requested" : "Request End Trip"}
-                    <Icon name="alert" className="h-5 w-5" />
-                  </PrimaryButton>
-                ) : null}
-              </div>
-            </SurfaceCard>
-
-            {activeTrip?.waiting_for_end_confirmation ? (
-              <SurfaceCard className="bg-[rgba(255,244,248,0.92)]">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <SectionLabel>End Confirmation</SectionLabel>
-                    <h3 className="mt-2 text-2xl font-black">Trip end is waiting on the other staff member</h3>
-                    <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">{pendingEndLabel}</p>
-                  </div>
-                  <Chip tone="warn">Ending</Chip>
-                </div>
-              </SurfaceCard>
-            ) : null}
-
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <SurfaceCard className="bg-[rgba(247,224,249,0.84)]">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--hlp-purple)]"><Icon name="ticket" /></div>
-                <p className="mt-8 text-[2rem] font-black sm:text-4xl">{availableSeats.length || 12}</p>
-                <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Open Seats</p>
-              </SurfaceCard>
-              <SurfaceCard className="bg-[rgba(245,219,248,0.92)]">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(255,107,115,0.12)] text-[var(--hlp-purple)]"><Icon name="profile" /></div>
-                <p className="mt-8 text-[2rem] font-black sm:text-4xl">{occupiedCount || 18}</p>
-                <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Occupied</p>
-              </SurfaceCard>
-              <SurfaceCard className="col-span-2 bg-[rgba(245,206,241,0.9)]">
-                <div className="grid h-12 w-12 place-items-center rounded-full bg-[rgba(233,86,120,0.12)] text-[#c81e49]"><Icon name="alert" /></div>
-                <p className="mt-8 text-[2rem] font-black sm:text-4xl">{helperDashboardMarked}</p>
-                <p className="mt-2 text-[0.9rem] font-medium uppercase tracking-[0.14em] text-[var(--hlp-muted)]">Marked (Special)</p>
-              </SurfaceCard>
-            </div>
-
-            <SurfaceCard>
-              <SectionLabel>Assigned Vehicle</SectionLabel>
-              <h3 className="mt-2 text-3xl font-black uppercase">Assigned Vehicle</h3>
-              <div className="mt-6 rounded-[1.8rem] bg-[var(--hlp-soft)] px-5 py-4">
-                <div className="flex items-center gap-4">
-                  <div className="grid h-12 w-12 place-items-center rounded-full bg-white text-[var(--hlp-purple)] shadow-[var(--hlp-shadow)]"><Icon name="bus" /></div>
-                  <div>
-                    <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Vehicle</p>
-                    <p className="mt-1 break-words text-2xl font-black leading-snug">{assignedBus?.plate_number || currentTrip?.bus_plate || "BA 2 PA 4567"}</p>
-                    <p className="mt-1 text-sm text-[var(--hlp-muted)]">Fleet Number: 88-X</p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-5 rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-semibold">
-                <div className="flex items-center justify-between gap-3">
-                  <span>Total Capacity</span>
-                  <span className="text-xl font-black text-[var(--hlp-purple)]">{vehicleCapacity} Seats</span>
-                </div>
-              </div>
-              <div className="mt-5 h-2 rounded-full bg-[#f0dce4]">
-                <div className="h-2 rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))]" style={{ width: `${Math.min(Math.max(occupancyPercent, 12), 100)}%` }} />
-              </div>
-              <p className="mt-4 text-center text-[0.82rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Current Occupancy: {Math.min(Math.max(occupancyPercent, 12), 100)}%</p>
-              <PrimaryButton tone="ghost" onClick={openVehicleLogs} className="mt-5 w-full !py-4 !text-base">Vehicle Logs</PrimaryButton>
-            </SurfaceCard>
-
-            <div className="space-y-4">
-              <PrimaryButton tone="primary" onClick={broadcastUpdate} className="w-full !justify-between !rounded-[1.8rem] !px-6 !py-5 !text-base">Broadcast Update <Icon name="broadcast" className="h-5 w-5" /></PrimaryButton>
-              <PrimaryButton tone="ghost" onClick={contactDispatch} className="w-full !justify-between !rounded-[1.8rem] !bg-[var(--hlp-soft)] !px-6 !py-5 !text-base">Contact Dispatch <Icon name="headset" className="h-5 w-5" /></PrimaryButton>
-            </div>
-          </div>
-        ) : null}
-
-        {activeTab === "boarding" ? (
-          <div className="mt-5 space-y-5">
             {!activeTrip ? (
-              <SurfaceCard className="bg-[rgba(255,250,255,0.92)]">
-                <SectionLabel>Boarding Locked</SectionLabel>
-                <p className="mt-2 text-2xl font-black">{tripAwaitingStart ? "Waiting for both trip confirmations" : "No LIVE trip yet"}</p>
-                <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">
-                  {tripAwaitingStart ? pendingStartLabel : "Seat marking and offline boarding unlock as soon as the assigned trip becomes LIVE."}
-                </p>
-              </SurfaceCard>
-            ) : null}
-
-            <SurfaceCard className="overflow-hidden !p-0">
-              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <SectionLabel>Live Seat Map</SectionLabel>
-                    <p className="mt-1 text-lg font-black">Tap an occupied seat to manage a passenger</p>
-                  </div>
-                  <Chip tone={loadingAvail ? "warn" : "live"}>{loadingAvail ? "Loading…" : "Live"}</Chip>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-4 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">
-                  <span className="inline-flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded-full bg-emerald-500" />Vacant</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="h-3.5 w-3.5 rounded-full bg-red-500" />Occupied</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="inline-flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-amber-400 px-0.5 text-[0.4rem] font-black text-white">✓</span>Payment pending</span>
-                  <span className="inline-flex items-center gap-1.5"><span className="inline-flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-sky-500 px-0.5 text-[0.4rem] font-black text-white">✓✓</span>Paid</span>
+              <div className="px-5 py-6">
+                <div className="rounded-[1.4rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-5 text-sm font-semibold leading-7 text-[var(--muted)]">
+                  The helper OTP page becomes active once the ride is started from Home.
                 </div>
               </div>
-              <div className="bg-[var(--hlp-soft)] px-4 py-5 sm:px-6">
-                {loadingAvail ? (
-                  <div className="rounded-[1.8rem] bg-white/70 px-5 py-10 text-center text-sm font-medium text-[var(--hlp-muted)]">Loading seat map…</div>
-                ) : !activeTrip ? (
-                  <div className="rounded-[1.8rem] bg-white/70 px-5 py-10 text-center text-sm font-medium text-[var(--hlp-muted)]">No active trip. Start a trip to view seats.</div>
-                ) : seats.length === 0 ? (
-                  <div className="rounded-[1.8rem] bg-white/70 px-5 py-10 text-center text-sm font-medium text-[var(--hlp-muted)]">No seats found for this segment.</div>
+            ) : (
+              <>
+                <div className="border-b border-[var(--border)] px-5 py-5">
+                  <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Passenger Ride OTP</label>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={otpCode}
+                      onChange={(event) => setOtpCode(sanitizeOtp(event.target.value))}
+                      placeholder="0000"
+                      className="min-w-0 flex-1 rounded-[1.25rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-4 text-[1.25rem] font-black tracking-[0.4em] text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+                    />
+                    <ActionButton onClick={loadOtpBookingDetails} disabled={otpBusy} className="sm:min-w-[12rem]">
+                      <Icon name="shield" className="h-4 w-4" />
+                      {otpBusy ? "Loading..." : "Load Details"}
+                    </ActionButton>
+                  </div>
+                </div>
+
+                {otpLoadedBooking ? (
+                  <div className="px-5 py-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Passenger Ride</p>
+                        <h3 className="mt-3 text-[1.85rem] font-black leading-tight text-[var(--text)]">{otpLoadedBooking.passenger_name || "Passenger"}</h3>
+                        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{helperJourneyLabel(otpLoadedBooking)}</p>
+                      </div>
+                      <StatusPill tone={otpPayment.tone}>{otpPayment.label}</StatusPill>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Route</p>
+                        <p className="mt-2 text-lg font-black leading-7 text-[var(--text)]">{otpLoadedBooking.pickup_stop_name} to {otpLoadedBooking.destination_stop_name}</p>
+                      </div>
+                      <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Seat</p>
+                        <p className="mt-2 text-lg font-black leading-7 text-[var(--text)]">{(otpLoadedBooking.seat_labels || []).join(", ") || "--"}</p>
+                      </div>
+                      <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Phone</p>
+                        <p className="mt-2 text-lg font-black leading-7 text-[var(--text)]">{otpLoadedBooking.passenger_phone || "--"}</p>
+                      </div>
+                      <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4">
+                        <p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Fare</p>
+                        <p className="mt-2 text-lg font-black leading-7 text-[var(--text)]">Rs {Number(otpLoadedBooking.fare_total || 0).toFixed(2)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-[1.3rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4 text-sm leading-6 text-[var(--muted)]">
+                      OTP {String(otpLoadedBooking.boarding_otp || "").padStart(4, "0").slice(-4)} | Bus {otpLoadedBooking.bus_plate || activeTrip?.bus_plate || "--"} | Payment {otpPayment.label}
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <ActionButton
+                        onClick={() => runOtpBoardingAction(false)}
+                        disabled={otpBusy || Boolean(otpLoadedBooking.completed_at || otpLoadedBooking.checked_in_at)}
+                        className="w-full"
+                      >
+                        <Icon name="ticket" className="h-4 w-4" />
+                        {otpBusy ? "Saving..." : "Onboard Passenger"}
+                      </ActionButton>
+                      <ActionButton
+                        onClick={() => runOtpBoardingAction(true)}
+                        disabled={otpBusy || Boolean(otpLoadedBooking.completed_at || otpLoadedBooking.payment_status === "SUCCESS")}
+                        tone="secondary"
+                        className="w-full"
+                      >
+                        <Icon name="money" className="h-4 w-4" />
+                        {otpBusy ? "Saving..." : otpLoadedBooking.checked_in_at ? "Request Payment" : "Onboard & Request Payment"}
+                      </ActionButton>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="grid grid-cols-4 gap-3 sm:grid-cols-5">
-                    {seats.map((seat) => (
-                      <SeatNode
-                        key={seat.seat_id}
-                        seat={seat}
-                        selected={selectedSeatIds.includes(seat.seat_id)}
-                        onClick={() => toggleSeat(seat.seat_id)}
-                        onOccupiedClick={(seat.booking_id || seat.offline_boarding_id) ? (s) => setSelectedSeatInfo(s) : undefined}
-                        isOccupiedSelected={selectedSeatInfo?.seat_id === seat.seat_id}
-                      />
-                    ))}
+                  <div className="px-5 py-6">
+                    <div className="rounded-[1.4rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-5 text-sm font-semibold leading-7 text-[var(--muted)]">
+                      Load a passenger OTP to review the seat, fare, route, and payment state before you onboard them.
+                    </div>
                   </div>
                 )}
-                {selectedSeatInfo ? (
-                  <div className="mt-5 rounded-[1.6rem] border border-[var(--hlp-border)] bg-white p-4 shadow-[var(--hlp-shadow)]">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[0.64rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">
-                          Seat {selectedSeatInfo.seat_no}
-                          {selectedSeatInfo.offline_boarding_id ? " · Offline Passenger" : ` · Booking #${selectedSeatInfo.booking_id}`}
-                          {selectedSeatInfo.journey_stage === "dropoff" ? " · Onboard" : " · Awaiting Board"}
-                        </p>
-                        <p className="mt-1 text-lg font-black text-[var(--hlp-text)]">
-                          {selectedSeatInfo.payment_verified
-                            ? (selectedSeatInfo.offline_boarding_id ? "Cash collected" : "Payment confirmed")
-                            : selectedSeatInfo.offline_boarding_id ? "Cash not yet collected" : "Payment pending"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center rounded-full px-3 py-1.5 text-[0.6rem] font-black uppercase tracking-[0.16em] ${selectedSeatInfo.payment_verified ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-700"}`}>
-                          {selectedSeatInfo.offline_boarding_id
-                            ? (selectedSeatInfo.payment_verified ? "Cash ✓" : "Cash Pending")
-                            : (selectedSeatInfo.payment_verified ? "Paid" : "Unpaid")}
-                        </span>
-                        <button type="button" onClick={() => setSelectedSeatInfo(null)} className="grid h-7 w-7 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-muted)] text-lg font-black">×</button>
-                      </div>
-                    </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      {!selectedSeatInfo.offline_boarding_id && !selectedSeatInfo.payment_verified ? (
-                        <PrimaryButton tone="primary" onClick={() => requestPaymentForSeat(selectedSeatInfo.booking_id)} disabled={seatPaymentBusy || seatCompleteBusy} className="w-full !py-4 !text-sm">
-                          <Icon name="money" />{seatPaymentBusy ? "Requesting…" : "Request Payment"}
-                        </PrimaryButton>
-                      ) : null}
-                      {!selectedSeatInfo.offline_boarding_id && selectedSeatInfo.payment_verified ? (
-                        <div className="flex items-center rounded-[1.2rem] bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">✓ Payment confirmed</div>
-                      ) : null}
-                      {selectedSeatInfo.offline_boarding_id && !selectedSeatInfo.payment_verified ? (
-                        <PrimaryButton tone="primary" onClick={() => collectOfflineCash(selectedSeatInfo.offline_boarding_id)} disabled={seatPaymentBusy || seatCompleteBusy} className="w-full !py-4 !text-sm">
-                          <Icon name="money" />{seatPaymentBusy ? "Saving…" : "Mark Cash Collected"}
-                        </PrimaryButton>
-                      ) : null}
-                      {selectedSeatInfo.offline_boarding_id && selectedSeatInfo.payment_verified ? (
-                        <div className="flex items-center rounded-[1.2rem] bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">✓ Cash collected</div>
-                      ) : null}
-                      {selectedSeatInfo.journey_stage === "dropoff" ? (
-                        <PrimaryButton tone="danger" onClick={() => selectedSeatInfo.offline_boarding_id ? completeOfflineRide(selectedSeatInfo.offline_boarding_id) : completeRideForSeat(selectedSeatInfo.booking_id)} disabled={seatCompleteBusy || seatPaymentBusy} className="w-full !py-4 !text-sm">
-                          <Icon name="ticket" />{seatCompleteBusy ? "Ending Ride…" : "End Ride"}
-                        </PrimaryButton>
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-                {selectedSeatIds.length > 0 ? (
-                  <div className="mx-auto mt-5 flex w-fit flex-wrap items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-black text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
-                    <span className="uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Selected:</span>
-                    {selectedSeatLabels.map((label) => <span key={label} className="rounded-full bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] px-3 py-1 text-xs text-white">{label}</span>)}
-                  </div>
-                ) : null}
-              </div>
-            </SurfaceCard>
-
-            <SurfaceCard className="overflow-hidden bg-[radial-gradient(circle_at_top_right,rgba(246,219,252,0.95),rgba(255,255,255,0.94)_45%)]">
-              <SectionLabel>Filter by Segment / Offline Boarding</SectionLabel>
-              <p className="mt-1 text-sm text-[var(--hlp-muted)]">Change segment to filter the seat map or to record offline passengers.</p>
-              <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-                {terminalChips.map((chip, index) => (
-                  <button key={`${chip.label}-${index}`} type="button" onClick={() => chip.value && setFromOrder(chip.value)} className={`shrink-0 rounded-full px-5 py-3 text-sm font-black uppercase tracking-[0.14em] ${index === 0 ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-end">
-                <SelectField label="From" value={fromOrder} onChange={setFromOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
-                <button type="button" onClick={() => { const f = fromOrder; setFromOrder(toOrder); setToOrder(f); }} className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]">
-                  <Icon name="swap" className="h-6 w-6" />
-                </button>
-                <SelectField label="To" value={toOrder} onChange={setToOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length} />
-              </div>
-              <div className="mt-4 rounded-[1.4rem] bg-white/80 px-4 py-3 text-sm font-semibold text-[var(--hlp-text)] shadow-[var(--hlp-shadow)]">
-                {fromStop && toStop ? `Segment: ${fromStop.stop?.name} → ${toStop.stop?.name}` : "Choose a route segment."}
-              </div>
-            </SurfaceCard>
-
-            <SurfaceCard className="bg-[rgba(255,250,255,0.94)]">
-              <SectionLabel>Offline Boarding</SectionLabel>
-              <p className="mt-1 text-sm text-[var(--hlp-muted)]">Select vacant seats above, then save to record passengers boarding without the app.</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Pickup</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{fromStop?.stop?.name || "—"}</p>
-                </div>
-                <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Drop</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{toStop?.stop?.name || "—"}</p>
-                </div>
-                <div className="rounded-[1.25rem] bg-[var(--hlp-soft)] px-4 py-4">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Fare</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{segmentFarePerSeat != null ? `${formatMoney(segmentFarePerSeat)} / seat` : "—"}</p>
-                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{selectedCount ? `${formatMoney(selectedSegmentFare)} total for ${selectedCount} seat${selectedCount > 1 ? "s" : ""}` : "Select seats above."}</p>
-                </div>
-              </div>
-            </SurfaceCard>
-
-            <PrimaryButton tone="primary" onClick={submitOffline} disabled={offlineBusy || !selectedSeatIds.length} className="w-full !py-5 !text-base">
-              <Icon name="ticket" />
-              {offlineBusy ? "Saving Offline Boarding…" : "Save Offline Boarding"}
-            </PrimaryButton>
-            <p className="text-center text-sm font-medium uppercase tracking-[0.18em] text-[var(--hlp-muted)]">Your boarding pass will remain accessible without an active internet connection.</p>
-          </div>
+              </>
+            )}
+          </SurfaceCard>
         ) : null}
 
-        {activeTab === "verify" ? (
-          <div className="mt-5 space-y-5">
-            <div className="px-1">
-              <SectionLabel>Transit Verification</SectionLabel>
-              <h2 className="mt-2 text-[2.9rem] font-black leading-[0.92] sm:text-6xl">Verify Payment</h2>
-            </div>
-            <SurfaceCard className="rounded-[1.8rem]">
-              <label className="mb-3 block text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--hlp-muted)]">4-Digit Ride OTP</label>
-              <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={verifyBookingId}
-                    onChange={(event) => setVerifyBookingId(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                    inputMode="numeric"
-                    maxLength={4}
-                    placeholder="1234"
-                    className="w-full rounded-full border border-[var(--hlp-border)] bg-[var(--hlp-soft)] px-5 py-4 pr-14 text-base font-semibold tracking-[0.22em] text-[var(--hlp-text)] outline-none"
-                  />
-                  <span className="absolute right-5 top-1/2 -translate-y-1/2 text-[var(--hlp-purple)]"><Icon name="shield" className="h-6 w-6" /></span>
-                </div>
-                <PrimaryButton tone="primary" onClick={() => lookupTicket()} disabled={verifyBusy} className="!px-8 !py-4">
-                  {verifyBusy ? "Loading Ride" : "Load Ride"}
-                </PrimaryButton>
-              </div>
-            </SurfaceCard>
+        {tab === "payments" || tab === "account" ? <PlaceholderPanel tabLabel={TABS.find((item) => item.id === tab)?.label || "Helper"} /> : null}
 
-            <SurfaceCard className="rounded-[1.8rem] border-[rgba(215,149,239,0.45)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <Chip tone="soft">Verification Result</Chip>
-                  <h3 className="mt-5 text-[2rem] font-black leading-tight sm:text-4xl">Commuter Ticket</h3>
-                </div>
-                <div className="grid h-16 w-16 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="shield" className="h-8 w-8" /></div>
-              </div>
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                {[{ label: "Passenger", value: ticketLookup?.passenger_name || "Load a ride" }, { label: "Route", value: ticketLookup?.route_name || "--" }, { label: "Seats", value: ticketLookup?.seat_labels?.join(", ") || "--" }, { label: "Ride OTP", value: ticketLookup?.boarding_otp || "--" }, { label: "Payment", value: verifyPreview.method || "--" }, { label: "Amount", value: verifyPreview.amount ? `Rs. ${verifyPreview.amount}` : "--" }].map((item) => (
-                  <div key={item.label}>
-                    <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-muted)]">{item.label}</p>
-                    <p className={`mt-3 break-words text-2xl font-black leading-snug ${item.label === "Amount" || item.label === "Ride OTP" ? "text-[var(--hlp-purple)]" : ""}`}>{item.value}</p>
-                  </div>
-                ))}
-              </div>
-              {ticketLookup ? (
-                <div className="mt-5 rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4 text-sm font-medium text-[var(--hlp-text)]">
-                  <p className="break-words"><span className="font-black text-[var(--hlp-purple)]">Booking ID:</span> #{ticketLookup.id}</p>
-                  <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Ride OTP:</span> {ticketLookup.boarding_otp}</p>
-                  <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Journey Status:</span> {ticketLookup.journey_status_label || ticketLookup.journey_status}</p>
-                  <p className="break-words"><span className="font-black text-[var(--hlp-purple)]">Pickup:</span> {ticketLookup.pickup_stop_name}</p>
-                  <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Drop:</span> {ticketLookup.destination_stop_name}</p>
-                  <p className="mt-2 break-all"><span className="font-black text-[var(--hlp-purple)]">Ticket:</span> {ticketLookup.ticket_code}</p>
-                  {ticketLookup.scanned_at ? (
-                    <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Scanned:</span> {ticketLookup.scanned_by_name || "Helper"} at {formatTime(ticketLookup.scanned_at)}</p>
-                  ) : null}
-                  {ticketLookup.accepted_by_helper_at ? (
-                    <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Accepted:</span> {ticketLookup.accepted_by_helper_name || "Helper"} at {formatTime(ticketLookup.accepted_by_helper_at)}</p>
-                  ) : null}
-                  {ticketLookup.payment_requested_at ? (
-                    <p className="mt-2 break-words"><span className="font-black text-[var(--hlp-purple)]">Payment Request:</span> Sent {formatTime(ticketLookup.payment_requested_at)}</p>
-                  ) : null}
-                </div>
-              ) : null}
-            </SurfaceCard>
-
-            {/* Primary two-action choice — shown right after OTP scan */}
-            {ticketLookup && (ticketLookup.can_accept || ticketLookup.can_request_payment) ? (
-              <div className="overflow-hidden rounded-[1.8rem] border border-[var(--hlp-border)] bg-white shadow-[var(--hlp-shadow)]">
-                <div className="border-b border-[var(--hlp-border)] px-5 py-4">
-                  <SectionLabel>Choose an action for this passenger</SectionLabel>
-                  <p className="mt-1 text-[0.82rem] font-medium text-[var(--hlp-muted)]">Mark onboard to board now and collect payment later, or request payment from the passenger app immediately.</p>
-                </div>
-                <div className="grid sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={acceptPassengerRide}
-                    disabled={verifyBusy || !ticketLookup?.can_accept}
-                    className="flex flex-col items-center gap-3 px-6 py-7 text-center transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 sm:border-r sm:border-[var(--hlp-border)]"
-                  >
-                    <span className="grid h-14 w-14 place-items-center rounded-full bg-emerald-50 text-emerald-600">
-                      <Icon name="ticket" className="h-7 w-7" />
-                    </span>
-                    <span>
-                      <p className="text-base font-black text-[var(--hlp-text)]">Mark Onboard</p>
-                      <p className="mt-1 text-[0.72rem] font-medium text-[var(--hlp-muted)]">Board now — collect payment later via seat map</p>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={requestPassengerPayment}
-                    disabled={verifyBusy || !ticketLookup?.can_request_payment}
-                    className="flex flex-col items-center gap-3 px-6 py-7 text-center transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <span className="grid h-14 w-14 place-items-center rounded-full bg-[rgba(52,21,93,0.08)] text-[var(--hlp-purple)]">
-                      <Icon name="money" className="h-7 w-7" />
-                    </span>
-                    <span>
-                      <p className="text-base font-black text-[var(--hlp-text)]">Request Payment</p>
-                      <p className="mt-1 text-[0.72rem] font-medium text-[var(--hlp-muted)]">Passenger pays now via MetroBus app</p>
-                    </span>
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Secondary action buttons */}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <PrimaryButton tone="danger" onClick={verifyCash} disabled={verifyBusy || !ticketLookup?.can_verify_cash} className="w-full !py-5 !text-base">
-                Confirm Cash
-                <Icon name="shield" />
-              </PrimaryButton>
-              <PrimaryButton tone="primary" onClick={boardPassenger} disabled={verifyBusy || !ticketLookup?.can_board} className="w-full !py-5 !text-base">
-                Mark Boarded
-                <Icon name="ticket" />
-              </PrimaryButton>
-              <PrimaryButton tone="ghost" onClick={completePassengerRide} disabled={verifyBusy || !ticketLookup?.can_complete} className="w-full !py-5 !text-base">
-                Complete Ride
-                <Icon name="map" />
-              </PrimaryButton>
-            </div>
-            {(needsAcceptanceBookings.length || onboardBookings.length || readyToBoardBookings.length || awaitingPaymentBookings.length) ? (
-              <SurfaceCard className="rounded-[1.8rem]">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <SectionLabel>Live Passenger Flow</SectionLabel>
-                    <p className="mt-2 text-2xl font-black">Boarding and offboarding queue</p>
-                    <p className="mt-2 text-sm leading-6 text-[var(--hlp-muted)]">Use these live cards to open tickets faster, confirm boarding, and finish rides when passengers get off.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Chip tone="warn">{helperBookingSummary.needs_acceptance_count || 0} need acceptance</Chip>
-                    <Chip tone="warn">{helperBookingSummary.awaiting_payment_count || 0} waiting payment</Chip>
-                    <Chip tone="soft">{helperBookingSummary.ready_to_board_count || 0} ready to board</Chip>
-                    <Chip tone="live">{helperBookingSummary.onboard_count || 0} onboard</Chip>
-                  </div>
-                </div>
-                <div className="mt-5 grid gap-5 lg:grid-cols-2">
-                  <div className="space-y-3">
-                    <SectionLabel>Needs Acceptance</SectionLabel>
-                    {needsAcceptanceBookings.length ? needsAcceptanceBookings.slice(0, 3).map((booking) => (
-                      <div key={`accept-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | {booking.pickup_stop_name}</p>
-                        <div className="mt-4 flex gap-2">
-                          <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
-                          <PrimaryButton tone="primary" onClick={() => acceptPassengerRide(booking)} disabled={verifyBusy || !booking.can_accept} className="!flex-1 !px-4 !py-3 !text-sm">Accept Ride</PrimaryButton>
-                        </div>
-                      </div>
-                    )) : <div className="rounded-[1.6rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">All scanned passengers are already accepted.</div>}
-                  </div>
-                  <div className="space-y-3">
-                    <SectionLabel>Awaiting Payment</SectionLabel>
-                    {awaitingPaymentBookings.length ? awaitingPaymentBookings.slice(0, 3).map((booking) => (
-                      <div key={`awaiting-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | {booking.pickup_stop_name}</p>
-                        <div className="mt-4 flex gap-2">
-                          <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
-                        </div>
-                      </div>
-                    )) : <div className="rounded-[1.6rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No passengers are waiting on payment right now.</div>}
-                  </div>
-                  <div className="space-y-3">
-                    <SectionLabel>Ready To Board</SectionLabel>
-                    {readyToBoardBookings.length ? readyToBoardBookings.slice(0, 3).map((booking) => (
-                      <div key={`ready-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | Pickup {booking.pickup_stop_name}</p>
-                        <div className="mt-4 flex gap-2">
-                          <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
-                          <PrimaryButton tone="primary" onClick={() => boardPassenger(booking)} disabled={verifyBusy || !booking.can_board} className="!flex-1 !px-4 !py-3 !text-sm">Board Now</PrimaryButton>
-                        </div>
-                      </div>
-                    )) : <div className="rounded-[1.6rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No paid passengers are waiting to board.</div>}
-                  </div>
-                  <div className="space-y-3 lg:col-span-2">
-                    <SectionLabel>Onboard Passengers</SectionLabel>
-                    {onboardBookings.length ? onboardBookings.slice(0, 4).map((booking) => (
-                      <div key={`onboard-${booking.id}`} className="rounded-[1.6rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <p className="break-words text-lg font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | Drop {booking.destination_stop_name}</p>
-                        <p className="mt-2 text-xs font-black uppercase tracking-[0.18em] text-[var(--hlp-purple)]">Boarded {formatTime(booking.checked_in_at)}</p>
-                        <div className="mt-4 flex gap-2">
-                          <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(booking)} className="!flex-1 !px-4 !py-3 !text-sm">Open Ticket</PrimaryButton>
-                          <PrimaryButton tone="primary" onClick={() => completePassengerRide(booking)} disabled={verifyBusy || !booking.can_complete} className="!flex-1 !px-4 !py-3 !text-sm">Complete Ride</PrimaryButton>
-                        </div>
-                      </div>
-                    )) : <div className="rounded-[1.6rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No passengers are onboard yet.</div>}
-                  </div>
-                </div>
-              </SurfaceCard>
-            ) : null}
-            {completedRecentBookings.length ? (
-              <SurfaceCard className="rounded-[1.5rem]">
+        {tab === "home" ? (
+          <SurfaceCard className="overflow-hidden">
+            {!activeTrip ? (
+              <div className="px-4 py-4 sm:px-5 sm:py-5">
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <SectionLabel>Recently Completed</SectionLabel>
-                    <p className="mt-2 text-xl font-black">Seats released on this trip</p>
-                  </div>
-                  <Chip tone="soft">{helperBookingSummary.completed_recent_count || completedRecentBookings.length} completed</Chip>
+                  <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--primary)]">Ride Control</p>
+                  <StatusPill tone={pendingTrip ? "waiting" : selectedSchedule?.driver_assignment_accepted ? "default" : "danger"}>{homeStatus}</StatusPill>
                 </div>
-                <div className="mt-4 space-y-3">
-                  {completedRecentBookings.map((booking) => (
-                    <div key={`done-${booking.id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] bg-[var(--hlp-soft)] px-4 py-4">
-                      <div>
-                        <p className="break-words text-base font-black">{booking.passenger_name}</p>
-                        <p className="mt-1 break-words text-sm font-medium leading-6 text-[var(--hlp-muted)]">{booking.seat_labels?.join(", ") || "--"} | Dropped at {booking.destination_stop_name}</p>
-                      </div>
-                      <p className="text-xs font-black uppercase tracking-[0.18em] text-[var(--hlp-purple)]">{formatTime(booking.completed_at)}</p>
-                    </div>
-                  ))}
+                <div className="mt-4 grid gap-3">
+                  {(pendingTrip || selectedSchedule?.driver_assignment_accepted) ? <ActionButton onClick={pendingTrip ? confirmPendingStart : requestScheduledStart} disabled={busy || (pendingTrip ? pendingTrip.helper_start_confirmed : false)} className="w-full"><Icon name="play" className="h-4 w-4" />{busy ? "Sending..." : startLabel}</ActionButton> : null}
                 </div>
-              </SurfaceCard>
-            ) : null}
-          </div>
-        ) : null}
-
-        {activeTab === "route" ? (
-          <div className="mt-5 space-y-5">
-            <div className="px-1">
-              <SectionLabel>Live Journey</SectionLabel>
-              <h2 className="mt-2 break-words text-[2rem] font-black leading-tight sm:text-4xl">{routeTitle}</h2>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <Chip tone="soft">Express</Chip>
-                <p className="text-sm font-medium text-[var(--hlp-muted)]">To {routeDestination}</p>
-              </div>
-            </div>
-            <SurfaceCard className="overflow-hidden bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <SectionLabel>Route Control</SectionLabel>
-                  <h3 className="mt-3 break-words text-[2.2rem] font-black leading-[0.92] sm:text-[2.8rem]">
-                    {activeTrip ? "Trip LIVE" : tripAwaitingStart ? "Ready To Confirm" : nextSchedule ? "Ready To Start" : "Waiting For Assignment"}
-                  </h3>
-                  <p className="mt-4 max-w-2xl text-sm leading-6 text-white/82">
-                    {activeTrip
-                      ? `${routeTitle} is live. Green markers show pickup passengers and red markers show onboard drop-offs.`
-                      : tripAwaitingStart
-                        ? pendingStartLabel
-                        : nextSchedule
-                          ? `Your next assigned trip is ${nextSchedule.route_name} with bus ${nextSchedule.bus_plate}. Request the start from this page when you're ready.`
-                          : "No assigned trip is ready yet. Once admin assigns a scheduled run, the live map and controls will unlock here."}
-                  </p>
-                </div>
-                <Chip tone={activeTrip ? "live" : tripAwaitingStart ? "warn" : "soft"}>{helperHeaderStatus}</Chip>
-              </div>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[1.4rem] bg-white/12 px-4 py-4">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/72">Waiting Pickup</p>
-                  <p className="mt-2 text-3xl font-black">{passengerSummary.pending_pickups || 0}</p>
-                </div>
-                <div className="rounded-[1.4rem] bg-white/12 px-4 py-4">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/72">Onboard Drop</p>
-                  <p className="mt-2 text-3xl font-black">{passengerSummary.onboard_dropoffs || 0}</p>
-                </div>
-                <div className="rounded-[1.4rem] bg-white/12 px-4 py-4">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/72">Occupied Seats</p>
-                  <p className="mt-2 text-3xl font-black">{occupiedCount}</p>
-                </div>
-              </div>
-
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                {tripAwaitingStart ? (
-                  pendingTrip?.helper_start_confirmed ? (
-                    <div className="flex-1 rounded-[1.4rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
-                      {pendingStartLabel}
-                    </div>
-                  ) : (
-                    <PrimaryButton tone="primary" onClick={confirmPendingStart} className="flex-1 !justify-between !rounded-[1.5rem] !bg-white !px-5 !py-4 !text-[var(--hlp-purple)] !shadow-none">
-                      Confirm Start
-                      <Icon name="shield" className="h-5 w-5" />
-                    </PrimaryButton>
-                  )
-                ) : null}
-                {!currentTrip && nextScheduleReady ? (
-                  <PrimaryButton tone="primary" onClick={() => requestScheduledStart(nextSchedule.id)} className="flex-1 !justify-between !rounded-[1.5rem] !bg-white !px-5 !py-4 !text-[var(--hlp-purple)] !shadow-none">
-                    Request Start
-                    <Icon name="bus" className="h-5 w-5" />
-                  </PrimaryButton>
-                ) : null}
-                {!currentTrip && nextSchedule && !nextScheduleReady ? (
-                  <div className="flex-1 rounded-[1.4rem] bg-white/12 px-4 py-4 text-sm font-medium text-white/88">
-                    Driver acceptance is still pending for this assignment.
-                  </div>
-                ) : null}
-                {activeTrip ? (
-                  <PrimaryButton tone={activeTrip.helper_end_confirmed ? "ghost" : "danger"} onClick={requestTripEnd} disabled={activeTrip.helper_end_confirmed} className="flex-1 !justify-between !rounded-[1.5rem] !border-white/25 !bg-white/10 !px-5 !py-4 !text-white !shadow-none">
-                    {activeTrip.driver_end_confirmed ? "Confirm End Trip" : activeTrip.helper_end_confirmed ? "End Requested" : "Request End Trip"}
-                    <Icon name="alert" className="h-5 w-5" />
-                  </PrimaryButton>
-                ) : null}
-              </div>
-            </SurfaceCard>
-
-            <SurfaceCard className="overflow-hidden !p-0">
-              <div className="border-b border-[var(--hlp-border)] px-5 py-4">
-                <SectionLabel>Live Route Map</SectionLabel>
-                <p className="mt-1 text-lg font-black">{routeCondition}</p>
-              </div>
-              <div className="relative h-[23rem] w-full overflow-hidden">
-                <div className={`h-full w-full transition ${routeMapBlurred ? "scale-[1.02] blur-[2px] opacity-70" : ""}`}>
-                  <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
-                    <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
-                    <MapViewport points={mapPoints} />
-                    {mapPolyline.length > 1 ? <Polyline positions={mapPolyline} pathOptions={{ color: theme["--hlp-purple"], weight: 5, opacity: 0.92 }} /> : null}
-                    {routeStops.map((stop, index) => {
-                      const lat = Number(stop.stop?.lat);
-                      const lng = Number(stop.stop?.lng);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-                      const current = index === currentStopIndex;
-                      return (
-                        <CircleMarker
-                          key={`${stop.stop_order}-${stop.stop?.name}`}
-                          center={[lat, lng]}
-                          radius={current ? 8 : 5}
-                          pathOptions={{ color: current ? theme["--hlp-purple"] : "#af8bbf", fillColor: current ? theme["--hlp-purple"] : theme["--hlp-soft"], fillOpacity: 0.95 }}
-                        >
-                          <Popup>{stop.stop_order}. {stop.stop?.name}</Popup>
-                        </CircleMarker>
-                      );
-                    })}
-                    {passengerRequests.map((request) => {
-                      const lat = Number(request.marker_lat);
-                      const lng = Number(request.marker_lng);
-                      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-                      const pickupStage = request.stage === "pickup";
-                      return (
-                        <CircleMarker
-                          key={`${request.booking_id}-${request.stage}`}
-                          center={[lat, lng]}
-                          radius={8}
-                          pathOptions={{
-                            color: pickupStage ? "#15803d" : "#b91c1c",
-                            fillColor: pickupStage ? "#22c55e" : "#ef4444",
-                            fillOpacity: 0.96,
-                            weight: 2,
-                          }}
-                        >
-                          <Popup>
-                            <div className="min-w-[12rem] space-y-1 text-sm">
-                              <p className="font-black">{request.passenger_name}</p>
-                              <p>{request.stage_label}</p>
-                              <p>Seats: {(request.seat_labels || []).join(", ") || "--"}</p>
-                              <p>{pickupStage ? "Pickup" : "Drop"}: {request.marker_stop_name}</p>
-                            </div>
-                          </Popup>
-                        </CircleMarker>
-                      );
-                    })}
-                    {livePoint ? <CircleMarker center={livePoint} radius={10} pathOptions={{ color: "#7c3aed", fillColor: "#a855f7", fillOpacity: 1 }}><Popup>Live bus location</Popup></CircleMarker> : null}
-                  </MapContainer>
-                </div>
-                {routeMapBlurred ? (
-                  <div className="absolute inset-0 flex items-center justify-center bg-[rgba(251,243,246,0.34)] px-5 backdrop-blur-sm">
-                    <div className="w-full max-w-md rounded-[1.6rem] border border-white/70 bg-white/88 px-5 py-5 text-center shadow-[var(--hlp-shadow)]">
-                      <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--hlp-purple)]">Route Standby</p>
-                      <h3 className="mt-2 text-2xl font-black text-[var(--hlp-text)]">
-                        {tripAwaitingStart ? "Waiting for trip start confirmations" : nextSchedule ? "Request the trip start to go live" : "No active route yet"}
-                      </h3>
-                      <p className="mt-3 text-sm leading-6 text-[var(--hlp-muted)]">
-                        {tripAwaitingStart ? pendingStartLabel : nextSchedule ? "Once the driver and helper confirm the assigned schedule, this map becomes the live helper console." : "As soon as admin assigns a live route to you, this map will unlock for pickup and drop control."}
-                      </p>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="grid gap-3 border-t border-[var(--hlp-border)] px-5 py-4 sm:grid-cols-3">
-                <div className="rounded-[1.2rem] bg-[var(--hlp-soft)] px-4 py-3">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Next Pickup</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{nextPickupRequest?.passenger_name || "No pickup pending"}</p>
-                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{nextPickupRequest?.marker_stop_name || "Waiting for the next passenger booking"}</p>
-                </div>
-                <div className="rounded-[1.2rem] bg-[var(--hlp-soft)] px-4 py-3">
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--hlp-muted)]">Next Drop</p>
-                  <p className="mt-2 break-words text-lg font-black text-[var(--hlp-text)]">{nextDropRequest?.passenger_name || "No drop pending"}</p>
-                  <p className="mt-1 text-sm text-[var(--hlp-muted)]">{nextDropRequest?.marker_stop_name || "Onboard passengers will appear here"}</p>
-                </div>
-                <div className="flex items-end">
-                  <PrimaryButton tone="ghost" onClick={openFullMap} className="w-full">Open Full Map</PrimaryButton>
-                </div>
-              </div>
-            </SurfaceCard>
-
-            {passengerRequests.length ? (
-              <div className="grid gap-4 lg:grid-cols-2">
-                <SurfaceCard>
-                  <SectionLabel>Pickup Queue</SectionLabel>
-                  <div className="mt-4 space-y-3">
-                    {pendingPickupRequests.length ? pendingPickupRequests.map((request) => (
-                      <div key={`pickup-${request.booking_id}`} className="rounded-[1.35rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="break-words text-lg font-black">{request.passenger_name}</p>
-                            <p className="mt-1 text-sm leading-6 text-[var(--hlp-muted)]">{request.marker_stop_name} • {(request.seat_labels || []).join(", ") || "--"}</p>
-                          </div>
-                          <span className="rounded-full bg-emerald-100 px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.16em] text-emerald-700">Pickup</span>
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          <PrimaryButton tone="ghost" onClick={() => openBookingInVerify(needsAcceptanceBookings.find((booking) => booking.id === request.booking_id) || awaitingPaymentBookings.find((booking) => booking.id === request.booking_id) || readyToBoardBookings.find((booking) => booking.id === request.booking_id))} className="!flex-1 !px-4 !py-3 !text-sm">
-                            Open OTP
-                          </PrimaryButton>
-                        </div>
-                      </div>
-                    )) : <div className="rounded-[1.35rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No passengers are waiting for pickup right now.</div>}
-                  </div>
-                </SurfaceCard>
-                <SurfaceCard>
-                  <SectionLabel>Drop Queue</SectionLabel>
-                  <div className="mt-4 space-y-3">
-                    {onboardDropRequests.length ? onboardDropRequests.map((request) => (
-                      <div key={`drop-${request.booking_id}`} className="rounded-[1.35rem] bg-[var(--hlp-soft)] px-4 py-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="break-words text-lg font-black">{request.passenger_name}</p>
-                            <p className="mt-1 text-sm leading-6 text-[var(--hlp-muted)]">{request.marker_stop_name} • {(request.seat_labels || []).join(", ") || "--"}</p>
-                          </div>
-                          <span className="rounded-full bg-red-100 px-3 py-1 text-[0.62rem] font-black uppercase tracking-[0.16em] text-red-700">Drop</span>
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          <PrimaryButton tone="primary" onClick={() => completePassengerRide(onboardBookings.find((booking) => booking.id === request.booking_id))} className="!flex-1 !px-4 !py-3 !text-sm">
-                            End Passenger Ride
-                          </PrimaryButton>
-                        </div>
-                      </div>
-                    )) : <div className="rounded-[1.35rem] border border-dashed border-[var(--hlp-border)] px-4 py-5 text-sm font-medium text-[var(--hlp-muted)]">No passengers are onboard for drop-off yet.</div>}
-                  </div>
-                </SurfaceCard>
               </div>
             ) : null}
 
-            <SurfaceCard>
-              <div className="space-y-0">
-                {routeStops.length === 0 ? <p className="py-2 text-sm text-[var(--hlp-muted)]">No route stops loaded for this trip yet.</p> : routeStops.map((stop, index) => {
-                  const isCurrent = index === currentStopIndex;
-                  const isFinal = index === routeStops.length - 1;
-                  return (
-                    <div key={`${stop.stop_order}-${stop.stop?.name}`} className="flex gap-4">
-                      <div className="flex flex-col items-center">
-                        <span className={`mt-1 grid h-10 w-10 place-items-center rounded-full border-2 ${isCurrent ? "border-transparent bg-[var(--hlp-purple)] text-white" : isFinal ? "border-dashed border-[var(--hlp-purple)] text-[var(--hlp-purple)]" : "border-[var(--hlp-border)] bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"}`}>
-                          <Icon name={isFinal ? "pin" : "bus"} className="h-4 w-4" />
-                        </span>
-                        {index < routeStops.length - 1 ? <span className="min-h-[2.9rem] w-px bg-[linear-gradient(180deg,rgba(170,98,222,0.94),rgba(237,210,247,0.85))]" /> : null}
-                      </div>
-                      <div className="flex-1 pb-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className={`break-words text-2xl font-black leading-snug ${isCurrent ? "text-[var(--hlp-purple)]" : ""}`}>{stop.stop?.name || "--"}</p>
-                            <p className="mt-1 text-[0.74rem] font-black uppercase tracking-[0.18em] text-[var(--hlp-muted)]">{isCurrent ? "Current stop" : isFinal ? "Final destination" : "Upcoming stop"}</p>
-                          </div>
-                          <p className="text-lg font-black text-[var(--hlp-text)]">{index === currentStopIndex ? formatTime(latestLocation?.recorded_at || activeTrip?.started_at || nextSchedule?.scheduled_start_time) : `${9 + index}:${index === 0 ? "10" : `${index}5`}`}</p>
-                        </div>
-                        {isCurrent ? <div className="mt-3 rounded-[1.4rem] border border-[rgba(255,107,115,0.25)] bg-[var(--hlp-soft)] px-4 py-3 text-sm font-medium leading-6 text-[var(--hlp-plum)]">Boarding support is active here. Next movement is toward {upcomingStop?.stop?.name || "the next stop"}.</div> : null}
-                      </div>
+            {showSeatLayout ? (
+              <div className={`${!activeTrip ? "border-t border-[var(--border)]" : ""}`}>
+                <div className="border-b border-[var(--border)] px-5 py-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--primary)]">Seat Layout</p>
+                      <h2 className="mt-2 break-words text-[1.6rem] font-black leading-tight">{trip?.route_name || selectedSchedule?.route_name || "Helper seat layout"}</h2>
+                      <p className="mt-2 text-sm leading-6 text-[var(--muted)]">The main seat screen shows occupancy and payment status directly. Tap any seat to open its helper action window.</p>
                     </div>
-                  );
-                })}
-              </div>
-            </SurfaceCard>
-            <SurfaceCard className="border-dashed">
-              <SectionLabel>Route Weather</SectionLabel>
-              <div className="mt-4 flex items-center gap-4">
-                <div className="grid h-14 w-14 place-items-center rounded-full bg-[var(--hlp-soft)] text-[var(--hlp-purple)]"><Icon name="thermo" className="h-7 w-7" /></div>
-                <div>
-                  <p className="text-[2rem] font-black sm:text-4xl">24C</p>
-                  <p className="mt-1 text-sm font-medium uppercase tracking-[0.12em] text-[var(--hlp-muted)]">Clear skies for travel in Pokhara</p>
+                    <StatusPill tone={activeTrip ? "live" : pendingTrip ? "waiting" : "default"}>{activeTrip ? "Ride Live" : pendingTrip ? "Start Pending" : "Standby"}</StatusPill>
+                  </div>
+                </div>
+
+                <div className="border-b border-[var(--border)] px-5 py-4">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Available</p><p className="mt-2 text-2xl font-black">{availableSeats}</p></div>
+                    <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Occupied</p><p className="mt-2 text-2xl font-black">{occupiedSeats}</p></div>
+                    <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Paid / Collected</p><p className="mt-2 text-2xl font-black">{paidSeats}</p></div>
+                  </div>
+                </div>
+
+                <div className="border-b border-[var(--border)] px-5 py-4">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Current Segment</p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">This segment is used when you onboard an offline passenger from the seat popup.</p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <SelectField label="From" value={fromOrder} onChange={setFromOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length || !trip} />
+                    <SelectField label="To" value={toOrder} onChange={setToOrder} options={stopOptions.length ? stopOptions : [{ value: "", label: "No stops" }]} disabled={!stopOptions.length || !trip} />
+                  </div>
+                </div>
+
+                <div className="px-5 py-5">
+                  <MetroSeatBoard
+                    title="Seat Layout"
+                    routeName={trip?.route_name || selectedSchedule?.route_name || "Helper seat layout"}
+                    busLabel={trip?.bus_plate || selectedSchedule?.bus_plate || "--"}
+                    seats={seats}
+                    mode="helper"
+                    activeSeatId={seatSheet?.seat_id}
+                    onSeatClick={setSeatSheet}
+                    loading={loadingSeats}
+                    loadingMessage="Loading helper seat layout..."
+                    emptyMessage="No seats were found for this ride segment."
+                  />
                 </div>
               </div>
-            </SurfaceCard>
-          </div>
+            ) : null}
+
+            {showSeatLayout ? (
+              <div className="border-t border-[var(--border)] px-4 py-4 sm:px-5 sm:py-5">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--primary)]">Trip Finish</p>
+                  <StatusPill tone={activeTrip.driver_end_confirmed ? "waiting" : "default"}>{activeTrip.driver_end_confirmed ? "Confirm End" : "Trip Control"}</StatusPill>
+                </div>
+                <ActionButton onClick={requestTripEnd} disabled={busy || activeTrip.helper_end_confirmed} tone="danger" className="mt-4 w-full"><Icon name="stop" className="h-4 w-4" />{busy ? "Sending..." : endLabel}</ActionButton>
+              </div>
+            ) : null}
+          </SurfaceCard>
         ) : null}
       </main>
-      <div className="fixed bottom-0 inset-x-0 z-40 px-2.5 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2">
-        <div className="enterprise-mobile-nav rounded-[1.35rem] border border-white/70 bg-[var(--hlp-nav)] p-1.5 shadow-[var(--hlp-shadow)] backdrop-blur-xl sm:rounded-[1.65rem]">
-          <div className="grid grid-cols-4 gap-1.5">
-            {TABS.map((tab) => <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-1 rounded-[1rem] py-2 text-center transition sm:gap-1.5 sm:rounded-[1.1rem] ${activeTab === tab.id ? "bg-[linear-gradient(135deg,var(--hlp-purple),var(--hlp-purple-2))] text-white shadow-[var(--hlp-shadow-strong)]" : "text-[var(--hlp-muted)]"}`}><Icon name={tab.icon} className="h-4 w-4 sm:h-[1.1rem] sm:w-[1.1rem]" /><span className="px-1 text-[0.58rem] font-black uppercase tracking-[0.08em] leading-tight sm:text-[0.6rem] sm:tracking-[0.1em]">{tab.label}</span></button>)}
+
+      {seatSheet ? (
+        <div className="fixed inset-0 z-50">
+          <button type="button" className="absolute inset-0 bg-[rgba(15,8,21,0.38)] backdrop-blur-[1px]" onClick={() => setSeatSheet(null)} aria-label="Close seat details" />
+          <div className="absolute inset-x-0 bottom-0 px-3 pb-[calc(0.7rem+env(safe-area-inset-bottom))]">
+            <div className={`${shell} rounded-[1.9rem] border border-[var(--border)] bg-[var(--surface-strong)] p-5 shadow-[var(--shadow-strong)]`}>
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Seat Details</p>
+                  <h3 className="mt-2 text-[2rem] font-black leading-none text-[var(--text)]">Seat {seatSheet.seat_no}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{seatStatusText}</p>
+                </div>
+                <button type="button" onClick={() => setSeatSheet(null)} className="grid h-10 w-10 place-items-center rounded-full border border-[var(--border)] bg-[var(--surface)] text-lg font-black text-[var(--muted)]">X</button>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Passenger</p><p className="mt-2 break-words text-lg font-black">{seatSheet.available ? "No passenger yet" : seatSheet.offline_boarding_id ? "Offline passenger" : selectedBooking?.passenger_name || "Passenger seat"}</p></div>
+                <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Phone</p><p className="mt-2 break-words text-lg font-black">{selectedBooking?.passenger_phone || "--"}</p></div>
+                <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Ride</p><p className="mt-2 break-words text-lg font-black">{seatSheet.available ? `${selectedFromName} to ${selectedToName}` : seatSheet.offline_boarding_id ? `${selectedFromName} to ${selectedToName}` : `${selectedBooking?.pickup_stop_name || "--"} to ${selectedBooking?.destination_stop_name || "--"}`}</p></div>
+                <div className="rounded-[1.3rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Payment</p><p className="mt-2 break-words text-lg font-black">{seatSheet.available ? "Not assigned" : seatSheet.offline_boarding_id ? (seatSheet.payment_verified ? "Cash collected" : "Cash pending") : seatSheet.payment_verified ? "Paid" : "Unpaid"}</p></div>
+              </div>
+
+              {selectedBooking && !seatSheet.offline_boarding_id ? <div className="mt-4 rounded-[1.3rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4 text-sm leading-6 text-[var(--muted)]">Booking #{selectedBooking.id} | OTP {selectedBooking.boarding_otp || "--"} | Seats {(selectedBooking.seat_labels || []).join(", ") || "--"}</div> : null}
+
+              {seatAction ? (
+                <ActionButton onClick={seatAction.onClick} tone={seatAction.tone} disabled={seatBusy} className="mt-5 w-full">
+                  <Icon name={seatAction.tone === "danger" ? "stop" : seatAction.label.includes("Payment") || seatAction.label.includes("Cash") ? "money" : seatAction.label.includes("Accept") ? "shield" : seatAction.label.includes("Board") ? "ticket" : "play"} className="h-4 w-4" />
+                  {seatBusy ? "Saving..." : seatAction.label}
+                </ActionButton>
+              ) : <div className="mt-5 rounded-[1.3rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4 text-sm font-semibold leading-6 text-[var(--muted)]">No immediate action is needed for this seat right now.</div>}
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
+
+      <footer className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2">
+        <div className={`${shell} rounded-[1.45rem] border border-[var(--border)] bg-[var(--footer)] p-1.5 shadow-[var(--shadow)] backdrop-blur-xl`}>
+          <div className="grid grid-cols-4 gap-1.5">
+            {TABS.map((item) => {
+              const active = tab === item.id;
+              return <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`flex flex-col items-center gap-1 rounded-[1rem] px-2 py-2.5 text-center transition ${active ? "bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-[var(--shadow-strong)]" : "text-[var(--muted)]"}`}><Icon name={item.icon} className="h-4 w-4" /><span className="text-[0.6rem] font-black uppercase tracking-[0.12em]">{item.label}</span></button>;
+            })}
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

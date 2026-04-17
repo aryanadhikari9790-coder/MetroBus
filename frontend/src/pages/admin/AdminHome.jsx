@@ -6,40 +6,120 @@ import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
-import { themeTokens, pillColor } from "../../lib/theme";
 
-function GlassCard({ children, className = "", t }) { return <div className={`rounded-xl border backdrop-blur-sm p-5 ${t.card} ${className}`}>{children}</div>; }
-function Pill({ children, color = "slate", isDark }) { return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${pillColor(isDark, color)}`}>{children}</span>; }
+const LIGHT = {
+  "--bg": "#f7efe7",
+  "--bg-soft": "#fff7f0",
+  "--surface": "rgba(255,255,255,0.94)",
+  "--surface-strong": "rgba(255,255,255,0.98)",
+  "--surface-muted": "rgba(255,244,235,0.92)",
+  "--border": "rgba(73,39,94,0.10)",
+  "--text": "#2d1838",
+  "--muted": "#756681",
+  "--primary": "#4b2666",
+  "--accent": "#ff8a1f",
+  "--accent-strong": "#ff6c2f",
+  "--accent-soft": "#fff1df",
+  "--success": "#17a567",
+  "--warning": "#f39c12",
+  "--danger": "#db3d4f",
+  "--header": "rgba(255,250,245,0.90)",
+  "--sidebar": "linear-gradient(180deg, rgba(255,250,245,0.96), rgba(251,241,232,0.92))",
+  "--shadow": "0 18px 36px rgba(73,39,94,0.12)",
+  "--shadow-strong": "0 24px 44px rgba(75,38,102,0.18)",
+  "--card-alt": "rgba(255,244,235,0.88)",
+  "--chart-grid": "rgba(73,39,94,0.10)",
+};
+
+const DARK = {
+  "--bg": "#190f24",
+  "--bg-soft": "#24152f",
+  "--surface": "rgba(37,24,49,0.90)",
+  "--surface-strong": "rgba(44,27,58,0.96)",
+  "--surface-muted": "rgba(53,34,69,0.92)",
+  "--border": "rgba(255,255,255,0.09)",
+  "--text": "#fff5ef",
+  "--muted": "#c8b8c7",
+  "--primary": "#8d5abf",
+  "--accent": "#ff962d",
+  "--accent-strong": "#ff7a3c",
+  "--accent-soft": "rgba(255,150,45,0.16)",
+  "--success": "#1fcf81",
+  "--warning": "#ffb84d",
+  "--danger": "#ff6474",
+  "--header": "rgba(25,15,36,0.86)",
+  "--sidebar": "linear-gradient(180deg, rgba(25,15,36,0.98), rgba(33,21,46,0.96))",
+  "--shadow": "0 22px 42px rgba(0,0,0,0.28)",
+  "--shadow-strong": "0 26px 48px rgba(0,0,0,0.34)",
+  "--card-alt": "rgba(53,34,69,0.88)",
+  "--chart-grid": "rgba(255,255,255,0.08)",
+};
+
+function GlassCard({ children, className = "" }) { return <div className={`rounded-[1.6rem] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] backdrop-blur-xl ${className}`}>{children}</div>; }
+function Pill({ children, color = "slate" }) {
+  const tones = {
+    emerald: "border-[rgba(23,165,103,0.18)] bg-[rgba(23,165,103,0.12)] text-[var(--success)]",
+    sky: "border-[rgba(51,133,255,0.16)] bg-[rgba(51,133,255,0.12)] text-[#2c73d2]",
+    amber: "border-[rgba(243,156,18,0.18)] bg-[rgba(243,156,18,0.12)] text-[var(--warning)]",
+    red: "border-[rgba(219,61,79,0.18)] bg-[rgba(219,61,79,0.12)] text-[var(--danger)]",
+    indigo: "border-[rgba(75,38,102,0.16)] bg-[var(--accent-soft)] text-[var(--primary)]",
+    slate: "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]",
+  };
+  return <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${tones[color] || tones.slate}`}>{children}</span>;
+}
 function Btn({ children, onClick, disabled, tone = "primary", className = "" }) {
   const m = {
-    primary: "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.18)]",
-    success: "bg-[linear-gradient(135deg,var(--brand-secondary),var(--brand-accent-2))] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.16)]",
-    danger: "bg-[linear-gradient(135deg,#7a2848,#c53b56)] hover:opacity-95 text-white shadow-[0_12px_24px_rgba(46,18,79,0.16)]",
-    ghost: "border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] shadow-[0_10px_24px_rgba(46,18,79,0.08)]",
+    primary: "bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-[var(--shadow-strong)] hover:translate-y-[-1px]",
+    success: "bg-[linear-gradient(135deg,var(--success),var(--accent))] text-white shadow-[var(--shadow)] hover:translate-y-[-1px]",
+    danger: "bg-[linear-gradient(135deg,#a92b3c,#ff6e55)] text-white shadow-[var(--shadow)] hover:translate-y-[-1px]",
+    ghost: "border border-[var(--border)] bg-[var(--surface-strong)] text-[var(--text)] shadow-[var(--shadow)] hover:translate-y-[-1px]",
   };
-  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-lg px-5 py-3 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
+  return <button type="button" onClick={onClick} disabled={disabled} className={`rounded-[1rem] px-5 py-3 text-sm font-black tracking-[0.04em] transition disabled:opacity-40 disabled:cursor-not-allowed ${m[tone]} ${className}`}>{children}</button>;
 }
-function SLabel({ children, t }) { return <p className={`text-[10px] font-bold uppercase tracking-[0.2em] mb-3 ${t.label}`}>{children}</p>; }
-function StatCard({ label, value, sub, accent = "", t }) {
-  return <GlassCard t={t}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{label}</p><p className={`mt-2 break-words text-3xl font-black leading-tight ${accent || t.text}`}>{value}</p>{sub && <p className={`mt-1.5 break-words text-xs leading-5 ${t.textSub}`}>{sub}</p>}</GlassCard>;
+function SLabel({ children }) { return <p className="mb-3 text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--muted)]">{children}</p>; }
+function StatCard({ label, value, sub, accent = "" }) {
+  return <GlassCard className="h-full"><p className="text-[0.68rem] uppercase tracking-[0.22em] text-[var(--muted)]">{label}</p><p className={`mt-2 break-words text-3xl font-black leading-tight ${accent || "text-[var(--text)]"}`}>{value}</p>{sub && <p className="mt-1.5 break-words text-xs leading-5 text-[var(--muted)]">{sub}</p>}</GlassCard>;
 }
-function InputField({ label, value, onChange, placeholder, type = "text", t }) {
-  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[var(--brand-primary)] transition ${t.input}`} /></div>;
+function InputField({ label, value, onChange, placeholder, type = "text" }) {
+  return <div><label className="mb-1.5 block text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] outline-none transition placeholder:text-[var(--muted)] focus:border-[var(--primary)]" /></div>;
 }
-function FileField({ label, onChange, file, accept = "image/*", t }) {
+function FileField({ label, onChange, file, accept = "image/*" }) {
   return (
     <div>
-      <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label>
-      <label className={`flex cursor-pointer items-center justify-between rounded-xl border px-4 py-3 text-sm transition ${t.input}`}>
+      <label className="mb-1.5 block text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">{label}</label>
+      <label className="flex cursor-pointer items-center justify-between rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] transition">
         <span className={file ? "font-semibold" : ""}>{file?.name || "Choose file"}</span>
-        <span className="text-xs font-bold uppercase tracking-widest text-[var(--brand-primary)]">Upload</span>
+        <span className="text-xs font-black uppercase tracking-[0.14em] text-[var(--primary)]">Upload</span>
         <input type="file" accept={accept} onChange={e => onChange(e.target.files?.[0] || null)} className="hidden" />
       </label>
     </div>
   );
 }
-function SelectField({ label, value, onChange, options, t }) {
-  return <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>{label}</label><select value={value} onChange={e => onChange(e.target.value)} className={`w-full rounded-xl border px-4 py-3 text-sm outline-none focus:border-[var(--brand-primary)] transition ${t.input}`} style={{ backgroundColor: "var(--select-bg)", color: "var(--input-text)" }}>{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>;
+function SelectField({ label, value, onChange, options }) {
+  return <div><label className="mb-1.5 block text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">{label}</label><select value={value} onChange={e => onChange(e.target.value)} className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] outline-none transition focus:border-[var(--primary)]">{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>;
+}
+function Icon({ name, className = "h-5 w-5" }) {
+  const common = { className, fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", viewBox: "0 0 24 24" };
+  switch (name) {
+    case "dashboard": return <svg {...common}><path d="M4 13h6V4H4v9Z" /><path d="M14 20h6v-6h-6v6Z" /><path d="M14 10h6V4h-6v6Z" /><path d="M4 20h6v-3H4v3Z" /></svg>;
+    case "drivers": return <svg {...common}><circle cx="12" cy="7.5" r="3.2" /><path d="M5 19a7 7 0 0 1 14 0" /><path d="M17 6h3" /></svg>;
+    case "helpers": return <svg {...common}><circle cx="9" cy="8" r="3" /><path d="M3 19a6 6 0 0 1 12 0" /><path d="M18 8v6" /><path d="M15 11h6" /></svg>;
+    case "buses": return <svg {...common}><rect x="5" y="6" width="14" height="11" rx="3" /><path d="M7 11h10" /><path d="M8 17v2" /><path d="M16 17v2" /></svg>;
+    case "stops": return <svg {...common}><path d="M12 21s6-5.1 6-11a6 6 0 1 0-12 0c0 5.9 6 11 6 11Z" /><circle cx="12" cy="10" r="2.2" /></svg>;
+    case "routes": return <svg {...common}><path d="M5 18c2.4-4.2 3.6-10.1 6.1-13.9 1-1.5 3.5-1.5 4.5 0 1.1 1.6.8 3.6-.7 4.9L9.2 14.8" /><circle cx="6" cy="18" r="1.5" /><circle cx="18" cy="5" r="1.5" /></svg>;
+    case "assignments": return <svg {...common}><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M9 8h6" /><path d="M9 12h6" /><path d="M9 16h4" /></svg>;
+    case "analytics": return <svg {...common}><path d="M4 19h16" /><path d="M7 16V9" /><path d="M12 16V5" /><path d="M17 16v-3" /></svg>;
+    case "reports": return <svg {...common}><path d="M8 7h8" /><path d="M8 11h8" /><path d="M8 15h5" /><path d="M6 3h9l3 3v15H6z" /></svg>;
+    case "settings": return <svg {...common}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .28 1.7 1.7 0 0 0-.8 1.45V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-.8-1.45 1.7 1.7 0 0 0-1-.28 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.28-1 1.7 1.7 0 0 0-1.45-.8H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.45-.8 1.7 1.7 0 0 0 .28-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6c.36 0 .71-.1 1-.28A1.7 1.7 0 0 0 10.8 2.87V2.8a2 2 0 1 1 4 0v.09c0 .6.3 1.16.8 1.45.29.18.64.28 1 .28a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c0 .36.1.71.28 1 .29.5.85.8 1.45.8H21a2 2 0 1 1 0 4h-.09c-.6 0-1.16.3-1.45.8-.18.29-.28.64-.28 1Z" /></svg>;
+    case "search": return <svg {...common}><circle cx="11" cy="11" r="6" /><path d="m20 20-3.5-3.5" /></svg>;
+    case "bell": return <svg {...common}><path d="M15 17H5l1.4-1.4a2 2 0 0 0 .6-1.4V11a5 5 0 1 1 10 0v3.2a2 2 0 0 0 .6 1.4L19 17h-4" /><path d="M10 20a2 2 0 0 0 4 0" /></svg>;
+    case "plus": return <svg {...common}><path d="M12 5v14" /><path d="M5 12h14" /></svg>;
+    case "logout": return <svg {...common}><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><path d="m16 17 5-5-5-5" /><path d="M21 12H9" /></svg>;
+    case "refresh": return <svg {...common}><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>;
+    case "download": return <svg {...common}><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M5 21h14" /></svg>;
+    case "table": return <svg {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /><path d="M9 4v16" /><path d="M15 4v16" /></svg>;
+    default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>;
+  }
 }
 function MapViewport({ points }) {
   const map = useMap();
@@ -57,15 +137,119 @@ function StopMapPicker({ onPick }) {
 function fmt(v) { if (!v) return "--"; try { return new Date(v).toLocaleString(); } catch { return v; } }
 function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
 
+function SimpleLineChart({ points, color = "var(--accent)" }) {
+  const values = (points || []).map((point) => Number(point.value || 0));
+  const max = Math.max(...values, 1);
+  const width = 320;
+  const height = 160;
+  const coords = values.map((value, index) => {
+    const x = values.length === 1 ? width / 2 : (index / Math.max(values.length - 1, 1)) * (width - 24) + 12;
+    const y = height - ((value / max) * (height - 28) + 14);
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-40 w-full">
+      {[0.25, 0.5, 0.75].map((step) => <line key={step} x1="0" x2={width} y1={height * step} y2={height * step} stroke="var(--chart-grid)" strokeDasharray="4 6" />)}
+      <polyline fill="none" stroke={color} strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" points={coords} />
+      {values.map((value, index) => {
+        const x = values.length === 1 ? width / 2 : (index / Math.max(values.length - 1, 1)) * (width - 24) + 12;
+        const y = height - ((value / max) * (height - 28) + 14);
+        return <circle key={`${index}-${value}`} cx={x} cy={y} r="4.5" fill={color} />;
+      })}
+    </svg>
+  );
+}
+
+function SimpleBarChart({ items, color = "var(--primary)" }) {
+  const max = Math.max(...items.map((item) => Number(item.value || 0)), 1);
+  return (
+    <div className="space-y-3">
+      {items.map((item) => {
+        const ratio = Math.max(6, Math.round((Number(item.value || 0) / max) * 100));
+        return (
+          <div key={item.label}>
+            <div className="mb-1 flex items-center justify-between gap-3">
+              <p className="text-sm font-bold text-[var(--text)]">{item.label}</p>
+              <p className="text-xs font-black uppercase tracking-[0.12em] text-[var(--muted)]">{item.value}</p>
+            </div>
+            <div className="h-2.5 rounded-full bg-[var(--card-alt)]">
+              <div className="h-2.5 rounded-full" style={{ width: `${ratio}%`, background: color }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SimpleDonutChart({ items }) {
+  const total = items.reduce((sum, item) => sum + Number(item.value || 0), 0) || 1;
+  let offset = 0;
+  const colors = ["var(--primary)", "var(--accent)", "var(--success)", "#3a86ff", "#9d4edd"];
+  return (
+    <div className="flex items-center gap-5">
+      <svg viewBox="0 0 42 42" className="h-40 w-40 shrink-0">
+        <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--card-alt)" strokeWidth="6" />
+        {items.map((item, index) => {
+          const value = Number(item.value || 0);
+          const dash = (value / total) * 100;
+          const piece = <circle key={item.label} cx="21" cy="21" r="15.915" fill="none" stroke={colors[index % colors.length]} strokeWidth="6" strokeDasharray={`${dash} ${100 - dash}`} strokeDashoffset={25 - offset} />;
+          offset += dash;
+          return piece;
+        })}
+        <text x="21" y="20" textAnchor="middle" className="fill-[var(--muted)] text-[4px] font-black uppercase tracking-[0.22em]">Usage</text>
+        <text x="21" y="25" textAnchor="middle" className="fill-[var(--text)] text-[5px] font-black">{Math.round(total)}</text>
+      </svg>
+      <div className="space-y-3">
+        {items.map((item, index) => (
+          <div key={item.label} className="flex items-center gap-3 text-sm">
+            <span className="h-3 w-3 rounded-full" style={{ background: colors[index % colors.length] }} />
+            <div>
+              <p className="font-bold text-[var(--text)]">{item.label}</p>
+              <p className="text-xs text-[var(--muted)]">{item.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SeatLayoutPreview({ rows = 0, columns = 0, capacity = 0 }) {
+  const totalCells = Math.max(0, Number(rows || 0) * Number(columns || 0));
+  return (
+    <div className="rounded-[1.25rem] border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Seat Layout</p>
+        <Pill color="indigo">{capacity} seats</Pill>
+      </div>
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(Number(columns || 0), 1)}, minmax(0, 1fr))` }}>
+        {Array.from({ length: totalCells }).map((_, index) => {
+          const filled = index < capacity;
+          return <div key={index} className={`h-8 rounded-xl border ${filled ? "border-[rgba(75,38,102,0.16)] bg-[var(--surface-strong)]" : "border-dashed border-[var(--border)] bg-transparent"}`} />;
+        })}
+      </div>
+    </div>
+  );
+}
+
 const EMPTY_OBJ = {};
 const ADMIN_SECTIONS = [
-  { id: "analytics", label: "Analytics" },
-  { id: "routes", label: "Routes" },
-  { id: "buses", label: "Buses" },
-  { id: "staff", label: "Staff" },
-  { id: "assignments", label: "Assignments" },
+  { id: "dashboard", label: "Dashboard", icon: "dashboard", description: "Overview and control tower" },
+  { id: "drivers", label: "Drivers", icon: "drivers", description: "Driver accounts and reviews" },
+  { id: "helpers", label: "Helpers", icon: "helpers", description: "Helper accounts and reviews" },
+  { id: "buses", label: "Buses", icon: "buses", description: "Fleet setup and seat plans" },
+  { id: "stops", label: "Stations / Stops", icon: "stops", description: "Map stops and station points" },
+  { id: "routes", label: "Routes", icon: "routes", description: "Route builder and path layout" },
+  { id: "assignments", label: "Assignments", icon: "assignments", description: "Bus, driver, helper scheduling" },
+  { id: "analytics", label: "Analytics", icon: "analytics", description: "Revenue and occupancy insights" },
+  { id: "reports", label: "Reports", icon: "reports", description: "Exportable business summaries" },
+  { id: "settings", label: "Settings", icon: "settings", description: "Admin profile and preferences" },
 ];
-const DEFAULT_ADMIN_SECTION = "analytics";
+const LEGACY_SECTION_ALIASES = {
+  staff: "drivers",
+};
+const DEFAULT_ADMIN_SECTION = "dashboard";
 
 function toLocalDatetimeInput(value) {
   if (!value) return "";
@@ -77,13 +261,20 @@ function toLocalDatetimeInput(value) {
 export default function AdminHome() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   const { isDark } = useTheme();
-  const t = themeTokens(isDark);
+  const theme = useMemo(() => (isDark ? DARK : LIGHT), [isDark]);
 
   const [dashboard, setDashboard]           = useState(null);
   const [loading, setLoading]               = useState(true);
   const [err, setErr]                       = useState("");
+  const [msg, setMsg]                       = useState("");
+  const [adminSearch, setAdminSearch]       = useState("");
+  const [quickOpen, setQuickOpen]           = useState(false);
+  const [profileOpen, setProfileOpen]       = useState(false);
+  const [reportRange, setReportRange]       = useState("30D");
+  const [analyticsRouteFilter, setAnalyticsRouteFilter] = useState("ALL");
+  const [analyticsBusFilter, setAnalyticsBusFilter] = useState("ALL");
   const [builderStops, setBuilderStops]     = useState([]);
   const [recentStops, setRecentStops]       = useState([]);
   const [recentRoutes, setRecentRoutes]     = useState([]);
@@ -151,6 +342,11 @@ export default function AdminHome() {
   const [userRoleFilter, setUserRoleFilter] = useState("ALL");
   const [reviewBusyId, setReviewBusyId]     = useState(null);
   const [reviewMsg, setReviewMsg]           = useState("");
+  const [selectedDriverId, setSelectedDriverId] = useState(null);
+  const [selectedHelperId, setSelectedHelperId] = useState(null);
+  const [selectedBusId, setSelectedBusId] = useState(null);
+  const [selectedRouteId, setSelectedRouteId] = useState(null);
+  const [selectedStopId, setSelectedStopId] = useState(null);
 
   const loadDB     = async ({ silent = false } = {}) => { if (!silent) setLoading(true); try { const r = await api.get("/api/auth/admin/dashboard/"); setDashboard(r.data); setErr(""); } catch (e) { setErr(e?.response?.data?.detail || "Failed to load dashboard."); } finally { if (!silent) setLoading(false); } };
   const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentStops(r.data.recent_stops || []); setRecentRoutes(r.data.routes || r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
@@ -173,6 +369,11 @@ export default function AdminHome() {
       navigate(`/admin/${DEFAULT_ADMIN_SECTION}`, { replace: true });
     }
   }, [location.pathname, navigate]);
+  useEffect(() => {
+    if (!msg) return undefined;
+    const timer = setTimeout(() => setMsg(""), 4000);
+    return () => clearTimeout(timer);
+  }, [msg]);
   useEffect(() => { setSegmentFares(c => Array.from({ length: Math.max(selectedStopIds.length - 1, 0) }, (_, i) => c[i] || "")); }, [selectedStopIds]);
   useEffect(() => {
     if (!sRouteId && schedOpts.routes.length) setSRouteId(String(schedOpts.routes[0].id));
@@ -192,12 +393,19 @@ export default function AdminHome() {
     setAssignHelperId(selectedAssignBus.helper ? String(selectedAssignBus.helper) : "");
   }, [selectedAssignBus]);
 
-  const handleLogout = () => { clearToken(); navigate("/auth/login"); };
+  const handleLogout = () => { clearToken(); setUser(null); navigate("/auth/login", { replace: true }); };
 
   const activeSection = useMemo(() => {
-    const section = location.pathname.split("/")[2] || DEFAULT_ADMIN_SECTION;
+    const rawSection = location.pathname.split("/")[2] || DEFAULT_ADMIN_SECTION;
+    const section = LEGACY_SECTION_ALIASES[rawSection] || rawSection;
     return ADMIN_SECTIONS.some((item) => item.id === section) ? section : DEFAULT_ADMIN_SECTION;
   }, [location.pathname]);
+  useEffect(() => {
+    if (editingUserId) return;
+    if (activeSection === "drivers" && uRole !== "DRIVER") setURole("DRIVER");
+    if (activeSection === "helpers" && uRole !== "HELPER") setURole("HELPER");
+    if (activeSection === "settings" && uRole !== "ADMIN") setURole("ADMIN");
+  }, [activeSection, editingUserId, uRole]);
   const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const transport = overview?.transport || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const rideOps = overview?.ride_ops || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ;
   const paymentRows = useMemo(() => Object.entries(payments?.methods || {}).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [payments]);
   const recentBookingFlow = dashboard?.recent_booking_flow || [];
@@ -215,8 +423,94 @@ export default function AdminHome() {
     if (isNaN(rows) || isNaN(cols) || rows < 1 || cols < 1) return 0;
     return rows * cols;
   }, [busCols, busRows]);
+  const searchQuery = adminSearch.trim().toLowerCase();
+  const matchesSearch = (...values) => !searchQuery || values.some((value) => String(value || "").toLowerCase().includes(searchQuery));
+  const driverUsers = useMemo(() => userList.filter((item) => item.role === "DRIVER"), [userList]);
+  const helperUsers = useMemo(() => userList.filter((item) => item.role === "HELPER"), [userList]);
+  const adminUsers = useMemo(() => userList.filter((item) => item.role === "ADMIN"), [userList]);
+  const filteredDrivers = useMemo(() => driverUsers.filter((item) => matchesSearch(item.full_name, item.phone, item.email, item.address, item.license_number)), [driverUsers, searchQuery]);
+  const filteredHelpers = useMemo(() => helperUsers.filter((item) => matchesSearch(item.full_name, item.phone, item.email, item.address)), [helperUsers, searchQuery]);
+  const filteredBuses = useMemo(() => busList.filter((item) => matchesSearch(item.display_name, item.plate_number, item.driver_name, item.helper_name, item.condition)), [busList, searchQuery]);
+  const filteredRoutes = useMemo(() => recentRoutes.filter((item) => matchesSearch(item.name, item.city, item.route_stops?.[0]?.stop?.name, item.route_stops?.[item.route_stops.length - 1]?.stop?.name)), [recentRoutes, searchQuery]);
+  const filteredStops = useMemo(() => builderStops.filter((item) => matchesSearch(item.name, item.lat, item.lng)), [builderStops, searchQuery]);
+  const filteredSchedules = useMemo(() => (schedOpts.schedules || []).filter((item) => matchesSearch(item.route_name, item.bus_plate, item.driver_name, item.helper_name, item.status)), [schedOpts.schedules, searchQuery]);
+  const selectedDriver = useMemo(() => filteredDrivers.find((item) => item.id === selectedDriverId) || filteredDrivers[0] || null, [filteredDrivers, selectedDriverId]);
+  const selectedHelper = useMemo(() => filteredHelpers.find((item) => item.id === selectedHelperId) || filteredHelpers[0] || null, [filteredHelpers, selectedHelperId]);
+  const selectedBusPreview = useMemo(() => filteredBuses.find((item) => item.id === selectedBusId) || filteredBuses[0] || null, [filteredBuses, selectedBusId]);
+  const selectedRoutePreview = useMemo(() => filteredRoutes.find((item) => item.id === selectedRouteId) || filteredRoutes[0] || null, [filteredRoutes, selectedRouteId]);
+  const selectedStopPreview = useMemo(() => filteredStops.find((item) => item.id === selectedStopId) || filteredStops[0] || null, [filteredStops, selectedStopId]);
+  const overallOccupancyRate = useMemo(() => {
+    const total = rideOps.awaiting_acceptance + rideOps.awaiting_payment + rideOps.ready_to_board + rideOps.onboard + (rideOps.completed_today || 0);
+    if (!total) return 0;
+    return Math.min(100, Math.round(((rideOps.ready_to_board + rideOps.onboard + (rideOps.completed_today || 0)) / total) * 100));
+  }, [rideOps.awaiting_acceptance, rideOps.awaiting_payment, rideOps.completed_today, rideOps.onboard, rideOps.ready_to_board]);
+  const fleetStatus = useMemo(() => ({
+    active: busAnalytics.filter((bus) => bus.is_active).length,
+    inactive: busAnalytics.filter((bus) => !bus.is_active).length,
+    delayed: (dashboard?.live_trips || []).filter((trip) => trip.deviation_mode).length,
+  }), [busAnalytics, dashboard?.live_trips]);
+  const earningsTrend = useMemo(() => {
+    const paymentSeries = (dashboard?.recent_payments || []).slice().reverse();
+    if (!paymentSeries.length) {
+      return [
+        { label: "Mon", value: Number(payments.revenue_success || 0) * 0.22 },
+        { label: "Tue", value: Number(payments.revenue_success || 0) * 0.36 },
+        { label: "Wed", value: Number(payments.revenue_success || 0) * 0.41 },
+        { label: "Thu", value: Number(payments.revenue_success || 0) * 0.55 },
+        { label: "Fri", value: Number(payments.revenue_success || 0) * 0.72 },
+        { label: "Sat", value: Number(payments.revenue_success || 0) * 0.82 },
+        { label: "Sun", value: Number(payments.revenue_success || 0) },
+      ];
+    }
+    return paymentSeries.map((payment, index) => ({
+      label: new Date(payment.created_at).toLocaleDateString([], { month: "short", day: "numeric" }) || `P${index + 1}`,
+      value: Number(payment.amount || 0),
+    }));
+  }, [dashboard?.recent_payments, payments.revenue_success]);
+  const routeOccupancyData = useMemo(() => routeAnalytics.slice(0, 6).map((route) => ({
+    label: route.route_name,
+    value: route.total_trips ? Math.min(100, Math.round((route.completed_bookings / Math.max(route.total_trips * 4, 1)) * 100)) : 0,
+  })), [routeAnalytics]);
+  const passengerDistribution = useMemo(() => [
+    { label: "Passengers", value: roleCounts.PASSENGER || 0 },
+    { label: "Drivers", value: roleCounts.DRIVER || 0 },
+    { label: "Helpers", value: roleCounts.HELPER || 0 },
+    { label: "Admins", value: roleCounts.ADMIN || 0 },
+  ], [roleCounts.ADMIN, roleCounts.DRIVER, roleCounts.HELPER, roleCounts.PASSENGER]);
+  const recentActivities = useMemo(() => [
+    ...(dashboard?.recent_bookings || []).map((item) => ({ id: `booking-${item.id}`, title: `Booking #${item.id}`, subtitle: `${item.passenger_name} reserved ${item.route_name}`, time: item.created_at, tone: item.status === "CONFIRMED" ? "emerald" : item.status === "CANCELLED" ? "red" : "amber" })),
+    ...(dashboard?.recent_payments || []).map((item) => ({ id: `payment-${item.id}`, title: `Payment #${item.id}`, subtitle: `${item.method} ${fmtMoney(item.amount)} on ${item.route_name}`, time: item.created_at, tone: item.status === "SUCCESS" ? "emerald" : item.status === "FAILED" ? "red" : "amber" })),
+    ...(dashboard?.recent_users || []).map((item) => ({ id: `user-${item.id}`, title: item.full_name, subtitle: `${item.role} account joined MetroBus`, time: item.created_at, tone: "indigo" })),
+  ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 8), [dashboard?.recent_bookings, dashboard?.recent_payments, dashboard?.recent_users]);
+  const upcomingSchedules = useMemo(() => (schedOpts.schedules || []).filter((item) => item.status === "PLANNED").slice(0, 6), [schedOpts.schedules]);
+  const currentSectionMeta = useMemo(() => ADMIN_SECTIONS.find((section) => section.id === activeSection) || ADMIN_SECTIONS[0], [activeSection]);
+  const selectedBusSchedule = useMemo(() => (schedOpts.schedules || []).find((item) => String(item.bus) === String(selectedBusPreview?.id) && item.status === "PLANNED") || null, [schedOpts.schedules, selectedBusPreview?.id]);
+  const routeFilterOptions = useMemo(() => [{ value: "ALL", label: "All routes" }, ...routeAnalytics.map((route) => ({ value: String(route.route_id), label: route.route_name }))], [routeAnalytics]);
+  const busFilterOptions = useMemo(() => [{ value: "ALL", label: "All buses" }, ...busAnalytics.map((bus) => ({ value: String(bus.bus_id), label: bus.display_name }))], [busAnalytics]);
+  const filteredRouteAnalytics = useMemo(() => routeAnalytics.filter((route) => analyticsRouteFilter === "ALL" || String(route.route_id) === String(analyticsRouteFilter)), [analyticsRouteFilter, routeAnalytics]);
+  const filteredBusAnalytics = useMemo(() => busAnalytics.filter((bus) => analyticsBusFilter === "ALL" || String(bus.bus_id) === String(analyticsBusFilter)), [analyticsBusFilter, busAnalytics]);
+  const assignmentConflicts = useMemo(() => {
+    const counts = {};
+    (schedOpts.schedules || []).forEach((schedule) => {
+      ["bus", "driver", "helper"].forEach((key) => {
+        const value = schedule[key];
+        if (!value) return;
+        const mapKey = `${key}-${value}`;
+        counts[mapKey] = (counts[mapKey] || 0) + 1;
+      });
+    });
+    return (schedOpts.schedules || []).filter((schedule) => (
+      counts[`bus-${schedule.bus}`] > 1 || counts[`driver-${schedule.driver}`] > 1 || counts[`helper-${schedule.helper}`] > 1
+    ));
+  }, [schedOpts.schedules]);
+  const notificationCount = payments.pending + rideOps.awaiting_acceptance + rideOps.awaiting_payment + fleetStatus.delayed;
 
   useEffect(() => { if (selPts.length < 2) { setRoadPolyline([]); return; } const c = new AbortController(); snapRouteToRoad(selPts, c.signal).then(p => setRoadPolyline(p.length > 1 ? p : [])).catch(e => { if (e.name !== "AbortError") setRoadPolyline([]); }); return () => c.abort(); }, [selPts]);
+  useEffect(() => { if (!selectedDriver && selectedDriverId !== null) setSelectedDriverId(null); else if (selectedDriver && selectedDriverId == null) setSelectedDriverId(selectedDriver.id); }, [selectedDriver, selectedDriverId]);
+  useEffect(() => { if (!selectedHelper && selectedHelperId !== null) setSelectedHelperId(null); else if (selectedHelper && selectedHelperId == null) setSelectedHelperId(selectedHelper.id); }, [selectedHelper, selectedHelperId]);
+  useEffect(() => { if (!selectedBusPreview && selectedBusId !== null) setSelectedBusId(null); else if (selectedBusPreview && selectedBusId == null) setSelectedBusId(selectedBusPreview.id); }, [selectedBusId, selectedBusPreview]);
+  useEffect(() => { if (!selectedRoutePreview && selectedRouteId !== null) setSelectedRouteId(null); else if (selectedRoutePreview && selectedRouteId == null) setSelectedRouteId(selectedRoutePreview.id); }, [selectedRouteId, selectedRoutePreview]);
+  useEffect(() => { if (!selectedStopPreview && selectedStopId !== null) setSelectedStopId(null); else if (selectedStopPreview && selectedStopId == null) setSelectedStopId(selectedStopPreview.id); }, [selectedStopId, selectedStopPreview]);
 
   const toggleStop = id => setSelectedStopIds(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
   const moveStop = (i, dir) => setSelectedStopIds(c => { const ti = i + dir; if (ti < 0 || ti >= c.length) return c; const n = [...c]; [n[i], n[ti]] = [n[ti], n[i]]; return n; });
@@ -488,7 +782,7 @@ export default function AdminHome() {
     setUOfficialPhoto(null);
     setULicenseNumber(staffUser.license_number || "");
     setULicensePhoto(null);
-    navigate("/admin/staff");
+    navigate(`/admin/${staffUser.role === "HELPER" ? "helpers" : staffUser.role === "ADMIN" ? "settings" : "drivers"}`);
   };
 
   const deleteUser = async (staffUser) => {
@@ -534,9 +828,39 @@ export default function AdminHome() {
     }
   };
 
-  if (loading) return <div className={`min-h-screen flex items-center justify-center ${t.page}`}><div className="text-center"><div className="w-12 h-12 rounded-full border-4 border-[var(--brand-primary)] border-t-transparent animate-spin mx-auto" /><p className={`mt-4 text-sm ${t.textSub}`}>Loading admin dashboard...</p></div></div>;
+  const triggerQuickAction = (sectionId) => {
+    setQuickOpen(false);
+    if (sectionId === "drivers") resetUserForm();
+    if (sectionId === "helpers") resetUserForm();
+    if (sectionId === "buses") resetBusForm();
+    if (sectionId === "routes") clearRoute();
+    if (sectionId === "assignments") clearScheduleForm();
+    if (sectionId === "stops") clearStopForm();
+    navigate(`/admin/${sectionId}`);
+  };
 
-  const rowBg = isDark ? "bg-white/5 border-white/10" : "bg-[rgba(255,255,255,0.88)] border-[rgba(52,21,93,0.08)]";
+  const exportReport = () => {
+    const rows = [
+      ["Category", "Name", "Trips", "Bookings", "Revenue"],
+      ...routeAnalytics.map((route) => ["Route", route.route_name, route.total_trips, route.bookings, route.revenue_success]),
+      ...busAnalytics.map((bus) => ["Bus", bus.display_name, bus.total_trips, bus.bookings, bus.revenue_success]),
+    ];
+    const csv = rows.map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `metrobus-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(href);
+    setMsg("MetroBus report exported.");
+  };
+
+  if (loading) return <div style={theme} className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#fff5eb_0%,var(--bg)_42%,var(--bg-soft)_100%)]"><div className="text-center"><div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" /><p className="mt-4 text-sm font-semibold text-[var(--muted)]">Loading MetroBus admin dashboard...</p></div></div>;
+
+  const rowBg = "bg-[var(--surface-muted)] border-[var(--border)]";
 
   return (
       <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>

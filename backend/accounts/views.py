@@ -16,7 +16,7 @@ from payments.models import PassengerWallet, Payment
 from payments.wallets import FREE_RIDE_REWARD_POINTS
 from transport.models import Route, Stop, Bus, Seat
 from trips.models import Trip
-from .models import PhoneOTP
+from .models import AuthOTP
 from .otp_delivery import OTPDeliveryError, send_password_reset_otp, send_registration_otp
 from .serializers import (
     RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
@@ -41,9 +41,9 @@ class RegisterOTPRequestView(APIView):
         serializer = RegisterOTPRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        phone = serializer.validated_data["phone"]
+        email = serializer.validated_data["email"]
         recent_otp = (
-            PhoneOTP.objects.filter(phone=phone, purpose=PhoneOTP.Purpose.REGISTER)
+            AuthOTP.objects.filter(email=email, purpose=AuthOTP.Purpose.REGISTER)
             .order_by("-created_at")
             .first()
         )
@@ -51,23 +51,23 @@ class RegisterOTPRequestView(APIView):
             return Response({"detail": "Please wait a few seconds before requesting another OTP."}, status=429)
 
         code = f"{random.randint(0, 9999):04d}"
-        otp = PhoneOTP(
-            phone=phone,
-            purpose=PhoneOTP.Purpose.REGISTER,
+        otp = AuthOTP(
+            email=email,
+            purpose=AuthOTP.Purpose.REGISTER,
             expires_at=timezone.now() + timedelta(minutes=5),
         )
         otp.set_code(code)
         otp.save()
 
         try:
-            delivery_result = send_registration_otp(phone, code)
+            delivery_result = send_registration_otp(email, code)
         except OTPDeliveryError as exc:
             otp.delete()
             return Response({"detail": str(exc)}, status=503)
 
         payload = {
-            "message": f"OTP sent to {phone}. It will expire in 5 minutes.",
-            "phone": phone,
+            "message": f"OTP sent to {email}. It will expire in 5 minutes.",
+            "email": email,
             "delivery": delivery_result["delivery"],
             "expires_in_seconds": 300,
         }
@@ -86,9 +86,9 @@ class PasswordResetOTPRequestView(APIView):
         serializer = PasswordResetOTPRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        phone = serializer.validated_data["phone"]
+        email = serializer.validated_data["email"]
         recent_otp = (
-            PhoneOTP.objects.filter(phone=phone, purpose=PhoneOTP.Purpose.PASSWORD_RESET)
+            AuthOTP.objects.filter(email=email, purpose=AuthOTP.Purpose.PASSWORD_RESET)
             .order_by("-created_at")
             .first()
         )
@@ -96,23 +96,23 @@ class PasswordResetOTPRequestView(APIView):
             return Response({"detail": "Please wait a few seconds before requesting another OTP."}, status=429)
 
         code = f"{random.randint(0, 9999):04d}"
-        otp = PhoneOTP(
-            phone=phone,
-            purpose=PhoneOTP.Purpose.PASSWORD_RESET,
+        otp = AuthOTP(
+            email=email,
+            purpose=AuthOTP.Purpose.PASSWORD_RESET,
             expires_at=timezone.now() + timedelta(minutes=5),
         )
         otp.set_code(code)
         otp.save()
 
         try:
-            delivery_result = send_password_reset_otp(phone, code)
+            delivery_result = send_password_reset_otp(email, code)
         except OTPDeliveryError as exc:
             otp.delete()
             return Response({"detail": str(exc)}, status=503)
 
         payload = {
-            "message": f"Password reset OTP sent to {phone}. It will expire in 5 minutes.",
-            "phone": phone,
+            "message": f"Password reset OTP sent to {email}. It will expire in 5 minutes.",
+            "email": email,
             "delivery": delivery_result["delivery"],
             "expires_in_seconds": 300,
         }

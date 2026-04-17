@@ -64,12 +64,12 @@ export default function Register() {
     setDevOtp("");
     setOtpBusy(true);
     try {
-      const response = await api.post("/api/auth/otp/request/", { phone });
+      const response = await api.post("/api/auth/otp/request/", { email });
       setOtpRequested(true);
-      setOtpNote(response.data?.detail || response.data?.message || "OTP sent.");
+      setOtpNote(response.data?.detail || response.data?.message || "OTP sent to your email.");
       setDevOtp(response.data?.dev_code || "");
     } catch (error) {
-      const detail = error?.response?.data?.phone?.[0] || error?.response?.data?.detail;
+      const detail = error?.response?.data?.email?.[0] || error?.response?.data?.detail;
       setErr(detail || "Unable to send OTP right now.");
     } finally {
       setOtpBusy(false);
@@ -185,23 +185,13 @@ export default function Register() {
             </label>
 
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-[#241828]">Email Address</span>
-              <input
-                className="w-full rounded-[1.25rem] bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
-                placeholder="john@example.com"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-[#241828]">Phone Number</span>
+              <span className="mb-2 block text-sm font-semibold text-[#241828]">Email Address (Verification)</span>
               <div className="grid grid-cols-[1fr_auto] gap-3">
                 <input
                   className="rounded-[1.25rem] bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
-                  placeholder="+977 98XXXXXXXX"
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  placeholder="john@example.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
                 />
                 <button
                   type="button"
@@ -214,10 +204,20 @@ export default function Register() {
               </div>
             </label>
 
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-[#241828]">Phone Number</span>
+              <input
+                className="w-full rounded-[1.25rem] bg-[#f2efff] px-5 py-4 text-[1rem] font-medium text-[#241828] outline-none placeholder:text-[#b1a8c5]"
+                placeholder="+977 98XXXXXXXX"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+              />
+            </label>
+
             <div className="rounded-[1.35rem] border border-[#ded6ef] bg-[#f7f2ff] px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-base font-black text-[#4721d1]">Verify Mobile</p>
+                  <p className="text-base font-black text-[#4721d1]">Verify Email OTP</p>
                 </div>
                 <button
                   type="button"

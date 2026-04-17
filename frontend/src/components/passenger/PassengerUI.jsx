@@ -323,7 +323,14 @@ export function PlannerCard({
       matchedTrips
         .map((trip, index) => {
           const bus = getBusPoint(trip, displayLine);
-          if (!bus?.point) return null;
+          // Fallback: render at raw GPS when poly snap fails but location exists
+          if (!bus?.point) {
+            const rawPt = trip.live_override
+              ? toPoint(trip.live_override.lat, trip.live_override.lng)
+              : toPoint(trip.latest_location?.lat, trip.latest_location?.lng);
+            if (!rawPt) return null;
+            return { trip, index, bus: { point: rawPt, heading: Number(trip.live_override?.heading ?? trip.latest_location?.heading ?? 0) } };
+          }
           return { trip, index, bus };
         })
         .filter(Boolean),
@@ -435,6 +442,16 @@ export function PlannerCard({
           </MapContainer>
         </div>
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(30,18,57,0.08),rgba(30,18,57,0.32))]" />
+        {selectionMode ? (
+          <div className="pointer-events-none absolute inset-0 z-[400] flex flex-col items-center justify-center gap-3 bg-black/40 backdrop-blur-[1px]">
+            <div className="rounded-[18px] bg-white px-5 py-4 shadow-[0_14px_30px_rgba(19,9,42,0.28)] text-center">
+              <p className="text-[0.6rem] font-black uppercase tracking-[0.24em] text-[var(--mb-purple)] mb-1">
+                {selectionMode === "pickup" ? "Select Pickup" : "Select Drop-Off"}
+              </p>
+              <p className="text-sm font-semibold text-[var(--mb-text)]">Tap a <span className="text-[var(--mb-accent)] font-black">colored stop circle</span> on the map</p>
+            </div>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={() => onMapPickMode(selectionMode || (!pickupStopId ? "pickup" : "drop"))}
@@ -442,7 +459,7 @@ export function PlannerCard({
         >
           <span className="inline-flex items-center gap-2">
             <Icon name="track" className="h-5 w-5" />
-            Select from Map
+            {selectionMode ? (selectionMode === "pickup" ? "Tap a stop for Pickup" : "Tap a stop for Drop-Off") : "Select from Map"}
           </span>
         </button>
       </div>
@@ -1284,7 +1301,15 @@ export function CheckoutPage({
 }
 
 export function TrackMap({ trip, displayLine, now }) {
-  const busLocation = getBusPoint(trip, displayLine);
+  // Use polyline-snapped position, fall back to raw GPS if polyline is empty
+  const busLocationSnapped = getBusPoint(trip, displayLine);
+  const busLocation = busLocationSnapped || (() => {
+    const rawPt = trip?.live_override
+      ? toPoint(trip.live_override.lat, trip.live_override.lng)
+      : toPoint(trip?.latest_location?.lat, trip?.latest_location?.lng);
+    if (!rawPt) return null;
+    return { point: rawPt, heading: Number(trip?.live_override?.heading ?? trip?.latest_location?.heading ?? 0) };
+  })();
   const points = displayLine.length ? displayLine : (busLocation ? [busLocation.point] : [[28.2096, 83.9856]]);
   const distanceValue = trip?.pickup_point && busLocation?.point ? distKm(busLocation.point, trip.pickup_point).toFixed(1) : "3.0";
   return (

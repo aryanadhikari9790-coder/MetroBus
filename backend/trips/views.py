@@ -1,3 +1,4 @@
+from django.db import models
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -332,11 +333,27 @@ class LiveTripsView(APIView):
             .prefetch_related("locations")
         )
 
+        # Pre-fetch all route stops for all live trips in a single query
+        trip_list = list(qs)
+        route_ids = list({trip.route_id for trip in trip_list})
+        route_stops_qs = (
+            RouteStop.objects.filter(route_id__in=route_ids)
+            .select_related("stop")
+            .order_by("stop_order")
+        )
+        route_stops_by_route = {}
+        for rs in route_stops_qs:
+            route_stops_by_route.setdefault(rs.route_id, []).append(rs)
+
         payload = []
-        for trip in qs:
+        for trip in trip_list:
             trip_data = TripSerializer(trip).data
             latest_location = sync_trip_simulation(trip)
             trip_data["latest_location"] = TripLocationSerializer(latest_location).data if latest_location else None
+            # Embed route_stops so the frontend can match without a second round-trip
+            trip_data["route_stops"] = RouteStopSerializer(
+                route_stops_by_route.get(trip.route_id, []), many=True
+            ).data
             payload.append(trip_data)
 
         return Response(payload)
@@ -358,7 +375,12 @@ class DriverDashboardView(APIView):
         pending_trip = (
             Trip.objects.filter(status=Trip.Status.NOT_STARTED, **trip_filter)
             .select_related("route", "bus", "driver", "helper", "simulation")
-            .order_by("-created_at")
+            .order_by(
+                # Trips where driver OR helper has already confirmed come first
+                models.F("driver_start_confirmed_at").desc(nulls_last=True),
+                models.F("helper_start_confirmed_at").desc(nulls_last=True),
+                "-created_at",
+            )
             .first()
         )
 
@@ -410,7 +432,12 @@ class HelperDashboardView(APIView):
         pending_trip = (
             Trip.objects.filter(status=Trip.Status.NOT_STARTED, **trip_filter)
             .select_related("route", "bus", "driver", "helper", "simulation")
-            .order_by("-created_at")
+            .order_by(
+                # Trips where driver OR helper has already confirmed come first
+                models.F("driver_start_confirmed_at").desc(nulls_last=True),
+                models.F("helper_start_confirmed_at").desc(nulls_last=True),
+                "-created_at",
+            )
             .first()
         )
         schedules = (
@@ -756,12 +783,16 @@ class StartTripView(APIView):
                 .first()
             )
 
+            # If there is a stale pending manual trip with different params, cancel it so the
+            # driver can start fresh with the new selection.
             if trip and (
                 trip.route_id != route.id
                 or trip.bus_id != bus.id
                 or trip.helper_id != helper.id
             ):
-                return Response({"detail": "You already have a pending manual trip waiting for helper confirmation."}, status=400)
+                trip.status = Trip.Status.CANCELLED
+                trip.save(update_fields=["status"])
+                trip = None  # will create a new one below
 
             if not trip:
                 conflict = _live_trip_conflict(bus=bus, driver=actor, helper=helper)

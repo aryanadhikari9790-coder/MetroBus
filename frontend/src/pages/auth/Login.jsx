@@ -21,7 +21,7 @@ export default function Login() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const [showReset, setShowReset] = useState(false);
-  const [resetPhone, setResetPhone] = useState("");
+  const [resetEmail, setResetEmail] = useState("");
   const [resetOtp, setResetOtp] = useState(["", "", "", ""]);
   const [resetPassword, setResetPassword] = useState("");
   const [resetPasswordConfirm, setResetPasswordConfirm] = useState("");
@@ -51,7 +51,7 @@ export default function Login() {
     setResetOtp(["", "", "", ""]);
     setResetPassword("");
     setResetPasswordConfirm("");
-    setResetPhone((phone || "").trim());
+    setResetEmail("");
   };
 
   const closeReset = () => {
@@ -72,20 +72,20 @@ export default function Login() {
   };
 
   const requestResetOtp = async () => {
-    if (!resetPhone.trim()) {
-      setErr("Enter your passenger phone number first.");
+    if (!resetEmail.trim() || !resetEmail.includes("@")) {
+      setErr("Enter your registered passenger email address.");
       return;
     }
     setResetBusy(true);
     setErr("");
     setMsg("");
     try {
-      const response = await api.post("/api/auth/password-reset/request/", { phone: resetPhone.trim() });
+      const response = await api.post("/api/auth/password-reset/request/", { email: resetEmail.trim() });
       setResetRequested(true);
       setResetDevCode(response.data.dev_code || "");
-      setMsg(response.data.message || "Password reset OTP sent.");
+      setMsg(response.data.message || "Password reset OTP sent to your email.");
     } catch (error) {
-      const detail = error?.response?.data?.phone?.[0] || error?.response?.data?.detail || "Unable to send password reset OTP.";
+      const detail = error?.response?.data?.email?.[0] || error?.response?.data?.detail || "Unable to send password reset OTP.";
       setErr(detail);
     } finally {
       setResetBusy(false);
@@ -111,12 +111,12 @@ export default function Login() {
     setMsg("");
     try {
       const response = await api.post("/api/auth/password-reset/confirm/", {
-        phone: resetPhone.trim(),
+        email: resetEmail.trim(),
         otp_code: resetOtp.join(""),
         password: resetPassword,
         password_confirm: resetPasswordConfirm,
       });
-      setPhone(resetPhone.trim());
+      // Don't auto-fill phone, let them type it if they reset via email
       setPassword("");
       setShowReset(false);
       setResetRequested(false);
@@ -215,7 +215,7 @@ export default function Login() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.28em] text-[#5b20dd]">Passenger Password Reset</p>
-                  <h2 className="mt-2 text-[1.5rem] font-black leading-tight text-[#17131d]">Reset with phone OTP</h2>
+                  <h2 className="mt-2 text-[1.5rem] font-black leading-tight text-[#17131d]">Reset with Email OTP</h2>
                 </div>
                 <button type="button" onClick={closeReset} className="rounded-[0.9rem] bg-white px-3 py-2 text-xs font-black text-[#4b22d3]">
                   Close
@@ -224,14 +224,13 @@ export default function Login() {
 
               <div className="mt-5 space-y-4">
                 <label className="block">
-                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.24em] text-[#241828]">Passenger Phone</span>
+                  <span className="mb-2 block text-xs font-black uppercase tracking-[0.24em] text-[#241828]">Passenger Email</span>
                   <div className="flex items-center gap-3 rounded-[1.15rem] bg-white px-4 py-3 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.07)]">
-                    <span className="shrink-0 border-r border-[#ddd5f1] pr-3 text-sm font-semibold text-[#3f364d]">+977</span>
                     <input
                       className="min-w-0 flex-1 bg-transparent text-[1rem] font-medium text-[#2b2236] outline-none placeholder:text-[#b0a8bf]"
-                      placeholder="98XXXXXXXX"
-                      value={resetPhone}
-                      onChange={(event) => setResetPhone(event.target.value)}
+                      placeholder="john@example.com"
+                      value={resetEmail}
+                      onChange={(event) => setResetEmail(event.target.value)}
                     />
                     <button
                       type="button"
@@ -247,7 +246,7 @@ export default function Login() {
                 <div className="rounded-[1.15rem] bg-white px-4 py-4 shadow-[inset_0_0_0_1px_rgba(109,62,193,0.06)]">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-[#4b22d3]">Verify Mobile</p>
+                      <p className="text-sm font-black text-[#4b22d3]">Verify Email</p>
                     </div>
                     {resetDevCode ? <span className="rounded-[0.85rem] bg-[#efe5ff] px-3 py-1 text-[0.7rem] font-black text-[#5b20dd]">Dev OTP: {resetDevCode}</span> : null}
                   </div>

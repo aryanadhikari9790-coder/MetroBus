@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from django.db import transaction
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -6,7 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from transport.models import Seat
 from transport.services import ensure_bus_seats
 from trips.models import Trip
-from .models import Booking, BookingSeat, OfflineBoarding, OfflineSeat
+from .models import Booking, BookingSeat, OfflineBoarding, OfflineSeat, SeatHold
 from .serializers import (
     BookingSerializer,
     CreateBookingSerializer,
@@ -14,12 +17,17 @@ from .serializers import (
     OfflineBoardingSerializer,
     PassengerBookingListSerializer,
     HelperLookupSerializer,
+    HelperBoardBookingActionSerializer,
     HelperBookingTicketSerializer,
     PassengerCancelBookingSerializer,
+    SeatHoldSyncSerializer,
+    booking_payment_status_label,
 )
 from .permissions import IsPassenger, IsHelper
 from .services import (
     advance_booking_journey_status,
+    clear_expired_seat_holds,
+    get_active_seat_holds_for_trip,
     validate_seats_available,
     get_fare_for_segment,
     get_taken_seat_ids_for_trip,
@@ -102,6 +110,9 @@ def _resolve_helper_booking_by_otp(user, reference):
     return booking, otp, matched_booking
 
 
+SEAT_HOLD_MINUTES = 2
+
+
 class PassengerBookingsView(APIView):
     permission_classes = [IsAuthenticated, IsPassenger]
 
@@ -174,112 +185,237 @@ class PassengerCancelBookingView(APIView):
         )
 
 
-class TripSeatAvailabilityView(APIView):
-    permission_classes = [AllowAny]
+def _seat_availability_payload(trip, from_order: int, to_order: int, *, viewer_id=None):
+    ensure_bus_seats(trip.bus)
+    try:
+        fare_per_seat = get_fare_for_segment(trip.route_id, from_order, to_order)
+    except ValueError:
+        fare_per_seat = None
 
-    def get(self, request, trip_id: int):
-        from_order = int(request.query_params.get("from", "0"))
-        to_order = int(request.query_params.get("to", "0"))
-        if from_order < 1 or to_order < 2 or to_order <= from_order:
-            return Response({"detail": "Provide valid from and to query params"}, status=400)
+    all_seats = list(Seat.objects.filter(bus=trip.bus).order_by("seat_no").values("id", "seat_no"))
+    taken = get_taken_seat_ids_for_trip(trip.id, from_order, to_order)
+    viewer_hold_ids = set()
 
-        trip = Trip.objects.select_related("bus").filter(id=trip_id).first()
-        if not trip:
-            return Response({"detail": "Trip not found"}, status=404)
-
-        ensure_bus_seats(trip.bus)
-        try:
-            fare_per_seat = get_fare_for_segment(trip.route_id, from_order, to_order)
-        except ValueError:
-            fare_per_seat = None
-        all_seats = list(Seat.objects.filter(bus=trip.bus).order_by("seat_no").values("id", "seat_no"))
-        taken = get_taken_seat_ids_for_trip(trip_id, from_order, to_order)
-        data_by_seat_id = {
-            seat["id"]: {
-                "seat_id": seat["id"],
-                "seat_no": seat["seat_no"],
-                "available": seat["id"] not in taken,
-                "seat_state": "OPEN" if seat["id"] not in taken else "OCCUPIED",
-                "occupant_kind": None,
-                "journey_stage": None,
-                "payment_status": None,
-                "payment_verified": False,
-                "payment_tick": "NONE",
-                "booking_id": None,
-                "offline_boarding_id": None,
-            }
-            for seat in all_seats
+    data_by_seat_id = {
+        seat["id"]: {
+            "seat_id": seat["id"],
+            "seat_no": seat["seat_no"],
+            "available": seat["id"] not in taken,
+            "seat_state": "OPEN" if seat["id"] not in taken else "OCCUPIED",
+            "occupant_kind": None,
+            "journey_stage": None,
+            "payment_status": None,
+            "payment_verified": False,
+            "payment_tick": "NONE",
+            "booking_id": None,
+            "offline_boarding_id": None,
+            "held_by_me": False,
+            "held_until": None,
         }
+        for seat in all_seats
+    }
 
-        bookings = (
-            Booking.objects.filter(trip_id=trip_id, status=Booking.Status.CONFIRMED)
-            .select_related("payment")
-            .prefetch_related("booking_seats")
-            .order_by("-checked_in_at", "from_stop_order", "created_at")
+    active_holds = get_active_seat_holds_for_trip(trip.id, from_order, to_order)
+    for hold in active_holds:
+        seat_payload = data_by_seat_id.get(hold.seat_id)
+        if not seat_payload:
+            continue
+        held_by_me = bool(viewer_id and hold.passenger_id == viewer_id)
+        if held_by_me:
+            viewer_hold_ids.add(hold.seat_id)
+        seat_payload.update(
+            {
+                "available": False,
+                "seat_state": "HELD",
+                "occupant_kind": "HOLD",
+                "held_by_me": held_by_me,
+                "held_until": hold.expires_at,
+            }
         )
-        for booking in bookings:
-            if not intervals_overlap(booking.from_stop_order, booking.to_stop_order, from_order, to_order):
-                continue
 
-            payment = getattr(booking, "payment", None)
-            payment_status = payment.status if payment else "UNPAID"
-            payment_verified = payment_status == "SUCCESS"
-            journey_stage = "dropoff" if booking.checked_in_at else "pickup"
-            payment_tick = "PAID" if payment_verified else "PENDING"
+    bookings = (
+        Booking.objects.filter(trip_id=trip.id, status=Booking.Status.CONFIRMED)
+        .select_related("payment")
+        .prefetch_related("booking_seats")
+        .order_by("-checked_in_at", "from_stop_order", "created_at")
+    )
+    for booking in bookings:
+        if not intervals_overlap(booking.from_stop_order, booking.to_stop_order, from_order, to_order):
+            continue
 
-            for booking_seat in booking.booking_seats.all():
-                seat_payload = data_by_seat_id.get(booking_seat.seat_id)
-                if not seat_payload:
-                    continue
-                seat_payload.update(
-                    {
-                        "available": False,
-                        "seat_state": "OCCUPIED",
-                        "occupant_kind": "ONLINE",
-                        "journey_stage": journey_stage,
-                        "payment_status": payment_status,
-                        "payment_verified": payment_verified,
-                        "payment_tick": payment_tick,
-                        "booking_id": booking.id,
-                    }
-                )
+        payment = getattr(booking, "payment", None)
+        payment_status = booking_payment_status_label(booking)
+        payment_verified = payment_status == "SUCCESS"
+        journey_stage = "dropoff" if booking.checked_in_at else "pickup"
+        payment_tick = "PAID" if payment_verified else "PENDING"
 
-        offline_seats = (
-            OfflineSeat.objects.filter(offline_boarding__trip_id=trip_id)
-            .select_related("offline_boarding")
-            .order_by("-offline_boarding__created_at")
-        )
-        for offline_seat in offline_seats:
-            offline_boarding = offline_seat.offline_boarding
-            if not intervals_overlap(offline_boarding.from_stop_order, offline_boarding.to_stop_order, from_order, to_order):
-                continue
-
-            seat_payload = data_by_seat_id.get(offline_seat.seat_id)
+        for booking_seat in booking.booking_seats.all():
+            seat_payload = data_by_seat_id.get(booking_seat.seat_id)
             if not seat_payload:
                 continue
             seat_payload.update(
                 {
                     "available": False,
                     "seat_state": "OCCUPIED",
-                    "occupant_kind": "OFFLINE",
-                    "journey_stage": "dropoff" if not offline_boarding.completed_at else "completed",
-                    "payment_status": "OFFLINE_PAID" if offline_boarding.cash_collected else "OFFLINE",
-                    "payment_verified": offline_boarding.cash_collected,
-                    "payment_tick": "PAID" if offline_boarding.cash_collected else "PENDING",
-                    "offline_boarding_id": offline_boarding.id,
-                    "offline_completed": offline_boarding.completed_at is not None,
+                    "occupant_kind": "ONLINE",
+                    "journey_stage": journey_stage,
+                    "payment_status": payment_status,
+                    "payment_verified": payment_verified,
+                    "payment_tick": payment_tick,
+                    "booking_id": booking.id,
+                    "held_by_me": False,
+                    "held_until": None,
                 }
             )
 
-        data = [data_by_seat_id[seat["id"]] for seat in all_seats]
+    offline_seats = (
+        OfflineSeat.objects.filter(offline_boarding__trip_id=trip.id)
+        .select_related("offline_boarding")
+        .order_by("-offline_boarding__created_at")
+    )
+    for offline_seat in offline_seats:
+        offline_boarding = offline_seat.offline_boarding
+        if not intervals_overlap(offline_boarding.from_stop_order, offline_boarding.to_stop_order, from_order, to_order):
+            continue
 
-        return Response({
-            "trip_id": trip_id,
-            "from_stop_order": from_order,
-            "to_stop_order": to_order,
-            "fare_per_seat": fare_per_seat,
-            "seats": data,
-        })
+        seat_payload = data_by_seat_id.get(offline_seat.seat_id)
+        if not seat_payload:
+            continue
+        seat_payload.update(
+            {
+                "available": False,
+                "seat_state": "OCCUPIED",
+                "occupant_kind": "OFFLINE",
+                "journey_stage": "dropoff" if not offline_boarding.completed_at else "completed",
+                "payment_status": "OFFLINE_PAID" if offline_boarding.cash_collected else "OFFLINE",
+                "payment_verified": offline_boarding.cash_collected,
+                "payment_tick": "PAID" if offline_boarding.cash_collected else "PENDING",
+                "offline_boarding_id": offline_boarding.id,
+                "offline_completed": offline_boarding.completed_at is not None,
+                "held_by_me": False,
+                "held_until": None,
+            }
+        )
+
+    data = [data_by_seat_id[seat["id"]] for seat in all_seats]
+    return {
+        "trip_id": trip.id,
+        "from_stop_order": from_order,
+        "to_stop_order": to_order,
+        "fare_per_seat": fare_per_seat,
+        "selected_seat_ids": sorted(viewer_hold_ids),
+        "seats": data,
+    }
+
+
+class TripSeatAvailabilityView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, trip_id: int):
+        clear_expired_seat_holds()
+        from_param = request.query_params.get("from", "")
+        to_param = request.query_params.get("to", "")
+
+        trip = Trip.objects.select_related("bus", "route").filter(id=trip_id).first()
+        if not trip:
+            return Response({"detail": "Trip not found"}, status=404)
+
+        # Auto-resolve full route range when params are omitted
+        if not from_param or not to_param:
+            from transport.models import RouteStop
+            route_stop_orders = list(
+                RouteStop.objects.filter(route=trip.route)
+                .order_by("stop_order")
+                .values_list("stop_order", flat=True)
+            )
+            if len(route_stop_orders) >= 2:
+                from_order = route_stop_orders[0]
+                to_order = route_stop_orders[-1]
+            else:
+                return Response({"detail": "Provide valid from and to query params"}, status=400)
+        else:
+            try:
+                from_order = int(from_param)
+                to_order = int(to_param)
+            except (ValueError, TypeError):
+                return Response({"detail": "Provide valid from and to query params"}, status=400)
+            if from_order < 1 or to_order < 2 or to_order <= from_order:
+                return Response({"detail": "Provide valid from and to query params"}, status=400)
+
+        viewer_id = request.user.id if getattr(request.user, "is_authenticated", False) else None
+        return Response(_seat_availability_payload(trip, from_order, to_order, viewer_id=viewer_id))
+
+
+class PassengerSeatHoldView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def post(self, request, trip_id: int):
+        clear_expired_seat_holds()
+        trip = Trip.objects.select_related("route", "bus").filter(id=trip_id, status=Trip.Status.LIVE).first()
+        if not trip:
+            return Response({"detail": "Trip not found or not LIVE"}, status=404)
+
+        existing_booking = (
+            Booking.objects.filter(passenger=request.user, status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED])
+            .exclude(trip_id=trip_id)
+            .order_by("-created_at")
+            .first()
+        )
+        if existing_booking:
+            return Response(
+                {
+                    "detail": "You already have an active ride. Complete or cancel it before reserving seats on another bus.",
+                    "booking_id": existing_booking.id,
+                    "trip_id": existing_booking.trip_id,
+                },
+                status=400,
+            )
+
+        serializer = SeatHoldSyncSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        from_order = serializer.validated_data["from_stop_order"]
+        to_order = serializer.validated_data["to_stop_order"]
+        seat_ids = serializer.validated_data["seat_ids"]
+
+        ensure_bus_seats(trip.bus)
+        valid_bus_seat_ids = set(Seat.objects.filter(bus=trip.bus, id__in=seat_ids).values_list("id", flat=True))
+        if len(valid_bus_seat_ids) != len(seat_ids):
+            return Response({"detail": "One or more seats are invalid for this bus"}, status=400)
+
+        with transaction.atomic():
+            SeatHold.objects.filter(passenger=request.user, trip=trip).delete()
+
+            if seat_ids:
+                try:
+                    validate_seats_available(
+                        trip.id,
+                        from_order,
+                        to_order,
+                        seat_ids,
+                        exclude_passenger_id=request.user.id,
+                    )
+                except ValueError as error:
+                    return Response({"detail": str(error)}, status=400)
+
+                expires_at = timezone.now() + timedelta(minutes=SEAT_HOLD_MINUTES)
+                SeatHold.objects.bulk_create(
+                    [
+                        SeatHold(
+                            trip=trip,
+                            passenger=request.user,
+                            seat_id=seat_id,
+                            from_stop_order=from_order,
+                            to_stop_order=to_order,
+                            expires_at=expires_at,
+                        )
+                        for seat_id in seat_ids
+                    ]
+                )
+
+        payload = _seat_availability_payload(trip, from_order, to_order, viewer_id=request.user.id)
+        payload["hold_expires_in_seconds"] = SEAT_HOLD_MINUTES * 60 if seat_ids else 0
+        return Response(payload, status=200)
 
 
 class CreateBookingView(APIView):
@@ -320,7 +456,7 @@ class CreateBookingView(APIView):
 
         # Segment availability validation
         try:
-            validate_seats_available(trip.id, from_order, to_order, seat_ids)
+            validate_seats_available(trip.id, from_order, to_order, seat_ids, exclude_passenger_id=request.user.id)
         except ValueError as e:
             return Response({"detail": str(e)}, status=400)
 
@@ -346,6 +482,7 @@ class CreateBookingView(APIView):
         )
         for sid in seat_ids:
             BookingSeat.objects.create(booking=booking, seat_id=sid)
+        SeatHold.objects.filter(passenger=request.user, trip=trip).delete()
 
         booking = _booking_queryset().filter(id=booking.id).first()
         emit_booking_event(
@@ -531,6 +668,10 @@ class HelperBoardBookingView(APIView):
     permission_classes = [IsAuthenticated, IsHelper]
 
     def post(self, request, booking_id: int):
+        serializer = HelperBoardBookingActionSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        request_payment = serializer.validated_data["request_payment"]
+
         booking = _booking_queryset().filter(id=booking_id).first()
         if not booking:
             return Response({"detail": "Booking not found."}, status=404)
@@ -543,21 +684,48 @@ class HelperBoardBookingView(APIView):
             )
         if booking.status == Booking.Status.CANCELLED:
             return Response({"detail": "This ride was cancelled by the passenger."}, status=400)
-        if not booking.accepted_by_helper_at:
-            return Response({"detail": "Accept the passenger ride details before boarding."}, status=400)
 
         payment = getattr(booking, "payment", None)
-        if not payment:
-            return Response({"detail": "Passenger must choose a payment method before boarding."}, status=400)
-        if payment.status != "SUCCESS":
-            return Response({"detail": "Payment is not verified yet."}, status=400)
+        payment_is_success = bool(payment and payment.status == "SUCCESS")
+        accepted_during_board = False
+        requested_during_board = False
+        newly_boarded = False
+        update_fields = []
+
+        if not booking.accepted_by_helper_at:
+            booking.accepted_by_helper_at = timezone.now()
+            booking.accepted_by_helper = request.user
+            accepted_during_board = True
+            update_fields.extend(["accepted_by_helper_at", "accepted_by_helper"])
+
+        if request_payment and not payment_is_success:
+            booking.payment_requested_at = timezone.now()
+            booking.payment_requested_by = request.user
+            requested_during_board = True
+            update_fields.extend(["payment_requested_at", "payment_requested_by"])
 
         if not booking.checked_in_at:
             booking.checked_in_at = timezone.now()
             booking.checked_in_by = request.user
             advance_booking_journey_status(booking, Booking.JourneyStatus.BOARDED)
-            booking.save(update_fields=["checked_in_at", "checked_in_by", "journey_status"])
+            newly_boarded = True
+            update_fields.extend(["checked_in_at", "checked_in_by", "journey_status"])
+        elif requested_during_board:
+            advance_booking_journey_status(booking, Booking.JourneyStatus.BOARDED)
+            update_fields.append("journey_status")
+
+        if update_fields:
+            booking.save(update_fields=list(dict.fromkeys(update_fields)))
             booking = _booking_queryset().filter(id=booking.id).first()
+
+        if requested_during_board:
+            emit_booking_event(
+                booking,
+                "PAYMENT_REQUESTED",
+                actor=request.user,
+                message="Payment request sent to the passenger while they board the bus.",
+            )
+        if newly_boarded:
             emit_booking_event(
                 booking,
                 "BOARDING_CONFIRMED",
@@ -565,8 +733,17 @@ class HelperBoardBookingView(APIView):
                 message="Boarding confirmed. Your ride is now marked as boarded.",
             )
 
+        if request_payment and newly_boarded and not payment_is_success:
+            message = "Passenger boarded and payment request sent to the passenger."
+        elif request_payment and not payment_is_success:
+            message = "Passenger is already onboard. Payment request sent to the passenger."
+        elif newly_boarded:
+            message = "Passenger marked as boarded."
+        else:
+            message = "Passenger is already onboard."
+
         return Response(
-            {"message": "Passenger marked as boarded.", "booking": HelperBookingTicketSerializer(booking).data},
+            {"message": message, "booking": HelperBookingTicketSerializer(booking).data},
             status=200,
         )
 
@@ -594,7 +771,8 @@ class HelperRequestBookingPaymentView(APIView):
         payment = getattr(booking, "payment", None)
         if payment and payment.status == "SUCCESS":
             if accepted_during_request:
-                advance_booking_journey_status(booking, Booking.JourneyStatus.PAID)
+                next_status = Booking.JourneyStatus.BOARDED if booking.checked_in_at else Booking.JourneyStatus.PAID
+                advance_booking_journey_status(booking, next_status)
                 booking.save(update_fields=["accepted_by_helper_at", "accepted_by_helper", "journey_status"])
                 booking = _booking_queryset().filter(id=booking.id).first()
             return Response(
@@ -607,7 +785,8 @@ class HelperRequestBookingPaymentView(APIView):
 
         booking.payment_requested_at = timezone.now()
         booking.payment_requested_by = request.user
-        advance_booking_journey_status(booking, Booking.JourneyStatus.PAYMENT_REQUESTED)
+        next_status = Booking.JourneyStatus.BOARDED if booking.checked_in_at else Booking.JourneyStatus.PAYMENT_REQUESTED
+        advance_booking_journey_status(booking, next_status)
         update_fields = ["payment_requested_at", "payment_requested_by", "journey_status"]
         if accepted_during_request:
             update_fields.extend(["accepted_by_helper_at", "accepted_by_helper"])
@@ -617,6 +796,8 @@ class HelperRequestBookingPaymentView(APIView):
         message = "Payment request sent to the passenger. Ask them to choose a payment option in MetroBus."
         if accepted_during_request:
             message = "Ride accepted and payment request sent to the passenger. Ask them to choose a payment option in MetroBus."
+        elif booking.checked_in_at:
+            message = "Passenger is onboard. Payment request sent to the passenger. Ask them to choose a payment option in MetroBus."
 
         emit_booking_event(
             booking,

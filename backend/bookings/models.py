@@ -135,6 +135,33 @@ class BookingSeat(models.Model):
         return f"{self.booking_id} - {self.seat.seat_no}"
 
 
+class SeatHold(models.Model):
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="seat_holds")
+    passenger = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="seat_holds")
+    seat = models.ForeignKey(Seat, on_delete=models.PROTECT, related_name="seat_holds")
+    from_stop_order = models.PositiveIntegerField()
+    to_stop_order = models.PositiveIntegerField()
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["expires_at", "created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(to_stop_order__gt=models.F("from_stop_order")),
+                name="chk_seat_hold_to_gt_from",
+            ),
+            models.UniqueConstraint(
+                fields=["trip", "passenger", "seat", "from_stop_order", "to_stop_order"],
+                name="uniq_passenger_trip_seat_hold_scope",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Hold trip {self.trip_id} seat {self.seat_id} for {self.passenger_id}"
+
+
 class OfflineBoarding(models.Model):
     trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="offline_boardings")
     helper = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="offline_boardings")

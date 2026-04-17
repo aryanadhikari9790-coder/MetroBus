@@ -115,7 +115,10 @@ def _sync_booking_payment_state(booking, *, event_type=None, message="", actor=N
 
     update_fields = []
     if payment and payment.status == Payment.Status.SUCCESS:
-        if booking.accepted_by_helper_at and not booking.checked_in_at and booking.status == Booking.Status.CONFIRMED:
+        if booking.checked_in_at and booking.status == Booking.Status.CONFIRMED:
+            advance_booking_journey_status(booking, Booking.JourneyStatus.BOARDED)
+            update_fields.append("journey_status")
+        elif booking.accepted_by_helper_at and not booking.checked_in_at and booking.status == Booking.Status.CONFIRMED:
             booking.checked_in_at = timezone.now()
             booking.checked_in_by = booking.accepted_by_helper or actor
             advance_booking_journey_status(booking, Booking.JourneyStatus.BOARDED)

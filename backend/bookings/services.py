@@ -1,7 +1,8 @@
 from django.db.models import Q
+from django.utils import timezone
 from decimal import Decimal
 from transport.models import RouteFare
-from .models import Booking, BookingSeat, OfflineSeat
+from .models import Booking, BookingSeat, OfflineSeat, SeatHold
 
 JOURNEY_STATUS_ORDER = {
     Booking.JourneyStatus.BOOKED: 1,
@@ -30,12 +31,28 @@ def get_fare_for_segment(route_id: int, from_order: int, to_order: int) -> Decim
     return fare.fare_amount
 
 
-def get_taken_seat_ids_for_trip(trip_id: int, from_order: int, to_order: int) -> set[int]:
+def clear_expired_seat_holds(*, now=None) -> None:
+    snapshot = now or timezone.now()
+    SeatHold.objects.filter(expires_at__lte=snapshot).delete()
+
+
+def get_active_seat_holds_for_trip(trip_id: int, from_order: int, to_order: int):
+    clear_expired_seat_holds()
+    holds = SeatHold.objects.filter(trip_id=trip_id, expires_at__gt=timezone.now()).select_related("passenger")
+    return [
+        hold
+        for hold in holds
+        if intervals_overlap(hold.from_stop_order, hold.to_stop_order, from_order, to_order)
+    ]
+
+
+def get_taken_seat_ids_for_trip(trip_id: int, from_order: int, to_order: int, *, exclude_passenger_id=None) -> set[int]:
     """
     Returns seat_ids that are NOT available for [from_order,to_order)
     considering:
     - confirmed bookings seat segments
     - offline seats seat segments
+    - active temporary passenger seat holds
     """
     taken = set()
 
@@ -60,11 +77,16 @@ def get_taken_seat_ids_for_trip(trip_id: int, from_order: int, to_order: int) ->
         if intervals_overlap(ob.from_stop_order, ob.to_stop_order, from_order, to_order):
             taken.add(os.seat_id)
 
+    for hold in get_active_seat_holds_for_trip(trip_id, from_order, to_order):
+        if exclude_passenger_id and hold.passenger_id == exclude_passenger_id:
+            continue
+        taken.add(hold.seat_id)
+
     return taken
 
 
-def validate_seats_available(trip_id: int, from_order: int, to_order: int, seat_ids: list[int]) -> None:
-    taken = get_taken_seat_ids_for_trip(trip_id, from_order, to_order)
+def validate_seats_available(trip_id: int, from_order: int, to_order: int, seat_ids: list[int], *, exclude_passenger_id=None) -> None:
+    taken = get_taken_seat_ids_for_trip(trip_id, from_order, to_order, exclude_passenger_id=exclude_passenger_id)
     conflict = [sid for sid in seat_ids if sid in taken]
     if conflict:
         raise ValueError(f"Seats not available: {conflict}")

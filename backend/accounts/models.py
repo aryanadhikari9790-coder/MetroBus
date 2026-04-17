@@ -58,6 +58,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     school_location_label = models.CharField(max_length=255, blank=True, default="")
     school_lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     school_lng = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    email_verified = models.BooleanField(default=False)
 
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.PASSENGER)
 
@@ -75,12 +76,13 @@ class User(AbstractBaseUser, PermissionsMixin):
         return f"{self.full_name} ({self.phone})"
 
 
-class PhoneOTP(models.Model):
+class AuthOTP(models.Model):
     class Purpose(models.TextChoices):
-        REGISTER = "REGISTER", "Passenger registration"
-        PASSWORD_RESET = "PASSWORD_RESET", "Passenger password reset"
+        REGISTER = "REGISTER", "Account registration"
+        PASSWORD_RESET = "PASSWORD_RESET", "Password reset"
 
-    phone = models.CharField(max_length=20, db_index=True)
+    phone = models.CharField(max_length=20, db_index=True, null=True, blank=True)
+    email = models.EmailField(db_index=True, null=True, blank=True)
     purpose = models.CharField(max_length=20, choices=Purpose.choices, default=Purpose.REGISTER)
     code_hash = models.CharField(max_length=255)
     expires_at = models.DateTimeField()
