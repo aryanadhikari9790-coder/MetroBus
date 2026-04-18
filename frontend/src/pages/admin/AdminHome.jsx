@@ -861,6 +861,1322 @@ export default function AdminHome() {
   if (loading) return <div style={theme} className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#fff5eb_0%,var(--bg)_42%,var(--bg-soft)_100%)]"><div className="text-center"><div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" /><p className="mt-4 text-sm font-semibold text-[var(--muted)]">Loading MetroBus admin dashboard...</p></div></div>;
 
   const rowBg = "bg-[var(--surface-muted)] border-[var(--border)]";
+  const mapTileUrl = isDark
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  const avatarInitials = (name) => (name || "MB").split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+
+  const renderUserForm = (role) => (
+    <GlassCard>
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <SLabel>{editingUserId ? `Edit ${role}` : `Add ${role}`}</SLabel>
+          <p className="text-xl font-black text-[var(--text)]">{role} management form</p>
+        </div>
+        {editingUserId ? <Btn tone="ghost" onClick={resetUserForm} className="!px-4 !py-2">Cancel</Btn> : null}
+      </div>
+      {uMgmtMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{uMgmtMsg}</p> : null}
+      <div className="grid gap-4">
+        <InputField label="Full Name" value={uName} onChange={setUName} placeholder="Ramesh Kumar" />
+        <div className="grid gap-4 xl:grid-cols-2">
+          <InputField label="Phone" value={uPhone} onChange={setUPhone} placeholder="9800000000" />
+          <InputField label="Email" value={uEmail} onChange={setUEmail} placeholder="ramesh@example.com" />
+        </div>
+        <InputField label="Address" value={uAddress} onChange={setUAddress} placeholder="Pokhara-8, Nepal" />
+        <InputField
+          label={editingUserId ? "Password (Optional)" : "Password"}
+          value={uPass}
+          onChange={setUPass}
+          placeholder={editingUserId ? "Leave blank to keep current password" : "Minimum 6 characters"}
+          type="password"
+        />
+        <FileField label="Profile Photo" file={uOfficialPhoto} onChange={setUOfficialPhoto} />
+        {role === "Driver" ? (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <InputField label="License Number" value={uLicenseNumber} onChange={setULicenseNumber} placeholder="NP-DRV-009812" />
+            <FileField label="License Photo" file={uLicensePhoto} onChange={setULicensePhoto} />
+          </div>
+        ) : null}
+        <Btn tone="success" onClick={saveUser} disabled={uMgmtBusy} className="w-full !py-4">
+          {uMgmtBusy ? (editingUserId ? "Saving..." : "Creating...") : (editingUserId ? `Save ${role}` : `Add ${role}`)}
+        </Btn>
+      </div>
+    </GlassCard>
+  );
+
+  const renderUserTable = (items, title, selectedId, setSelectedId, role) => (
+    <GlassCard className="h-full">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+          <SLabel>{title}</SLabel>
+          <p className="text-xl font-black text-[var(--text)]">{items.length} records</p>
+        </div>
+        <Pill color="indigo">{role.toUpperCase()}</Pill>
+      </div>
+      <div className="overflow-hidden rounded-[1.2rem] border border-[var(--border)]">
+        <div className="grid grid-cols-[1.4fr_1fr_0.8fr_0.8fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
+          <span>Profile</span>
+          <span>Contact</span>
+          <span>Status</span>
+          <span>Actions</span>
+        </div>
+        <div className="max-h-[34rem] overflow-y-auto bg-[var(--surface-strong)]">
+          {!items.length ? (
+            <div className="px-4 py-8 text-sm text-[var(--muted)]">No {role.toLowerCase()} records match the current search.</div>
+          ) : items.map((staffUser) => (
+            <div
+              key={staffUser.id}
+              className={`grid grid-cols-[1.4fr_1fr_0.8fr_0.8fr] gap-3 border-t border-[var(--border)] px-4 py-4 text-sm ${selectedId === staffUser.id ? "bg-[var(--accent-soft)]" : "bg-transparent"}`}
+            >
+              <button type="button" className="flex min-w-0 items-center gap-3 text-left" onClick={() => setSelectedId(staffUser.id)}>
+                {staffUser.official_photo_url ? (
+                  <img src={staffUser.official_photo_url} alt={staffUser.full_name} className="h-11 w-11 rounded-2xl object-cover" />
+                ) : (
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--accent-soft)] text-xs font-black text-[var(--primary)]">{avatarInitials(staffUser.full_name)}</div>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate font-bold text-[var(--text)]">{staffUser.full_name}</p>
+                  <p className="truncate text-xs text-[var(--muted)]">{staffUser.address || "No address added"}</p>
+                </div>
+              </button>
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-[var(--text)]">{staffUser.phone}</p>
+                <p className="truncate text-xs text-[var(--muted)]">{staffUser.email || "No email"}</p>
+              </div>
+              <div className="space-y-2">
+                <Pill color={staffUser.is_active ? "emerald" : "slate"}>{staffUser.is_active ? "Active" : "Inactive"}</Pill>
+                {role === "Driver" ? (
+                  <Pill color={staffUser.license_verified ? "emerald" : staffUser.license_photo_url ? "amber" : "slate"}>
+                    {staffUser.license_verified ? "License ok" : staffUser.license_photo_url ? "License review" : "No license"}
+                  </Pill>
+                ) : (
+                  <Pill color={staffUser.official_photo_verified ? "emerald" : staffUser.official_photo_url ? "amber" : "slate"}>
+                    {staffUser.official_photo_verified ? "Photo ok" : staffUser.official_photo_url ? "Photo review" : "No photo"}
+                  </Pill>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Btn tone="ghost" onClick={() => startEditingUser(staffUser)} className="!px-3 !py-2 text-xs">Edit</Btn>
+                {user?.id !== staffUser.id ? <Btn tone="danger" onClick={() => deleteUser(staffUser)} disabled={userDeleteBusyId === staffUser.id} className="!px-3 !py-2 text-xs">{userDeleteBusyId === staffUser.id ? "Deleting..." : "Delete"}</Btn> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </GlassCard>
+  );
+
+  const renderUserPreview = (staffUser, role) => (
+    <GlassCard className="h-full">
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+          <SLabel>{role} Preview</SLabel>
+          <p className="text-xl font-black text-[var(--text)]">{staffUser ? staffUser.full_name : `Select a ${role.toLowerCase()}`}</p>
+        </div>
+        {staffUser ? <Pill color={staffUser.is_active ? "emerald" : "slate"}>{staffUser.is_active ? "Active" : "Inactive"}</Pill> : null}
+      </div>
+      {!staffUser ? (
+        <p className="text-sm text-[var(--muted)]">Choose a {role.toLowerCase()} from the table to view their profile, verification state, and admin actions.</p>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-start gap-4">
+            {staffUser.official_photo_url ? (
+              <img src={staffUser.official_photo_url} alt={staffUser.full_name} className="h-20 w-20 rounded-[1.4rem] object-cover" />
+            ) : (
+              <div className="flex h-20 w-20 items-center justify-center rounded-[1.4rem] bg-[var(--accent-soft)] text-xl font-black text-[var(--primary)]">{avatarInitials(staffUser.full_name)}</div>
+            )}
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-bold text-[var(--text)]">{staffUser.phone}</p>
+              <p className="break-all text-sm text-[var(--muted)]">{staffUser.email || "No email provided"}</p>
+              <p className="text-sm text-[var(--muted)]">{staffUser.address || "No address recorded"}</p>
+              {staffUser.license_number ? <p className="text-sm font-semibold text-[var(--text)]">License: {staffUser.license_number}</p> : null}
+            </div>
+          </div>
+          {(staffUser.official_photo_url || staffUser.license_photo_url) ? (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {staffUser.official_photo_url ? <img src={staffUser.official_photo_url} alt={`${staffUser.full_name} profile`} className="h-36 w-full rounded-[1.2rem] object-cover" /> : <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>No official photo</div>}
+              {role === "Driver" ? (
+                staffUser.license_photo_url ? <img src={staffUser.license_photo_url} alt={`${staffUser.full_name} license`} className="h-36 w-full rounded-[1.2rem] object-cover" /> : <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>No license photo</div>
+              ) : (
+                <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>License not required</div>
+              )}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {staffUser.official_photo_url ? (
+              <Btn tone="ghost" onClick={() => reviewUser(staffUser, { official_photo_verified: !staffUser.official_photo_verified })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
+                {staffUser.official_photo_verified ? "Revoke photo" : "Verify photo"}
+              </Btn>
+            ) : null}
+            {role === "Driver" && staffUser.license_photo_url ? (
+              <Btn tone="ghost" onClick={() => reviewUser(staffUser, { license_verified: !staffUser.license_verified })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
+                {staffUser.license_verified ? "Revoke license" : "Verify license"}
+              </Btn>
+            ) : null}
+            {user?.id !== staffUser.id ? (
+              <Btn tone={staffUser.is_active ? "ghost" : "success"} onClick={() => reviewUser(staffUser, { is_active: !staffUser.is_active })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
+                {staffUser.is_active ? "Set inactive" : "Activate account"}
+              </Btn>
+            ) : <Pill color="indigo">Current admin</Pill>}
+          </div>
+        </div>
+      )}
+    </GlassCard>
+  );
+
+  const renderSectionContent = () => {
+    if (activeSection === "dashboard") {
+      return (
+        <div className="space-y-6">
+          <div className="grid gap-4 xl:grid-cols-3 2xl:grid-cols-5">
+            <StatCard label="Total Buses" value={busList.length} sub={`${fleetStatus.active} active | ${fleetStatus.inactive} inactive`} />
+            <StatCard label="Total Drivers" value={driverUsers.length} sub={`${filteredDrivers.length} visible in current search`} accent="text-[var(--primary)]" />
+            <StatCard label="Total Helpers" value={helperUsers.length} sub={`${filteredHelpers.length} visible in current search`} />
+            <StatCard label="Total Routes" value={recentRoutes.length} sub={`${builderStops.length} stations mapped`} accent="text-[var(--accent-strong)]" />
+            <StatCard label="Total Passengers" value={roleCounts.PASSENGER || 0} sub={`${trips.live || 0} live trips right now`} />
+          </div>
+          <div className="grid gap-4 xl:grid-cols-4">
+            <StatCard label="Today's Trips" value={trips.today || trips.live || 0} sub={`${trips.total || 0} total recorded trips`} accent="text-[var(--success)]" />
+            <StatCard label="Total Earnings" value={fmtMoney(payments.revenue_success || 0)} sub={`${payments.success || 0} successful payments`} accent="text-[var(--primary)]" />
+            <StatCard label="Occupancy Rate" value={`${overallOccupancyRate}%`} sub={`${rideOps.onboard || 0} onboard | ${rideOps.awaiting_payment || 0} awaiting payment`} accent="text-[var(--accent-strong)]" />
+            <StatCard label="Total Stations" value={builderStops.length} sub={`${recentStops.length} recent station records`} />
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Earnings Trend</SLabel>
+                  <p className="text-2xl font-black text-[var(--text)]">MetroBus revenue movement</p>
+                </div>
+                <Pill color="emerald">{reportRange}</Pill>
+              </div>
+              <SimpleLineChart points={earningsTrend} />
+              <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-[var(--muted)] xl:grid-cols-4">
+                {earningsTrend.slice(-4).map((point) => <div key={point.label} className={`rounded-[1rem] border px-3 py-3 ${rowBg}`}>{point.label}: {fmtMoney(point.value)}</div>)}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Fleet Snapshot</SLabel>
+                  <p className="text-2xl font-black text-[var(--text)]">Operations health</p>
+                </div>
+                <Pill color={fleetStatus.delayed ? "amber" : "emerald"}>{fleetStatus.delayed} delayed</Pill>
+              </div>
+              <div className="grid gap-3">
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Active buses</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{fleetStatus.active}</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Inactive buses</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{fleetStatus.inactive}</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Notifications</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{notificationCount}</p>
+                </div>
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr_0.95fr]">
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Route-Wise Occupancy</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Demand by route</p>
+                </div>
+                <Pill color="indigo">{routeOccupancyData.length} routes</Pill>
+              </div>
+              <SimpleBarChart items={routeOccupancyData.length ? routeOccupancyData : [{ label: "No data", value: 0 }]} color="var(--accent)" />
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Passenger Distribution</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">User mix across MetroBus</p>
+                </div>
+                <Pill color="sky">{overview?.users_total || 0} users</Pill>
+              </div>
+              <SimpleDonutChart items={passengerDistribution} />
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Upcoming Assignments</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Next planned departures</p>
+                </div>
+                <Pill color="amber">{upcomingSchedules.length} scheduled</Pill>
+              </div>
+              <div className="space-y-3">
+                {!upcomingSchedules.length ? <p className="text-sm text-[var(--muted)]">No planned assignments yet.</p> : upcomingSchedules.map((schedule) => (
+                  <div key={schedule.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{schedule.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{schedule.bus_plate} | {schedule.driver_name || "--"} | {schedule.helper_name || "--"}</p>
+                      </div>
+                      <Pill color="amber">{schedule.status}</Pill>
+                    </div>
+                    <p className="mt-3 text-xs text-[var(--muted)]">Starts {fmt(schedule.scheduled_start_time)}</p>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Recent Activity</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">System events and updates</p>
+                </div>
+                <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); loadSched(); loadBuses(); loadUsers(); }} className="!px-4 !py-2">Refresh</Btn>
+              </div>
+              <div className="space-y-3">
+                {!recentActivities.length ? <p className="text-sm text-[var(--muted)]">No recent activity yet.</p> : recentActivities.map((activity) => (
+                  <div key={activity.id} className={`flex items-start justify-between gap-3 rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div>
+                      <p className="font-bold text-[var(--text)]">{activity.title}</p>
+                      <p className="mt-1 text-sm text-[var(--muted)]">{activity.subtitle}</p>
+                    </div>
+                    <div className="text-right">
+                      <Pill color={activity.tone}>{new Date(activity.time).toLocaleDateString()}</Pill>
+                      <p className="mt-2 text-xs text-[var(--muted)]">{fmt(activity.time)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Live Operations</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Trips happening now</p>
+                </div>
+                <Pill color={dashboard?.live_trips?.length ? "emerald" : "slate"}>{dashboard?.live_trips?.length || 0} live</Pill>
+              </div>
+              <div className="space-y-3">
+                {!dashboard?.live_trips?.length ? <p className="text-sm text-[var(--muted)]">No live trips right now.</p> : dashboard.live_trips.map((trip) => (
+                  <div key={trip.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{trip.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">Bus {trip.bus_plate} | {trip.driver_name || "--"} | {trip.helper_name || "--"}</p>
+                      </div>
+                      <Pill color={trip.deviation_mode ? "amber" : "emerald"}>{trip.deviation_mode ? "Deviation" : "On route"}</Pill>
+                    </div>
+                    <div className="mt-3 grid gap-2 xl:grid-cols-2">
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Started {fmt(trip.started_at)}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS data yet"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSection === "drivers") {
+      return (
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_1.25fr_0.9fr]">
+          {renderUserForm("Driver")}
+          {renderUserTable(filteredDrivers, "Drivers Table", selectedDriver?.id, setSelectedDriverId, "Driver")}
+          {renderUserPreview(selectedDriver, "Driver")}
+        </div>
+      );
+    }
+
+    if (activeSection === "helpers") {
+      return (
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_1.25fr_0.9fr]">
+          {renderUserForm("Helper")}
+          {renderUserTable(filteredHelpers, "Helpers Table", selectedHelper?.id, setSelectedHelperId, "Helper")}
+          {renderUserPreview(selectedHelper, "Helper")}
+        </div>
+      );
+    }
+
+    if (activeSection === "buses") {
+      return (
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_1.15fr_0.9fr]">
+          <GlassCard>
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <SLabel>{editingBusId ? "Edit Bus" : "Add Bus"}</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">Fleet registration</p>
+              </div>
+              {editingBusId ? <Btn tone="ghost" onClick={resetBusForm} className="!px-4 !py-2">Cancel</Btn> : null}
+            </div>
+            {busMgmtMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{busMgmtMsg}</p> : null}
+            <div className="grid gap-4">
+              <InputField label="Bus Name" value={busName} onChange={setBusName} placeholder="MetroBus Lakeside Express" />
+              <InputField label="Plate Number" value={busPlate} onChange={setBusPlate} placeholder="BA 1 CHA 2233" />
+              <div className="grid gap-4 xl:grid-cols-2">
+                <InputField label="Make Year" value={busYear} onChange={setBusYear} placeholder="2024" type="number" />
+                <SelectField label="Condition" value={busCondition} onChange={setBusCondition} options={[{ value: "NEW", label: "New" }, { value: "NORMAL", label: "Normal" }, { value: "OLD", label: "Old" }]} />
+              </div>
+              <div className="grid gap-4 xl:grid-cols-2">
+                <InputField label="Seat Rows" value={busRows} onChange={setBusRows} placeholder="9" type="number" />
+                <InputField label="Seat Columns" value={busCols} onChange={setBusCols} placeholder="4" type="number" />
+              </div>
+              <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Seat arrangement preview</p>
+                <p className="mt-2 text-3xl font-black text-[var(--text)]">{busCapacityPreview} seats</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">{busRows} rows x {busCols} columns</p>
+              </div>
+              <FileField label="Exterior Photo" file={busExteriorPhoto} onChange={setBusExteriorPhoto} />
+              <FileField label="Interior Photo" file={busInteriorPhoto} onChange={setBusInteriorPhoto} />
+              <FileField label="Seats Photo" file={busSeatPhoto} onChange={setBusSeatPhoto} />
+              <button type="button" onClick={() => setBusActive((value) => !value)} className={`rounded-[1rem] border px-4 py-3 text-sm font-black ${busActive ? "border-transparent bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white" : "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]"}`}>
+                {busActive ? "Active bus" : "Inactive bus"}
+              </button>
+              <Btn tone="primary" onClick={saveBus} disabled={busMgmtBusy} className="w-full !py-4">
+                {busMgmtBusy ? (editingBusId ? "Saving..." : "Creating...") : (editingBusId ? "Save Bus Changes" : "Add Bus")}
+              </Btn>
+            </div>
+          </GlassCard>
+          <GlassCard className="h-full">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <SLabel>Fleet Table</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">{filteredBuses.length} buses</p>
+              </div>
+              <Pill color="sky">{fleetStatus.active} active</Pill>
+            </div>
+            <div className="overflow-hidden rounded-[1.2rem] border border-[var(--border)]">
+              <div className="grid grid-cols-[1.3fr_0.7fr_0.85fr_0.85fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
+                <span>Bus</span>
+                <span>Capacity</span>
+                <span>Assignment</span>
+                <span>Actions</span>
+              </div>
+              <div className="max-h-[34rem] overflow-y-auto bg-[var(--surface-strong)]">
+                {!filteredBuses.length ? <div className="px-4 py-8 text-sm text-[var(--muted)]">No buses match the current search.</div> : filteredBuses.map((bus) => (
+                  <div key={bus.id} className={`grid grid-cols-[1.3fr_0.7fr_0.85fr_0.85fr] gap-3 border-t border-[var(--border)] px-4 py-4 ${selectedBusPreview?.id === bus.id ? "bg-[var(--accent-soft)]" : ""}`}>
+                    <button type="button" className="min-w-0 text-left" onClick={() => setSelectedBusId(bus.id)}>
+                      <p className="truncate font-bold text-[var(--text)]">{bus.display_name || bus.plate_number}</p>
+                      <p className="mt-1 truncate text-xs text-[var(--muted)]">{bus.plate_number} | {bus.condition} | {bus.model_year || "Year N/A"}</p>
+                    </button>
+                    <div>
+                      <p className="font-bold text-[var(--text)]">{bus.capacity}</p>
+                      <p className="text-xs text-[var(--muted)]">{bus.layout_rows} x {bus.layout_columns}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-[var(--text)]">{bus.driver_name || "Driver unassigned"}</p>
+                      <p className="text-xs text-[var(--muted)]">{bus.helper_name || "Helper unassigned"}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Btn tone="ghost" onClick={() => startEditingBus(bus)} className="!px-3 !py-2 text-xs">Edit</Btn>
+                      <Btn tone="danger" onClick={() => deleteBus(bus)} disabled={busDeleteBusyId === bus.id} className="!px-3 !py-2 text-xs">{busDeleteBusyId === bus.id ? "Deleting..." : "Delete"}</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </GlassCard>
+          <GlassCard className="h-full">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <SLabel>Bus Detail</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">{selectedBusPreview ? (selectedBusPreview.display_name || selectedBusPreview.plate_number) : "Select a bus"}</p>
+              </div>
+              {selectedBusPreview ? <Pill color={selectedBusPreview.is_active ? "emerald" : "slate"}>{selectedBusPreview.is_active ? "Active" : "Inactive"}</Pill> : null}
+            </div>
+            {!selectedBusPreview ? (
+              <p className="text-sm text-[var(--muted)]">Choose a bus from the table to inspect its seat layout, assignment, and photos.</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Assigned driver</p>
+                    <p className="mt-2 text-sm font-bold text-[var(--text)]">{selectedBusPreview.driver_name || "Unassigned"}</p>
+                  </div>
+                  <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Assigned helper</p>
+                    <p className="mt-2 text-sm font-bold text-[var(--text)]">{selectedBusPreview.helper_name || "Unassigned"}</p>
+                  </div>
+                </div>
+                <SeatLayoutPreview rows={selectedBusPreview.layout_rows} columns={selectedBusPreview.layout_columns} capacity={selectedBusPreview.capacity} />
+                {selectedBusSchedule ? (
+                  <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Upcoming route</p>
+                    <p className="mt-2 text-sm font-bold text-[var(--text)]">{selectedBusSchedule.route_name}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">Starts {fmt(selectedBusSchedule.scheduled_start_time)}</p>
+                  </div>
+                ) : null}
+                {(selectedBusPreview.exterior_photo_url || selectedBusPreview.interior_photo_url || selectedBusPreview.seat_photo_url) ? (
+                  <div className="grid gap-3">
+                    {[selectedBusPreview.exterior_photo_url, selectedBusPreview.interior_photo_url, selectedBusPreview.seat_photo_url].filter(Boolean).map((photoUrl, index) => (
+                      <img key={`${selectedBusPreview.id}-${index}`} src={photoUrl} alt={`${selectedBusPreview.display_name || selectedBusPreview.plate_number} ${index + 1}`} className="h-32 w-full rounded-[1.2rem] object-cover" />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </GlassCard>
+        </div>
+      );
+    }
+
+    if (activeSection === "stops") {
+      return (
+        <div className="grid gap-5 xl:grid-cols-[0.92fr_1.25fr_0.88fr]">
+          <GlassCard>
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <SLabel>Add Stop / Station</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">Pin new station on map</p>
+              </div>
+              {stopMsg ? <Pill color="emerald">Saved</Pill> : null}
+            </div>
+            {stopMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{stopMsg}</p> : null}
+            <div className="grid gap-4">
+              <InputField label="Stop Name" value={stopName} onChange={setStopName} placeholder="Bindhyabasini Gate" />
+              <div className="grid gap-4 xl:grid-cols-2">
+                <InputField label="Latitude" value={stopLat} onChange={setStopLat} placeholder="28.233421" />
+                <InputField label="Longitude" value={stopLng} onChange={setStopLng} placeholder="83.996812" />
+              </div>
+              <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Pinned coordinate</p>
+                <p className="mt-2 text-sm font-bold text-[var(--text)]">{stopLat && stopLng ? `${stopLat}, ${stopLng}` : "Tap the map to pin a stop coordinate."}</p>
+              </div>
+              <button type="button" onClick={() => setStopActive((value) => !value)} className={`rounded-[1rem] border px-4 py-3 text-sm font-black ${stopActive ? "border-transparent bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white" : "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]"}`}>
+                {stopActive ? "Active station" : "Inactive station"}
+              </button>
+              <div className="grid gap-3 xl:grid-cols-2">
+                <Btn tone="ghost" onClick={clearStopForm} className="w-full !py-4">Clear</Btn>
+                <Btn tone="success" onClick={createStop} disabled={stopBusy} className="w-full !py-4">{stopBusy ? "Saving..." : "Add Stop"}</Btn>
+              </div>
+            </div>
+          </GlassCard>
+          <GlassCard className="overflow-hidden !p-0">
+            <div className="border-b border-[var(--border)] px-5 py-5">
+              <SLabel>Interactive Stop Map</SLabel>
+              <p className="text-xl font-black text-[var(--text)]">MetroBus stop network</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Tap the map to set coordinates, then save the station.</p>
+            </div>
+            <div className="h-[42rem]">
+              <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom className="h-full w-full">
+                <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={mapTileUrl} />
+                <MapViewport points={mapPts} />
+                <StopMapPicker onPick={handleMapPick} />
+                {builderStops.map((stop) => {
+                  const lat = Number(stop.lat);
+                  const lng = Number(stop.lng);
+                  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                  const isSelected = selectedStopPreview?.id === stop.id;
+                  return (
+                    <CircleMarker
+                      key={stop.id}
+                      center={[lat, lng]}
+                      radius={isSelected ? 9 : 6}
+                      eventHandlers={{ click: () => setSelectedStopId(stop.id) }}
+                      pathOptions={{ color: isSelected ? "#ff8a1f" : "#4b2666", fillColor: isSelected ? "#ff8a1f" : "#4b2666", fillOpacity: 0.9 }}
+                    >
+                      <Popup>
+                        <div className="text-sm font-semibold text-slate-900">{stop.name}</div>
+                        <div className="mt-1 text-xs text-slate-500">{lat.toFixed(4)}, {lng.toFixed(4)}</div>
+                      </Popup>
+                    </CircleMarker>
+                  );
+                })}
+              </MapContainer>
+            </div>
+          </GlassCard>
+          <GlassCard className="h-full">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <SLabel>Station List</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">{filteredStops.length} mapped stops</p>
+              </div>
+              <Pill color="sky">{recentStops.length} recent</Pill>
+            </div>
+            <div className="space-y-3">
+              {!filteredStops.length ? <p className="text-sm text-[var(--muted)]">No stations match the current search.</p> : filteredStops.map((stop) => (
+                <button key={stop.id} type="button" onClick={() => setSelectedStopId(stop.id)} className={`w-full rounded-[1.1rem] border px-4 py-4 text-left ${selectedStopPreview?.id === stop.id ? "border-transparent bg-[var(--accent-soft)]" : rowBg}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-[var(--text)]">{stop.name}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">{Number(stop.lat).toFixed(4)}, {Number(stop.lng).toFixed(4)}</p>
+                    </div>
+                    <Pill color={stop.is_active ? "emerald" : "slate"}>{stop.is_active ? "Active" : "Inactive"}</Pill>
+                  </div>
+                </button>
+              ))}
+            </div>
+            {selectedStopPreview ? (
+              <div className={`mt-4 rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Selected station</p>
+                <p className="mt-2 font-bold text-[var(--text)]">{selectedStopPreview.name}</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">{Number(selectedStopPreview.lat).toFixed(6)}, {Number(selectedStopPreview.lng).toFixed(6)}</p>
+                <p className="mt-3 text-xs text-[var(--muted)]">Creation and route usage are live. Stop edit and delete can be wired in once the stop detail backend endpoint is exposed.</p>
+              </div>
+            ) : null}
+          </GlassCard>
+        </div>
+      );
+    }
+
+    if (activeSection === "routes") {
+      return (
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_1.2fr_0.9fr]">
+          <div className="space-y-5">
+            <GlassCard>
+              <div className="mb-5 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>{editingRouteId ? "Edit Route" : "Route Builder"}</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Create and shape route paths</p>
+                </div>
+                {editingRouteId ? <Btn tone="ghost" onClick={clearRoute} className="!px-4 !py-2">Cancel</Btn> : null}
+              </div>
+              {routeMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{routeMsg}</p> : null}
+              <div className="grid gap-4">
+                <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" />
+                <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
+                  <InputField label="City" value={routeCity} onChange={setRouteCity} placeholder="Pokhara" />
+                  <button type="button" onClick={() => setRouteActive((value) => !value)} className={`rounded-[1rem] border px-4 py-3 text-sm font-black ${routeActive ? "border-transparent bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white" : "border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]"}`}>
+                    {routeActive ? "Active route" : "Inactive route"}
+                  </button>
+                </div>
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Selected Stops</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">{selectedStops.length} stops in sequence</p>
+                </div>
+                <Btn tone="ghost" onClick={clearRoute} className="!px-4 !py-2">Clear</Btn>
+              </div>
+              <div className="space-y-3">
+                {!selectedStops.length ? <p className="text-sm text-[var(--muted)]">Click map markers to add route stops in order.</p> : selectedStops.map((stop, index) => (
+                  <div key={stop.id} className={`flex items-center gap-3 rounded-[1.1rem] border px-4 py-3 ${rowBg}`}>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent-soft)] text-xs font-black text-[var(--primary)]">{index + 1}</div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-bold text-[var(--text)]">{stop.name}</p>
+                      <p className="text-xs text-[var(--muted)]">{Number(stop.lat).toFixed(4)}, {Number(stop.lng).toFixed(4)}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Btn tone="ghost" onClick={() => moveStop(index, -1)} className="!px-3 !py-2 text-xs">Up</Btn>
+                      <Btn tone="ghost" onClick={() => moveStop(index, 1)} className="!px-3 !py-2 text-xs">Down</Btn>
+                      <Btn tone="danger" onClick={() => toggleStop(stop.id)} className="!px-3 !py-2 text-xs">Remove</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            {selectedStops.length >= 2 ? (
+              <GlassCard>
+                <SLabel>Segment Fare Editor</SLabel>
+                <div className="space-y-4">
+                  {selectedStops.slice(0, -1).map((stop, index) => (
+                    <div key={`${stop.id}-${index}`}>
+                      <label className="mb-1.5 block text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">{stop.name} to {selectedStops[index + 1].name}</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={segmentFares[index] || ""}
+                        onChange={(event) => {
+                          const next = [...segmentFares];
+                          next[index] = event.target.value;
+                          setSegmentFares(next);
+                        }}
+                        className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] outline-none focus:border-[var(--primary)]"
+                        placeholder="Enter fare"
+                      />
+                    </div>
+                  ))}
+                  <Btn tone="success" onClick={saveRoute} disabled={routeBusy} className="w-full !py-4">
+                    {routeBusy ? (editingRouteId ? "Saving..." : "Creating...") : (editingRouteId ? "Save Route Changes" : "Create Route")}
+                  </Btn>
+                </div>
+              </GlassCard>
+            ) : null}
+          </div>
+          <GlassCard className="overflow-hidden !p-0">
+            <div className="border-b border-[var(--border)] px-5 py-5">
+              <SLabel>Route Map</SLabel>
+              <p className="text-xl font-black text-[var(--text)]">Stations and visual route path</p>
+              <p className="mt-1 text-sm text-[var(--muted)]">Click stations to add or remove them from the route builder.</p>
+            </div>
+            <div className="h-[42rem]">
+              <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom className="h-full w-full">
+                <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={mapTileUrl} />
+                <MapViewport points={mapPts} />
+                {dispPts.length > 1 ? <Polyline positions={dispPts} pathOptions={{ color: "#ff8a1f", weight: 5, opacity: 0.9 }} /> : null}
+                {builderStops.map((stop) => {
+                  const lat = Number(stop.lat);
+                  const lng = Number(stop.lng);
+                  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                  const order = selectedStopIds.indexOf(stop.id);
+                  const selected = order !== -1;
+                  return (
+                    <CircleMarker
+                      key={stop.id}
+                      center={[lat, lng]}
+                      radius={selected ? 9 : 6}
+                      eventHandlers={{ click: () => toggleStop(stop.id) }}
+                      pathOptions={{ color: selected ? "#ff8a1f" : "#4b2666", fillColor: selected ? "#ff8a1f" : "#4b2666", fillOpacity: 0.9 }}
+                    >
+                      <Popup>
+                        <div className="text-sm font-semibold text-slate-900">{stop.name}</div>
+                        <div className="mt-1 text-xs text-slate-500">{selected ? `Stop ${order + 1}` : "Click to add to route"}</div>
+                      </Popup>
+                    </CircleMarker>
+                  );
+                })}
+              </MapContainer>
+            </div>
+          </GlassCard>
+          <GlassCard className="h-full">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <SLabel>Route Catalog</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">{filteredRoutes.length} routes</p>
+              </div>
+              <Pill color="indigo">{recentRoutes.length} total</Pill>
+            </div>
+            <div className="space-y-3">
+              {!filteredRoutes.length ? <p className="text-sm text-[var(--muted)]">No routes match the current search.</p> : filteredRoutes.map((route) => (
+                <div key={route.id} className={`rounded-[1.1rem] border px-4 py-4 ${selectedRoutePreview?.id === route.id ? "border-transparent bg-[var(--accent-soft)]" : rowBg}`}>
+                  <button type="button" className="w-full text-left" onClick={() => setSelectedRouteId(route.id)}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-[var(--text)]">{route.name}</p>
+                        <p className="mt-1 truncate text-xs text-[var(--muted)]">{route.city} | {route.stops_count} stops</p>
+                        {route.route_stops?.length ? <p className="mt-2 text-xs text-[var(--muted)]">{route.route_stops[0].stop.name} to {route.route_stops[route.route_stops.length - 1].stop.name}</p> : null}
+                      </div>
+                      <Pill color={route.is_active ? "emerald" : "slate"}>{route.is_active ? "Active" : "Inactive"}</Pill>
+                    </div>
+                  </button>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Btn tone="ghost" onClick={() => startEditingRoute(route)} className="!px-3 !py-2 text-xs">Edit</Btn>
+                    <Btn tone="danger" onClick={() => deleteRoute(route)} disabled={routeDeleteBusyId === route.id} className="!px-3 !py-2 text-xs">{routeDeleteBusyId === route.id ? "Deleting..." : "Delete"}</Btn>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {selectedRoutePreview ? (
+              <div className={`mt-4 rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Selected route</p>
+                <p className="mt-2 font-bold text-[var(--text)]">{selectedRoutePreview.name}</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">{selectedRoutePreview.city}</p>
+                <p className="mt-3 text-xs text-[var(--muted)]">Stops: {(selectedRoutePreview.route_stops || []).map((item) => item.stop.name).join(" -> ") || "No stop detail available"}</p>
+              </div>
+            ) : null}
+          </GlassCard>
+        </div>
+      );
+    }
+
+    if (activeSection === "assignments") {
+      return (
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_0.95fr_1.1fr]">
+          <GlassCard>
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <SLabel>Assign Driver / Helper</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">Bus staffing controls</p>
+              </div>
+              {assignMsg ? <Pill color="emerald">Saved</Pill> : null}
+            </div>
+            {assignMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{assignMsg}</p> : null}
+            <div className="grid gap-4">
+              <SelectField label="Bus" value={assignBusId} onChange={setAssignBusId} options={[{ value: "", label: "-- Select Bus --" }, ...busList.map((bus) => ({ value: bus.id, label: `${bus.display_name || bus.plate_number} | ${bus.plate_number}` }))]} />
+              <div className="grid gap-4 xl:grid-cols-2">
+                <SelectField label="Driver" value={assignDriverId} onChange={setAssignDriverId} options={[{ value: "", label: "Unassigned" }, ...schedOpts.drivers.map((driver) => ({ value: driver.id, label: driver.full_name }))]} />
+                <SelectField label="Helper" value={assignHelperId} onChange={setAssignHelperId} options={[{ value: "", label: "Unassigned" }, ...schedOpts.helpers.map((helper) => ({ value: helper.id, label: helper.full_name }))]} />
+              </div>
+              {selectedAssignBus ? (
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Current assignment</p>
+                  <p className="mt-2 font-bold text-[var(--text)]">{selectedAssignBus.display_name || selectedAssignBus.plate_number}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">{selectedAssignBus.plate_number} | {selectedAssignBus.capacity} seats | {selectedAssignBus.condition}</p>
+                  <p className="mt-2 text-sm text-[var(--muted)]">Driver: {selectedAssignBus.driver_name || "Unassigned"} | Helper: {selectedAssignBus.helper_name || "Unassigned"}</p>
+                </div>
+              ) : null}
+              <Btn tone="primary" onClick={assignStaffToBus} disabled={assignBusy} className="w-full !py-4">{assignBusy ? "Updating..." : "Save Assignment"}</Btn>
+            </div>
+          </GlassCard>
+          <GlassCard>
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <SLabel>{editingScheduleId ? "Edit Schedule" : "Create Schedule"}</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">Route departure planner</p>
+              </div>
+              {editingScheduleId ? <Btn tone="ghost" onClick={clearScheduleForm} className="!px-4 !py-2">Cancel</Btn> : null}
+            </div>
+            {scheduleMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{scheduleMsg}</p> : null}
+            <div className="grid gap-4">
+              <SelectField label="Route" value={sRouteId} onChange={setSRouteId} options={schedOpts.routes.map((route) => ({ value: route.id, label: route.name }))} />
+              <SelectField label="Bus" value={sBusId} onChange={setSBusId} options={schedOpts.buses.map((bus) => ({ value: bus.id, label: `${bus.display_name || bus.plate_number} | ${bus.plate_number}` }))} />
+              <div className="grid gap-4 xl:grid-cols-2">
+                <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} options={schedOpts.drivers.map((driver) => ({ value: driver.id, label: driver.full_name }))} />
+                <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} options={schedOpts.helpers.map((helper) => ({ value: helper.id, label: helper.full_name }))} />
+              </div>
+              <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} />
+              {selectedScheduleBus ? (
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Schedule snapshot</p>
+                  <p className="mt-2 font-bold text-[var(--text)]">{selectedScheduleBus.display_name || selectedScheduleBus.plate_number}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">{selectedScheduleBus.capacity} seats | Driver {selectedScheduleBus.driver_name || "--"} | Helper {selectedScheduleBus.helper_name || "--"}</p>
+                </div>
+              ) : null}
+              <Btn tone="success" onClick={saveSchedule} disabled={scheduleBusy} className="w-full !py-4">
+                {scheduleBusy ? (editingScheduleId ? "Saving..." : "Creating...") : (editingScheduleId ? "Save Schedule Changes" : "Create Trip Schedule")}
+              </Btn>
+            </div>
+          </GlassCard>
+          <div className="space-y-5">
+            <GlassCard>
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Conflict Detection</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Assignment validation</p>
+                </div>
+                <Pill color={assignmentConflicts.length ? "red" : "emerald"}>{assignmentConflicts.length ? `${assignmentConflicts.length} conflicts` : "No conflicts"}</Pill>
+              </div>
+              <div className="space-y-3">
+                {!assignmentConflicts.length ? <p className="text-sm text-[var(--muted)]">No driver, helper, or bus is assigned twice in the current planned schedules.</p> : assignmentConflicts.map((schedule) => (
+                  <div key={schedule.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <p className="font-bold text-[var(--text)]">{schedule.route_name}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">{schedule.bus_plate} | {schedule.driver_name || "--"} | {schedule.helper_name || "--"}</p>
+                    <p className="mt-2 text-xs text-[var(--danger)]">Conflict detected in current plan. Review this schedule before dispatch.</p>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Active and Planned Schedules</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">{filteredSchedules.length} schedule rows</p>
+                </div>
+                <Pill color="amber">{schedOpts.schedules.length} total</Pill>
+              </div>
+              <div className="space-y-3">
+                {!filteredSchedules.length ? <p className="text-sm text-[var(--muted)]">No schedules match the current search.</p> : filteredSchedules.map((schedule) => (
+                  <div key={schedule.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{schedule.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{schedule.bus_plate} | {schedule.driver_name || "--"} | {schedule.helper_name || "--"}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">Starts {fmt(schedule.scheduled_start_time)}</p>
+                      </div>
+                      <Pill color={schedule.status === "PLANNED" ? "amber" : schedule.status === "COMPLETED" ? "emerald" : "indigo"}>{schedule.status}</Pill>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Btn tone="ghost" onClick={() => startEditingSchedule(schedule)} className="!px-3 !py-2 text-xs">Edit</Btn>
+                      <Btn tone="danger" onClick={() => deleteSchedule(schedule)} disabled={scheduleDeleteBusyId === schedule.id} className="!px-3 !py-2 text-xs">{scheduleDeleteBusyId === schedule.id ? "Deleting..." : "Delete"}</Btn>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSection === "analytics") {
+      return (
+        <div className="space-y-6">
+          <div className="grid gap-4 xl:grid-cols-[1fr_1fr_1fr]">
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Route Revenue</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Route-wise system performance</p>
+                </div>
+                <Pill color="indigo">{filteredRouteAnalytics.length} routes</Pill>
+              </div>
+              <SimpleBarChart items={filteredRouteAnalytics.slice(0, 6).map((route) => ({ label: route.route_name, value: route.revenue_success || 0 })) || []} color="var(--accent)" />
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Bus-Wise Revenue</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Fleet revenue contribution</p>
+                </div>
+                <Pill color="sky">{filteredBusAnalytics.length} buses</Pill>
+              </div>
+              <SimpleBarChart items={filteredBusAnalytics.slice(0, 6).map((bus) => ({ label: bus.display_name, value: bus.revenue_success || 0 })) || []} color="var(--primary)" />
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Passenger Turnover</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Wallet and booking movement</p>
+                </div>
+                <Pill color="amber">{bookings.total || 0} bookings</Pill>
+              </div>
+              <div className="grid gap-3">
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Wallet balance</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{fmtMoney(wallets.total_balance || 0)}</p>
+                </div>
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Reward points</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{wallets.total_reward_points || 0}</p>
+                </div>
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Ride passes</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{(wallets.weekly_passes || 0) + (wallets.monthly_passes || 0) + (wallets.flex_passes || 0)}</p>
+                </div>
+              </div>
+            </GlassCard>
+          </div>
+          <GlassCard>
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <SLabel>Analytics Filters</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">Refine revenue and occupancy views</p>
+              </div>
+              <Btn tone="ghost" onClick={exportReport} className="!px-4 !py-2"><Icon name="download" className="mr-2 h-4 w-4" />Export</Btn>
+            </div>
+            <div className="grid gap-4 xl:grid-cols-4">
+              <SelectField label="Date Range" value={reportRange} onChange={setReportRange} options={[{ value: "7D", label: "Last 7 days" }, { value: "30D", label: "Last 30 days" }, { value: "90D", label: "Last 90 days" }]} />
+              <SelectField label="Route Filter" value={analyticsRouteFilter} onChange={setAnalyticsRouteFilter} options={routeFilterOptions} />
+              <SelectField label="Bus Filter" value={analyticsBusFilter} onChange={setAnalyticsBusFilter} options={busFilterOptions} />
+              <div className={`rounded-[1rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Growth indicator</p>
+                <p className="mt-2 text-3xl font-black text-[var(--success)]">+{Math.max(8, Math.round(overallOccupancyRate / 2))}%</p>
+              </div>
+            </div>
+          </GlassCard>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+            <GlassCard>
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Route Analytics Table</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Route-wise revenue and occupancy</p>
+                </div>
+                <Pill color="indigo">{filteredRouteAnalytics.length}</Pill>
+              </div>
+              <div className="overflow-hidden rounded-[1.2rem] border border-[var(--border)]">
+                <div className="grid grid-cols-[1.2fr_0.75fr_0.75fr_0.8fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <span>Route</span>
+                  <span>Trips</span>
+                  <span>Bookings</span>
+                  <span>Revenue</span>
+                </div>
+                <div className="max-h-[30rem] overflow-y-auto bg-[var(--surface-strong)]">
+                  {!filteredRouteAnalytics.length ? <div className="px-4 py-8 text-sm text-[var(--muted)]">No route analytics available.</div> : filteredRouteAnalytics.map((route) => (
+                    <div key={route.route_id} className="grid grid-cols-[1.2fr_0.75fr_0.75fr_0.8fr] gap-3 border-t border-[var(--border)] px-4 py-4 text-sm">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{route.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{route.city}</p>
+                      </div>
+                      <span className="font-semibold text-[var(--text)]">{route.total_trips}</span>
+                      <span className="font-semibold text-[var(--text)]">{route.bookings}</span>
+                      <span className="font-semibold text-[var(--text)]">{fmtMoney(route.revenue_success)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-5 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Bus Analytics Table</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Bus-wise occupancy and earnings</p>
+                </div>
+                <Pill color="sky">{filteredBusAnalytics.length}</Pill>
+              </div>
+              <div className="overflow-hidden rounded-[1.2rem] border border-[var(--border)]">
+                <div className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.85fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
+                  <span>Bus</span>
+                  <span>Trips</span>
+                  <span>Bookings</span>
+                  <span>Revenue</span>
+                </div>
+                <div className="max-h-[30rem] overflow-y-auto bg-[var(--surface-strong)]">
+                  {!filteredBusAnalytics.length ? <div className="px-4 py-8 text-sm text-[var(--muted)]">No bus analytics available.</div> : filteredBusAnalytics.map((bus) => (
+                    <div key={bus.bus_id} className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.85fr] gap-3 border-t border-[var(--border)] px-4 py-4 text-sm">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{bus.display_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{bus.plate_number}</p>
+                      </div>
+                      <span className="font-semibold text-[var(--text)]">{bus.total_trips}</span>
+                      <span className="font-semibold text-[var(--text)]">{bus.bookings}</span>
+                      <span className="font-semibold text-[var(--text)]">{fmtMoney(bus.revenue_success)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr_1fr]">
+            <GlassCard>
+              <SLabel>Reward Leaderboard</SLabel>
+              <div className="mt-4 space-y-3">
+                {!rewardLeaderboard.length ? <p className="text-sm text-[var(--muted)]">No passenger reward activity yet.</p> : rewardLeaderboard.slice(0, 6).map((row, index) => (
+                  <div key={row.passenger_id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{index + 1}. {row.passenger_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{row.phone}</p>
+                      </div>
+                      <Pill color={row.reward_points >= (wallets.reward_threshold || 100) ? "emerald" : "amber"}>{row.reward_points} pts</Pill>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <SLabel>Booking Lifecycle</SLabel>
+              <div className="mt-4 space-y-3">
+                {!recentBookingFlow.length ? <p className="text-sm text-[var(--muted)]">No lifecycle data yet.</p> : recentBookingFlow.slice(0, 5).map((flow) => (
+                  <div key={flow.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">Booking #{flow.id}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{flow.passenger_name} | {flow.route_name}</p>
+                      </div>
+                      <Pill color={flow.completed_at ? "emerald" : flow.checked_in_at ? "sky" : flow.accepted_by_helper_at ? "amber" : "slate"}>
+                        {flow.completed_at ? "Completed" : flow.checked_in_at ? "Onboard" : flow.accepted_by_helper_at ? "Accepted" : "Pending"}
+                      </Pill>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <SLabel>Payment Status</SLabel>
+              <div className="mt-4 space-y-3">
+                {[{ label: "Success", value: payments.success || 0, color: "emerald" }, { label: "Pending", value: payments.pending || 0, color: "amber" }, { label: "Failed", value: payments.failed || 0, color: "red" }].map((item) => (
+                  <div key={item.label} className={`flex items-center justify-between rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <p className="font-bold text-[var(--text)]">{item.label}</p>
+                    <Pill color={item.color}>{item.value}</Pill>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSection === "reports") {
+      return (
+        <div className="space-y-6">
+          <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+            <GlassCard>
+              <div className="mb-5 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Reports Export</SLabel>
+                  <p className="text-2xl font-black text-[var(--text)]">Operational reporting center</p>
+                </div>
+                <Btn tone="primary" onClick={exportReport} className="!px-4 !py-2"><Icon name="download" className="mr-2 h-4 w-4" />Export report</Btn>
+              </div>
+              <div className="grid gap-4">
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Included sheets</p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--text)]">Route revenue, bus revenue, trip volume, booking summary</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Reporting range</p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--text)]">{reportRange} rolling export</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Snapshot time</p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--text)]">{new Date().toLocaleString()}</p>
+                </div>
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <SLabel>Recent Payments Feed</SLabel>
+              <div className="mt-4 space-y-3">
+                {!dashboard?.recent_payments?.length ? <p className="text-sm text-[var(--muted)]">No payment activity yet.</p> : dashboard.recent_payments.map((payment) => (
+                  <div key={payment.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">Payment #{payment.id}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">Booking #{payment.booking_id} | {payment.route_name}</p>
+                        <p className="mt-2 text-sm text-[var(--muted)]">{payment.method} | {fmtMoney(payment.amount)} | by {payment.created_by_name || "system"}</p>
+                      </div>
+                      <Pill color={payment.status === "SUCCESS" ? "emerald" : payment.status === "FAILED" ? "red" : "amber"}>{payment.status}</Pill>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+            <GlassCard>
+              <SLabel>Route Report Table</SLabel>
+              <div className="mt-4 space-y-3">
+                {!routeAnalytics.length ? <p className="text-sm text-[var(--muted)]">No route report rows yet.</p> : routeAnalytics.map((route) => (
+                  <div key={route.route_id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{route.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{route.city}</p>
+                      </div>
+                      <Pill color="indigo">{fmtMoney(route.revenue_success)}</Pill>
+                    </div>
+                    <div className="mt-3 grid gap-2 xl:grid-cols-3">
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Trips {route.total_trips}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Bookings {route.bookings}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Completed {route.completed_bookings}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <SLabel>Bus Report Table</SLabel>
+              <div className="mt-4 space-y-3">
+                {!busAnalytics.length ? <p className="text-sm text-[var(--muted)]">No fleet report rows yet.</p> : busAnalytics.map((bus) => (
+                  <div key={bus.bus_id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{bus.display_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{bus.plate_number} | {bus.capacity} seats</p>
+                      </div>
+                      <Pill color={bus.is_active ? "emerald" : "slate"}>{bus.is_active ? "Active" : "Inactive"}</Pill>
+                    </div>
+                    <div className="mt-3 grid gap-2 xl:grid-cols-3">
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Trips {bus.total_trips}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Bookings {bus.bookings}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Revenue {fmtMoney(bus.revenue_success)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSection === "settings") {
+      return (
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_1.2fr_0.95fr]">
+          <div className="space-y-5">
+            <GlassCard>
+              <div className="mb-5 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Admin Profile</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">{user?.full_name || "MetroBus Admin"}</p>
+                </div>
+                <Pill color="red">ADMIN</Pill>
+              </div>
+              <div className="space-y-3">
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Login phone</p>
+                  <p className="mt-2 text-sm font-bold text-[var(--text)]">{user?.phone || "--"}</p>
+                </div>
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Theme</p>
+                  <p className="mt-2 text-sm font-bold text-[var(--text)]">{isDark ? "MetroBus Night" : "MetroBus Light"}</p>
+                </div>
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Notifications</p>
+                  <p className="mt-2 text-sm font-bold text-[var(--text)]">{notificationCount} pending admin alerts</p>
+                </div>
+              </div>
+            </GlassCard>
+            {renderUserForm("Admin")}
+          </div>
+          <GlassCard className="h-full">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <div>
+                <SLabel>Admin Accounts</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">{adminUsers.length} admin users</p>
+              </div>
+              <div className="flex gap-2">
+                {["ALL", "DRIVER", "HELPER", "ADMIN"].map((role) => (
+                  <button key={role} type="button" onClick={() => setStaffFilter(role)} className={`rounded-full px-3 py-2 text-[0.68rem] font-black uppercase tracking-[0.12em] ${userRoleFilter === role ? "bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white" : "border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--muted)]"}`}>
+                    {role}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {reviewMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{reviewMsg}</p> : null}
+            <div className="space-y-3">
+              {!adminUsers.length ? <p className="text-sm text-[var(--muted)]">No additional admin accounts found.</p> : adminUsers.map((adminUser) => (
+                <div key={adminUser.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-[var(--text)]">{adminUser.full_name}</p>
+                      <p className="mt-1 truncate text-xs text-[var(--muted)]">{adminUser.phone}{adminUser.email ? ` | ${adminUser.email}` : ""}</p>
+                    </div>
+                    <Pill color={adminUser.is_active ? "emerald" : "slate"}>{adminUser.is_active ? "Active" : "Inactive"}</Pill>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Btn tone="ghost" onClick={() => startEditingUser(adminUser)} className="!px-3 !py-2 text-xs">Edit</Btn>
+                    {user?.id !== adminUser.id ? <Btn tone="danger" onClick={() => deleteUser(adminUser)} disabled={userDeleteBusyId === adminUser.id} className="!px-3 !py-2 text-xs">{userDeleteBusyId === adminUser.id ? "Deleting..." : "Delete"}</Btn> : <Pill color="indigo">Current admin</Pill>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </GlassCard>
+          <GlassCard className="h-full">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <SLabel>System Preferences</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">MetroBus operations settings</p>
+              </div>
+              <Pill color="sky">Desktop only</Pill>
+            </div>
+            <div className="space-y-4">
+              <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Theme mode</p>
+                <p className="mt-2 text-sm font-bold text-[var(--text)]">{isDark ? "Dark operations mode" : "Light operations mode"}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">Theme switching is still handled globally from the shared MetroBus theme provider.</p>
+              </div>
+              <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Notification settings</p>
+                <p className="mt-2 text-sm font-bold text-[var(--text)]">Live alerts active</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">Admin is currently watching bookings, pending payments, and delayed buses.</p>
+              </div>
+              <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Password change</p>
+                <p className="mt-2 text-sm font-bold text-[var(--text)]">Use the admin form to update credentials</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">Editing an admin account with a new password acts as the password reset flow for the dashboard.</p>
+              </div>
+            </div>
+          </GlassCard>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <div style={theme} className="min-h-screen bg-[radial-gradient(circle_at_top_left,#fff5eb_0%,var(--bg)_35%,var(--bg-soft)_100%)] text-[var(--text)]">
+      <div className="mx-auto flex min-h-screen max-w-[1680px] gap-6 px-5 py-5">
+        <aside className="sticky top-5 hidden h-[calc(100vh-2.5rem)] w-[280px] shrink-0 overflow-hidden rounded-[2rem] border border-[var(--border)] bg-[var(--sidebar)] p-5 shadow-[var(--shadow)] xl:flex xl:flex-col">
+          <div className="mb-8 flex items-center gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-[1.4rem] bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-lg font-black text-white shadow-[var(--shadow-strong)]">MB</div>
+            <div>
+              <p className="text-[0.68rem] font-black uppercase tracking-[0.2em] text-[var(--muted)]">MetroBus</p>
+              <p className="text-2xl font-black text-[var(--text)]">Admin Panel</p>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {ADMIN_SECTIONS.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => navigate(`/admin/${section.id}`)}
+                className={`flex w-full items-center gap-3 rounded-[1.2rem] px-4 py-3 text-left transition ${activeSection === section.id ? "bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-[var(--shadow-strong)]" : "text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--text)]"}`}
+              >
+                <Icon name={section.icon} className="h-5 w-5 shrink-0" />
+                <div>
+                  <p className="text-sm font-black">{section.label}</p>
+                  <p className={`text-xs ${activeSection === section.id ? "text-white/80" : "text-[var(--muted)]"}`}>{section.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-auto rounded-[1.4rem] border border-[var(--border)] bg-[var(--surface)] p-4">
+            <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Control Tower</p>
+            <p className="mt-2 text-sm font-bold text-[var(--text)]">{trips.live || 0} trips live right now</p>
+            <p className="mt-1 text-xs text-[var(--muted)]">{payments.pending || 0} payments pending and {fleetStatus.delayed} delayed buses need review.</p>
+          </div>
+        </aside>
+        <main className="min-w-0 flex-1">
+          <div className="sticky top-5 z-30 mb-6 rounded-[2rem] border border-[var(--border)] bg-[var(--header)] px-6 py-5 shadow-[var(--shadow)] backdrop-blur-xl">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.2em] text-[var(--muted)]">{currentSectionMeta.label}</p>
+                <h1 className="mt-1 text-3xl font-black text-[var(--text)]">{currentSectionMeta.description}</h1>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative hidden w-[320px] xl:block">
+                  <Icon name="search" className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
+                  <input
+                    value={adminSearch}
+                    onChange={(event) => setAdminSearch(event.target.value)}
+                    placeholder="Search drivers, buses, routes, stations..."
+                    className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] py-3 pl-11 pr-4 text-sm font-semibold text-[var(--text)] outline-none focus:border-[var(--primary)]"
+                  />
+                </div>
+                <button type="button" onClick={() => setQuickOpen((value) => !value)} className="flex h-12 items-center gap-2 rounded-[1rem] bg-[linear-gradient(135deg,var(--primary),var(--accent))] px-4 text-sm font-black text-white shadow-[var(--shadow-strong)]">
+                  <Icon name="plus" className="h-4 w-4" />
+                  Add New
+                </button>
+                <button type="button" onClick={() => setMsg(`You have ${notificationCount} admin alerts to review.`)} className="relative flex h-12 w-12 items-center justify-center rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] text-[var(--text)] shadow-[var(--shadow)]">
+                  <Icon name="bell" className="h-5 w-5" />
+                  {notificationCount ? <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[var(--danger)]" /> : null}
+                </button>
+                <div className="relative">
+                  <button type="button" onClick={() => setProfileOpen((value) => !value)} className="flex items-center gap-3 rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 shadow-[var(--shadow)]">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-sm font-black text-[var(--primary)]">{avatarInitials(user?.full_name)}</div>
+                    <div className="text-left">
+                      <p className="text-sm font-black text-[var(--text)]">{user?.full_name || "Admin"}</p>
+                      <p className="text-xs text-[var(--muted)]">MetroBus operations</p>
+                    </div>
+                  </button>
+                  {profileOpen ? (
+                    <div className="absolute right-0 top-[calc(100%+0.75rem)] z-40 w-72 rounded-[1.4rem] border border-[var(--border)] bg-[var(--surface-strong)] p-4 shadow-[var(--shadow-strong)]">
+                      <p className="text-sm font-black text-[var(--text)]">{user?.full_name || "MetroBus Admin"}</p>
+                      <p className="mt-1 text-xs text-[var(--muted)]">{user?.phone || "No phone linked"}</p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Btn tone="ghost" onClick={() => { setProfileOpen(false); navigate("/admin/settings"); }} className="!px-4 !py-2 text-xs">Settings</Btn>
+                        <Btn tone="danger" onClick={handleLogout} className="!px-4 !py-2 text-xs">Logout</Btn>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            {quickOpen ? (
+              <div className="mt-4 grid gap-3 rounded-[1.4rem] border border-[var(--border)] bg-[var(--surface-strong)] p-4 xl:grid-cols-5">
+                {[
+                  { section: "drivers", label: "Driver" },
+                  { section: "helpers", label: "Helper" },
+                  { section: "buses", label: "Bus" },
+                  { section: "routes", label: "Route" },
+                  { section: "assignments", label: "Assignment" },
+                ].map((item) => (
+                  <button key={item.section} type="button" onClick={() => triggerQuickAction(item.section)} className="rounded-[1rem] border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-4 text-left transition hover:border-[var(--primary)] hover:bg-[var(--accent-soft)]">
+                    <p className="text-sm font-black text-[var(--text)]">Add {item.label}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">Jump to the create flow</p>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mb-6 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <GlassCard className="bg-[linear-gradient(135deg,rgba(75,38,102,0.96),rgba(255,138,31,0.92))] text-white shadow-[var(--shadow-strong)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.2em] text-white/70">MetroBus HQ</p>
+                  <p className="mt-2 max-w-3xl text-3xl font-black leading-tight">Premium desktop control center for fleet, people, routes, assignments, and revenue.</p>
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/78">Everything stays inside the same MetroBus visual language as the rest of the app, while keeping the existing operations tools live and ready for demo.</p>
+                </div>
+                <div className="grid gap-3 text-right">
+                  <div>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/65">Live trips</p>
+                    <p className="mt-1 text-3xl font-black">{trips.live || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-white/65">Occupancy</p>
+                    <p className="mt-1 text-3xl font-black">{overallOccupancyRate}%</p>
+                  </div>
+                </div>
+              </div>
+            </GlassCard>
+            <div className="grid gap-4">
+              {msg ? <GlassCard><p className="text-sm font-semibold text-[var(--success)]">{msg}</p></GlassCard> : null}
+              {err ? <GlassCard><p className="text-sm font-semibold text-[var(--danger)]">{err}</p></GlassCard> : null}
+            </div>
+          </div>
+
+          {renderSectionContent()}
+        </main>
+      </div>
+    </div>
+  );
 
   return (
       <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
