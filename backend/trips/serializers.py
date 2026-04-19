@@ -10,6 +10,7 @@ class TripScheduleSerializer(serializers.ModelSerializer):
     driver_name = serializers.CharField(source="driver.full_name", read_only=True)
     helper_name = serializers.CharField(source="helper.full_name", read_only=True)
     driver_assignment_accepted = serializers.BooleanField(read_only=True)
+    helper_assignment_accepted = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = TripSchedule
@@ -26,6 +27,8 @@ class TripScheduleSerializer(serializers.ModelSerializer):
             "scheduled_start_time",
             "driver_assignment_accepted",
             "driver_assignment_accepted_at",
+            "helper_assignment_accepted",
+            "helper_assignment_accepted_at",
             "status",
         )
 

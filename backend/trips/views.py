@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 
-from accounts.models import User
+from accounts.models import User, Notification
 from bookings.models import Booking
 from bookings.serializers import HelperBookingTicketSerializer
 from transport.models import Route, Bus, RouteStop
@@ -304,6 +304,30 @@ def _confirm_trip_start(trip, actor):
 
     if just_went_live:
         ensure_trip_simulation(trip)
+        # Emit TRIP_STARTED notifications for onboard passengers
+        try:
+            booked = (
+                Booking.objects.filter(
+                    trip=trip,
+                    status__in=[Booking.Status.PENDING, Booking.Status.CONFIRMED],
+                )
+                .select_related("passenger")
+                .distinct()
+            )
+            seen = set()
+            for booking in booked:
+                if booking.passenger_id not in seen:
+                    seen.add(booking.passenger_id)
+                    Notification.push(
+                        user=booking.passenger,
+                        kind=Notification.Kind.TRIP_STARTED,
+                        title="Your bus is now LIVE!",
+                        message=f"{trip.route.name} has started. Track it live on your map.",
+                        booking_id=booking.id,
+                        trip_id=trip.id,
+                    )
+        except Exception:
+            pass
         return trip, "Trip is now officially LIVE after both confirmations."
     return trip, _waiting_copy(trip.missing_start_confirmations())
 
@@ -335,6 +359,41 @@ def _confirm_trip_end(trip, actor):
         if trip.schedule and trip.schedule.status == TripSchedule.Status.PLANNED:
             trip.schedule.status = TripSchedule.Status.COMPLETED
             trip.schedule.save(update_fields=["status"])
+
+        # Emit persistent notifications for all passengers whose bookings
+        # were on this trip so they get the review prompt even after refresh.
+        try:
+            completed_bookings = (
+                Booking.objects.filter(
+                    trip=trip,
+                    status=Booking.Status.COMPLETED,
+                )
+                .select_related("passenger")
+                .distinct()
+            )
+            seen_passengers = set()
+            for booking in completed_bookings:
+                if booking.passenger_id not in seen_passengers:
+                    seen_passengers.add(booking.passenger_id)
+                    Notification.push(
+                        user=booking.passenger,
+                        kind=Notification.Kind.TRIP_ENDED,
+                        title="Your trip has ended",
+                        message=f"Your journey on {trip.route.name} is complete. How was your ride?",
+                        booking_id=booking.id,
+                        trip_id=trip.id,
+                    )
+                    Notification.push(
+                        user=booking.passenger,
+                        kind=Notification.Kind.REVIEW_PROMPT,
+                        title="Rate your MetroBus ride",
+                        message=f"Tap to leave a quick review for your trip on {trip.route.name}.",
+                        booking_id=booking.id,
+                        trip_id=trip.id,
+                    )
+        except Exception:
+            pass  # Notifications are non-critical — never block the response
+
         return trip, "Trip is now officially ended after both confirmations."
 
     return trip, _waiting_copy(trip.missing_end_confirmations())
@@ -822,9 +881,13 @@ class AdminTripScheduleDetailView(APIView):
         schedule.scheduled_start_time = scheduled_start_time
 
         update_fields = ["route", "bus", "driver", "helper", "scheduled_start_time"]
-        if acceptance_should_reset and schedule.driver_assignment_accepted_at:
-            schedule.driver_assignment_accepted_at = None
-            update_fields.append("driver_assignment_accepted_at")
+        if acceptance_should_reset:
+            if schedule.driver_assignment_accepted_at:
+                schedule.driver_assignment_accepted_at = None
+                update_fields.append("driver_assignment_accepted_at")
+            if schedule.helper_assignment_accepted_at:
+                schedule.helper_assignment_accepted_at = None
+                update_fields.append("helper_assignment_accepted_at")
 
         schedule.save(update_fields=update_fields)
 
@@ -897,8 +960,11 @@ class StartTripView(APIView):
                 return Response({"detail": "This schedule is no longer available to start."}, status=400)
             if role_label == "driver" and not schedule.driver_assignment_accepted_at:
                 return Response({"detail": "Accept the admin assignment before starting this scheduled trip."}, status=400)
-            if role_label == "helper" and not schedule.driver_assignment_accepted_at:
-                return Response({"detail": "Waiting for the driver to accept and start this scheduled trip first."}, status=400)
+            if role_label == "helper":
+                if not schedule.helper_assignment_accepted_at:
+                    return Response({"detail": "Accept the admin assignment before starting this scheduled trip."}, status=400)
+                if not schedule.driver_assignment_accepted_at:
+                    return Response({"detail": "Waiting for the driver to accept and start this scheduled trip first."}, status=400)
 
             trip = (
                 schedule.trips.select_related("route", "bus", "driver", "helper", "simulation")
@@ -1054,7 +1120,7 @@ class StartTripView(APIView):
 
 
 class AcceptTripAssignmentView(APIView):
-    permission_classes = [IsAuthenticated, IsDriver]
+    permission_classes = [IsAuthenticated, IsDriverOrHelper]
 
     def post(self, request, schedule_id: int):
         schedule = (
@@ -1064,22 +1130,40 @@ class AcceptTripAssignmentView(APIView):
         )
         if not schedule:
             return Response({"detail": "Schedule not found."}, status=404)
-        if request.user.id != schedule.driver_id and not request.user.is_superuser:
+
+        is_driver = request.user.id == schedule.driver_id
+        is_helper = request.user.id == schedule.helper_id
+
+        if not (is_driver or is_helper or request.user.is_superuser):
             return Response({"detail": "This assignment does not belong to you."}, status=403)
+
         if schedule.status != TripSchedule.Status.PLANNED:
             return Response({"detail": "Only planned schedules can be accepted."}, status=400)
 
-        if schedule.driver_assignment_accepted_at:
-            return Response(
-                {
-                    "message": "Assignment already accepted.",
-                    "schedule": TripScheduleSerializer(schedule).data,
-                },
-                status=200,
-            )
+        now = timezone.now()
+        update_fields = []
 
-        schedule.driver_assignment_accepted_at = timezone.now()
-        schedule.save(update_fields=["driver_assignment_accepted_at"])
+        if is_driver:
+            if schedule.driver_assignment_accepted_at:
+                return Response(
+                    {"message": "Driver assignment already accepted.", "schedule": TripScheduleSerializer(schedule).data},
+                    status=200
+                )
+            schedule.driver_assignment_accepted_at = now
+            update_fields.append("driver_assignment_accepted_at")
+
+        if is_helper:
+            if schedule.helper_assignment_accepted_at:
+                return Response(
+                    {"message": "Helper assignment already accepted.", "schedule": TripScheduleSerializer(schedule).data},
+                    status=200
+                )
+            schedule.helper_assignment_accepted_at = now
+            update_fields.append("helper_assignment_accepted_at")
+
+        if update_fields:
+            schedule.save(update_fields=update_fields)
+
         return Response(
             {
                 "message": "Assignment accepted. Complete your pre-trip checklist, then start the trip.",

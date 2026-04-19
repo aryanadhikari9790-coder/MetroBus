@@ -246,6 +246,7 @@ export default function HelperHome() {
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [profileForm, setProfileForm] = useState({ full_name: "", email: "" });
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
+  const [lastTripSummary, setLastTripSummary] = useState(null); // set after trip end confirmed
 
   const activeTrip = dashboard?.active_trip ?? null;
   const pendingTrip = dashboard?.pending_trip ?? null;
@@ -339,10 +340,12 @@ export default function HelperHome() {
           ? "Ready to Start"
           : "Assignment Incomplete"
         : selectedSchedule
-          ? selectedSchedule.driver_assignment_accepted
-            ? "Ready to Start"
-          : "Waiting for Driver"
-        : "Standby";
+          ? !selectedSchedule.helper_assignment_accepted
+            ? "Assignment Pending"
+            : selectedSchedule.driver_assignment_accepted
+              ? "Ready to Start"
+              : "Waiting for Driver"
+          : "Standby";
 
   const startLabel = pendingTrip?.driver_start_confirmed && !pendingTrip.helper_start_confirmed
     ? "Confirm Start Ride"
@@ -627,8 +630,14 @@ export default function HelperHome() {
 
   const requestScheduledStart = async () => {
     if (!selectedSchedule?.id) return setErr("There is no scheduled trip selected right now.");
+    if (!selectedSchedule.helper_assignment_accepted) return setErr("Accept the admin assignment before starting.");
     if (!selectedSchedule.driver_assignment_accepted) return setErr("Wait for the driver to accept the assignment before starting.");
     return runTripAction(() => api.post("/api/trips/start/", { schedule_id: selectedSchedule.id }), "Trip start confirmation sent.");
+  };
+
+  const acceptScheduledAssignment = async () => {
+    if (!selectedSchedule?.id) return setErr("No scheduled assignment is ready to accept.");
+    return runTripAction(() => api.post(`/api/trips/schedules/${selectedSchedule.id}/accept/`), "Latest scheduled assignment accepted.");
   };
 
   const acceptAssignedBus = async () => {
@@ -650,7 +659,22 @@ export default function HelperHome() {
 
   const requestTripEnd = async () => {
     if (!activeTrip?.id) return setErr("There is no live trip to end right now.");
-    return runTripAction(() => api.post(`/api/trips/${activeTrip.id}/end/`), "Trip end confirmation sent.");
+    // Capture payment summary before ending
+    const totalSeats = seats.length;
+    const paidCount = seats.filter((seat) => !seat.available && seat.payment_verified).length;
+    const unpaidCount = totalSeats - seats.filter((seat) => seat.available).length - paidCount;
+    const routeLabel = activeTrip.route_name || "--";
+    const result = await runTripAction(() => api.post(`/api/trips/${activeTrip.id}/end/`), "Trip end confirmation sent.");
+    if (result) {
+      setLastTripSummary({
+        routeName: routeLabel,
+        paidSeats: paidCount,
+        unpaidSeats: unpaidCount,
+        totalOnboard: paidCount + unpaidCount,
+        endedAt: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+      });
+    }
+    return result;
   };
 
   const onboardOfflinePassenger = (seat) => {
@@ -733,6 +757,54 @@ export default function HelperHome() {
       <main className={`${shell} relative px-4 pb-32 pt-4 sm:px-5 sm:pt-5`}>
         {err ? <div className="mb-4 rounded-[1.25rem] border border-[rgba(219,61,79,0.18)] bg-[rgba(219,61,79,0.10)] px-4 py-3 text-sm font-semibold text-[var(--danger)]">{err}</div> : null}
         {msg ? <div className="mb-4 rounded-[1.25rem] border border-[rgba(23,165,103,0.16)] bg-[rgba(23,165,103,0.10)] px-4 py-3 text-sm font-semibold text-[var(--success)]">{msg}</div> : null}
+
+        {lastTripSummary && !activeTrip && !pendingTrip ? (
+          <SurfaceCard className="mb-4 overflow-hidden">
+            <div className="border-b border-[var(--border)] px-5 py-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--success)]">Trip Completed</p>
+                  <h2 className="mt-2 text-2xl font-black leading-tight text-[var(--text)]">{lastTripSummary.routeName}</h2>
+                  <p className="mt-1 text-xs text-[var(--muted)]">Ended at {lastTripSummary.endedAt}</p>
+                </div>
+                <button type="button" onClick={() => setLastTripSummary(null)} className="shrink-0 rounded-full border border-[var(--border)] px-3 py-1.5 text-[0.6rem] font-black uppercase tracking-[0.14em] text-[var(--muted)]">Dismiss</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-0 divide-x divide-[var(--border)]">
+              <div className="px-4 py-5 text-center">
+                <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Onboard</p>
+                <p className="mt-2 text-3xl font-black text-[var(--text)]">{lastTripSummary.totalOnboard}</p>
+              </div>
+              <div className="px-4 py-5 text-center">
+                <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Paid</p>
+                <p className="mt-2 text-3xl font-black text-[var(--success)]">{lastTripSummary.paidSeats}</p>
+              </div>
+              <div className="px-4 py-5 text-center">
+                <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Unpaid</p>
+                <p className="mt-2 text-3xl font-black text-[var(--danger)]">{lastTripSummary.unpaidSeats}</p>
+              </div>
+            </div>
+          </SurfaceCard>
+        ) : null}
+
+        {activeTrip && seats.length > 0 ? (
+          <div className="mb-4 rounded-[1.4rem] border border-[var(--border)] bg-[var(--surface)] px-5 py-4 shadow-[var(--shadow)]">
+            <p className="text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--muted)]">Live Payment Progress</p>
+            <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-[var(--accent-soft)]">
+              {seats.filter((s) => !s.available).length > 0 ? (
+                <>
+                  <div className="h-full bg-[var(--success)] transition-all" style={{ width: `${(paidSeats / Math.max(seats.filter((s) => !s.available).length, 1)) * 100}%` }} />
+                  <div className="h-full bg-[rgba(219,61,79,0.5)]" style={{ width: `${(occupiedSeats - paidSeats) / Math.max(seats.filter((s) => !s.available).length, 1) * 100}%` }} />
+                </>
+              ) : <div className="h-full w-full bg-[var(--accent-soft)]" />}
+            </div>
+            <div className="mt-3 flex justify-between text-xs font-semibold">
+              <span className="text-[var(--muted)]">{occupiedSeats} / {seats.length} occupied</span>
+              <span className="text-[var(--success)]">{paidSeats} paid</span>
+              <span className="text-[var(--danger)]">{occupiedSeats - paidSeats} pending</span>
+            </div>
+          </div>
+        ) : null}
 
         {tab === "riders" ? (
           <SurfaceCard className="overflow-hidden">
@@ -1017,7 +1089,13 @@ export default function HelperHome() {
                       {busy ? "Accepting..." : "Accept Admin Assignment"}
                     </ActionButton>
                   ) : null}
-                  {(pendingTrip || (!assignedBusNeedsAcceptance && assignedRouteReady) || selectedSchedule?.driver_assignment_accepted) ? <ActionButton onClick={pendingTrip ? confirmPendingStart : assignedRouteReady ? requestAssignedStart : requestScheduledStart} disabled={busy || (pendingTrip ? pendingTrip.helper_start_confirmed : false)} className="w-full"><Icon name="play" className="h-4 w-4" />{busy ? "Sending..." : startLabel}</ActionButton> : null}
+                  {!pendingTrip && selectedSchedule && !selectedSchedule.helper_assignment_accepted ? (
+                    <ActionButton onClick={acceptScheduledAssignment} disabled={busy} className="w-full">
+                      <Icon name="shield" className="h-4 w-4" />
+                      {busy ? "Accepting..." : "Accept Scheduled Assignment"}
+                    </ActionButton>
+                  ) : null}
+                  {(pendingTrip || (!assignedBusNeedsAcceptance && assignedRouteReady) || (selectedSchedule?.driver_assignment_accepted && selectedSchedule?.helper_assignment_accepted)) ? <ActionButton onClick={pendingTrip ? confirmPendingStart : assignedRouteReady ? requestAssignedStart : requestScheduledStart} disabled={busy || (pendingTrip ? pendingTrip.helper_start_confirmed : false)} className="w-full"><Icon name="play" className="h-4 w-4" />{busy ? "Sending..." : startLabel}</ActionButton> : null}
                 </div>
               </div>
             ) : null}
