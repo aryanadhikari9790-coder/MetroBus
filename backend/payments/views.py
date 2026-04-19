@@ -547,6 +547,60 @@ class VerifyCashPaymentView(APIView):
         )
 
 
+class VerifyManualPaymentView(APIView):
+    permission_classes = [IsAuthenticated, IsHelperOrAdmin]
+
+    def post(self, request, booking_id: int):
+        booking = Booking.objects.filter(id=booking_id).first()
+        if not booking:
+            return Response({"detail": "Booking not found"}, status=404)
+
+        if getattr(request.user, "role", None) == "HELPER" and not booking.accepted_by_helper_at:
+            return Response({"detail": "Accept the passenger ride details before manually verifying payment."}, status=400)
+
+        payment = getattr(booking, "payment", None)
+        if payment and payment.status == Payment.Status.SUCCESS:
+            return Response({"detail": "This booking is already marked as paid."}, status=400)
+
+        if not payment:
+            payment = Payment.objects.create(
+                booking=booking,
+                method=Payment.Method.CASH,
+                status=Payment.Status.PENDING,
+                amount=booking.fare_total,
+                reference=None,
+                created_by=booking.passenger,
+            )
+        else:
+            payment.method = Payment.Method.CASH
+
+        payment.status = Payment.Status.SUCCESS
+        payment.reference = payment.reference or f"MANUAL-{payment.id}"
+        payment.verified_by = request.user
+        payment.verified_at = timezone.now()
+        payment.save(update_fields=["method", "status", "reference", "verified_by", "verified_at"])
+        _sync_booking_payment_state(
+            booking,
+            event_type="PAYMENT_CONFIRMED",
+            message=f"Payment manually verified for booking #{booking.id}.",
+            actor=request.user,
+        )
+
+        booking = (
+            Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by", "accepted_by_helper")
+            .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
+            .filter(id=booking.id)
+            .first()
+        )
+        return Response(
+            {
+                "message": f"Payment manually verified for booking #{booking.id}.",
+                "payment": PaymentSerializer(payment).data,
+                "booking": HelperBookingTicketSerializer(booking).data,
+            }
+        )
+
+
 # =========================
 # eSewa callbacks
 # =========================

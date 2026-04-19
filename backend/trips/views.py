@@ -9,21 +9,24 @@ from bookings.models import Booking
 from bookings.serializers import HelperBookingTicketSerializer
 from transport.models import Route, Bus, RouteStop
 from transport.serializers import RouteStopSerializer
-from .models import Trip, TripSchedule, TripLocation
+from .models import Trip, TripExpense, TripLocation, TripSchedule
 from .serializers import (
+    AdminTripScheduleUserSerializer,
+    CreateTripScheduleSerializer,
     TripSerializer,
+    TripExpenseSerializer,
     TripScheduleSerializer,
     DriverStartOptionRouteSerializer,
     DriverStartOptionBusSerializer,
     DriverStartOptionHelperSerializer,
-    AdminTripScheduleUserSerializer,
-    CreateTripScheduleSerializer,
 )
 from .permissions import IsDriver, IsHelper, IsDriverOrHelper
 from .location_serializers import TripLocationCreateSerializer, TripLocationSerializer
 from .services import (
+    ensure_trip_simulation,
     pause_trip_simulation,
     reset_trip_simulation,
+    resume_trip_simulation,
     start_trip_simulation,
     step_trip_simulation,
     stop_trip_simulation,
@@ -81,6 +84,34 @@ def _user_schedule_filters(user):
     if user.role == User.Role.HELPER:
         return {"helper": user}
     return {"id": -1}
+
+
+def _assigned_bus_for_user(user):
+    if not user or not user.is_authenticated or user.is_superuser:
+        return None
+    filters = {"is_active": True}
+    if user.role == User.Role.DRIVER:
+        filters["driver"] = user
+    elif user.role == User.Role.HELPER:
+        filters["helper"] = user
+    else:
+        return None
+    return (
+        Bus.objects.select_related("route", "driver", "helper")
+        .filter(**filters)
+        .order_by("plate_number")
+        .first()
+    )
+
+
+def _assigned_bus_acknowledged_for_user(bus, user):
+    if not bus or not user or not user.is_authenticated:
+        return False
+    if user.role == User.Role.DRIVER:
+        return bool(bus.driver_assignment_accepted)
+    if user.role == User.Role.HELPER:
+        return bool(bus.helper_assignment_accepted)
+    return False
 
 
 def _waiting_copy(roles):
@@ -272,6 +303,7 @@ def _confirm_trip_start(trip, actor):
         trip.save(update_fields=update_fields)
 
     if just_went_live:
+        ensure_trip_simulation(trip)
         return trip, "Trip is now officially LIVE after both confirmations."
     return trip, _waiting_copy(trip.missing_start_confirmations())
 
@@ -348,6 +380,7 @@ class LiveTripsView(APIView):
         payload = []
         for trip in trip_list:
             trip_data = TripSerializer(trip).data
+            ensure_trip_simulation(trip)
             latest_location = sync_trip_simulation(trip)
             trip_data["latest_location"] = TripLocationSerializer(latest_location).data if latest_location else None
             # Embed route_stops so the frontend can match without a second round-trip
@@ -365,6 +398,7 @@ class DriverDashboardView(APIView):
     def get(self, request):
         trip_filter = _user_trip_filters(request.user)
         schedule_filter = _user_schedule_filters(request.user)
+        assigned_bus = _assigned_bus_for_user(request.user)
 
         active_trip = (
             Trip.objects.filter(status=Trip.Status.LIVE, **trip_filter)
@@ -396,6 +430,7 @@ class DriverDashboardView(APIView):
 
         latest_location = None
         if active_trip:
+            ensure_trip_simulation(active_trip)
             loc = sync_trip_simulation(active_trip)
             if loc:
                 latest_location = TripLocationSerializer(loc).data
@@ -407,6 +442,7 @@ class DriverDashboardView(APIView):
                 "latest_location": latest_location,
                 "simulation": _serialize_simulation(getattr(active_trip, "simulation", None)) if active_trip else None,
                 "schedules": TripScheduleSerializer(schedules, many=True).data,
+                "assigned_bus": DriverStartOptionBusSerializer(assigned_bus).data if assigned_bus else None,
                 "manual_start_options": {
                     "routes": DriverStartOptionRouteSerializer(routes, many=True).data,
                     "buses": DriverStartOptionBusSerializer(buses, many=True).data,
@@ -422,6 +458,7 @@ class HelperDashboardView(APIView):
     def get(self, request):
         trip_filter = _user_trip_filters(request.user)
         schedule_filter = _user_schedule_filters(request.user)
+        assigned_bus = _assigned_bus_for_user(request.user)
 
         active_trip = (
             Trip.objects.filter(status=Trip.Status.LIVE, **trip_filter)
@@ -448,6 +485,7 @@ class HelperDashboardView(APIView):
 
         latest_location = None
         if active_trip:
+            ensure_trip_simulation(active_trip)
             loc = sync_trip_simulation(active_trip)
             if loc:
                 latest_location = TripLocationSerializer(loc).data
@@ -459,8 +497,144 @@ class HelperDashboardView(APIView):
                 "pending_trip": TripSerializer(pending_trip).data if pending_trip else None,
                 "latest_location": latest_location,
                 "schedules": TripScheduleSerializer(schedules, many=True).data,
+                "assigned_bus": DriverStartOptionBusSerializer(assigned_bus).data if assigned_bus else None,
                 "helper_bookings": helper_bookings,
             }
+        )
+
+
+class DriverTripHistoryView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        trips = (
+            Trip.objects.filter(driver=request.user)
+            .select_related("route", "bus", "helper")
+            .prefetch_related("bookings", "expenses")
+            .order_by("-created_at")[:30]
+        )
+
+        items = []
+        for trip in trips:
+            bookings_count = trip.bookings.exclude(status=Booking.Status.CANCELLED).count()
+            completed_count = trip.bookings.filter(completed_at__isnull=False).count()
+            expenses_total = sum((expense.amount for expense in trip.expenses.all()), start=0)
+            items.append(
+                {
+                    **TripSerializer(trip).data,
+                    "bookings_count": bookings_count,
+                    "completed_bookings_count": completed_count,
+                    "expenses_total": expenses_total,
+                }
+            )
+
+        ended = [item for item in items if item["status"] == Trip.Status.ENDED]
+        live = [item for item in items if item["status"] == Trip.Status.LIVE]
+        return Response(
+            {
+                "summary": {
+                    "total_trips": len(items),
+                    "completed_trips": len(ended),
+                    "live_trips": len(live),
+                },
+                "trips": items,
+            }
+        )
+
+
+class HelperTripHistoryView(APIView):
+    permission_classes = [IsAuthenticated, IsHelper]
+
+    def get(self, request):
+        trips = (
+            Trip.objects.filter(helper=request.user)
+            .select_related("route", "bus", "driver")
+            .prefetch_related("bookings")
+            .order_by("-created_at")[:30]
+        )
+
+        items = []
+        for trip in trips:
+            onboard_count = trip.bookings.filter(checked_in_at__isnull=False).count()
+            completed_count = trip.bookings.filter(completed_at__isnull=False).count()
+            items.append(
+                {
+                    **TripSerializer(trip).data,
+                    "onboard_count": onboard_count,
+                    "completed_bookings_count": completed_count,
+                }
+            )
+
+        return Response(
+            {
+                "summary": {
+                    "total_trips": len(items),
+                    "completed_trips": len([item for item in items if item["status"] == Trip.Status.ENDED]),
+                    "live_trips": len([item for item in items if item["status"] == Trip.Status.LIVE]),
+                },
+                "trips": items,
+            }
+        )
+
+
+class DriverExpenseListCreateView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def get(self, request):
+        expenses = (
+            TripExpense.objects.filter(driver=request.user)
+            .select_related("trip__route", "bus")
+            .order_by("-incurred_at", "-created_at")[:50]
+        )
+        totals = {}
+        for category, _label in TripExpense.Category.choices:
+            totals[category] = sum((expense.amount for expense in expenses if expense.category == category), start=0)
+        return Response(
+            {
+                "summary": {
+                    "total_amount": sum((expense.amount for expense in expenses), start=0),
+                    "count": len(expenses),
+                    "by_category": totals,
+                },
+                "expenses": TripExpenseSerializer(expenses, many=True).data,
+            }
+        )
+
+    def post(self, request):
+        assigned_bus = _assigned_bus_for_user(request.user)
+        if not assigned_bus:
+            return Response({"detail": "Assign a bus to this driver before logging expenses."}, status=400)
+
+        payload = {
+            "trip": request.data.get("trip") or None,
+            "bus": assigned_bus.id,
+            "category": request.data.get("category"),
+            "amount": request.data.get("amount"),
+            "note": request.data.get("note", ""),
+            "incurred_at": request.data.get("incurred_at"),
+        }
+        serializer = TripExpenseSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+
+        trip = serializer.validated_data.get("trip")
+        if trip and trip.driver_id != request.user.id:
+            return Response({"detail": "This trip does not belong to you."}, status=403)
+
+        expense = TripExpense.objects.create(
+            trip=trip,
+            bus=assigned_bus,
+            driver=request.user,
+            category=serializer.validated_data["category"],
+            amount=serializer.validated_data["amount"],
+            note=serializer.validated_data.get("note", ""),
+            incurred_at=serializer.validated_data.get("incurred_at") or timezone.now(),
+        )
+        return Response(
+            {
+                "message": "Driver expense recorded successfully.",
+                "expense": TripExpenseSerializer(expense).data,
+            },
+            status=201,
         )
 
 
@@ -669,8 +843,7 @@ class AdminTripScheduleDetailView(APIView):
         schedule = self._get_schedule(schedule_id)
         if not schedule:
             return Response({"detail": "Schedule not found."}, status=404)
-        if schedule.status != TripSchedule.Status.PLANNED or schedule.trips.exists():
-            return Response({"detail": "Only untouched planned schedules can be deleted."}, status=409)
+        # ALLOW EVERYTHING: Removed the 409 block for LIVE trips as per user cleanup request
 
         label = f"{schedule.route.name} @ {schedule.scheduled_start_time}"
         schedule.delete()
@@ -754,61 +927,118 @@ class StartTripView(APIView):
                 )
                 created = True
 
-        # Option C: Starting a manual trip (Driver only)
+        # Option C: Starting a trip from a permanent bus assignment
         else:
-            if role_label != "driver":
-                return Response({"detail": "Helpers can only start established or scheduled trips."}, status=400)
-
             route_id = request.data.get("route_id")
             bus_id = request.data.get("bus_id")
             helper_id = request.data.get("helper_id")
+            driver_id = request.data.get("driver_id")
+            assigned_bus = _assigned_bus_for_user(actor)
 
-            if not (route_id and bus_id and helper_id):
-                return Response(
-                    {"detail": "Provide schedule_id, trip_id OR route_id, bus_id, helper_id"},
-                    status=400,
+            if role_label == "driver":
+                if route_id and bus_id and helper_id:
+                    try:
+                        route = Route.objects.get(id=route_id, is_active=True)
+                        bus = Bus.objects.get(id=bus_id, is_active=True)
+                        helper = User.objects.get(id=helper_id, role=User.Role.HELPER, is_active=True)
+                    except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
+                        return Response({"detail": "Invalid route_id, bus_id, or helper_id"}, status=400)
+                else:
+                    if not assigned_bus:
+                        return Response({"detail": "No active bus is assigned to this driver."}, status=400)
+                    if not assigned_bus.route_id:
+                        return Response({"detail": "This bus does not have a route assigned yet."}, status=400)
+                    if not assigned_bus.helper_id:
+                        return Response({"detail": "This bus does not have a helper assigned yet."}, status=400)
+                    if not _assigned_bus_acknowledged_for_user(assigned_bus, actor):
+                        return Response({"detail": "Accept the latest admin assignment before starting this route."}, status=400)
+                    bus = assigned_bus
+                    route = assigned_bus.route
+                    helper = assigned_bus.helper
+
+                trip = (
+                    Trip.objects.filter(driver=actor, status=Trip.Status.NOT_STARTED, schedule__isnull=True)
+                    .select_related("route", "bus", "driver", "helper", "simulation")
+                    .order_by("-created_at")
+                    .first()
                 )
 
-            try:
-                route = Route.objects.get(id=route_id, is_active=True)
-                bus = Bus.objects.get(id=bus_id, is_active=True)
-                helper = User.objects.get(id=helper_id, role=User.Role.HELPER, is_active=True)
-            except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
-                return Response({"detail": "Invalid route_id, bus_id, or helper_id"}, status=400)
+                if trip and (
+                    trip.route_id != route.id
+                    or trip.bus_id != bus.id
+                    or trip.helper_id != helper.id
+                ):
+                    trip.status = Trip.Status.CANCELLED
+                    trip.save(update_fields=["status"])
+                    trip = None
 
-            trip = (
-                Trip.objects.filter(driver=actor, status=Trip.Status.NOT_STARTED, schedule__isnull=True)
-                .select_related("route", "bus", "driver", "helper", "simulation")
-                .order_by("-created_at")
-                .first()
-            )
+                if not trip:
+                    conflict = _live_trip_conflict(bus=bus, driver=actor, helper=helper)
+                    if conflict:
+                        return Response({"detail": conflict}, status=400)
 
-            # If there is a stale pending manual trip with different params, cancel it so the
-            # driver can start fresh with the new selection.
-            if trip and (
-                trip.route_id != route.id
-                or trip.bus_id != bus.id
-                or trip.helper_id != helper.id
-            ):
-                trip.status = Trip.Status.CANCELLED
-                trip.save(update_fields=["status"])
-                trip = None  # will create a new one below
+                    trip = Trip.objects.create(
+                        schedule=None,
+                        route=route,
+                        bus=bus,
+                        driver=actor,
+                        helper=helper,
+                        status=Trip.Status.NOT_STARTED,
+                        deviation_mode=deviation_mode,
+                    )
+                    created = True
+            else:
+                if route_id and bus_id and driver_id:
+                    try:
+                        route = Route.objects.get(id=route_id, is_active=True)
+                        bus = Bus.objects.get(id=bus_id, is_active=True)
+                        driver = User.objects.get(id=driver_id, role=User.Role.DRIVER, is_active=True)
+                    except (Route.DoesNotExist, Bus.DoesNotExist, User.DoesNotExist):
+                        return Response({"detail": "Invalid route_id, bus_id, or driver_id"}, status=400)
+                else:
+                    if not assigned_bus:
+                        return Response({"detail": "No active bus is assigned to this helper."}, status=400)
+                    if not assigned_bus.route_id:
+                        return Response({"detail": "This bus does not have a route assigned yet."}, status=400)
+                    if not assigned_bus.driver_id:
+                        return Response({"detail": "This bus does not have a driver assigned yet."}, status=400)
+                    if not _assigned_bus_acknowledged_for_user(assigned_bus, actor):
+                        return Response({"detail": "Accept the latest admin assignment before starting this route."}, status=400)
+                    bus = assigned_bus
+                    route = assigned_bus.route
+                    driver = assigned_bus.driver
 
-            if not trip:
-                conflict = _live_trip_conflict(bus=bus, driver=actor, helper=helper)
-                if conflict:
-                    return Response({"detail": conflict}, status=400)
-
-                trip = Trip.objects.create(
-                    schedule=None,
-                    route=route,
-                    bus=bus,
-                    driver=actor,
-                    helper=helper,
-                    status=Trip.Status.NOT_STARTED,
-                    deviation_mode=deviation_mode,
+                trip = (
+                    Trip.objects.filter(helper=actor, status=Trip.Status.NOT_STARTED, schedule__isnull=True)
+                    .select_related("route", "bus", "driver", "helper", "simulation")
+                    .order_by("-created_at")
+                    .first()
                 )
-                created = True
+
+                if trip and (
+                    trip.route_id != route.id
+                    or trip.bus_id != bus.id
+                    or trip.driver_id != driver.id
+                ):
+                    trip.status = Trip.Status.CANCELLED
+                    trip.save(update_fields=["status"])
+                    trip = None
+
+                if not trip:
+                    conflict = _live_trip_conflict(bus=bus, driver=driver, helper=actor)
+                    if conflict:
+                        return Response({"detail": conflict}, status=400)
+
+                    trip = Trip.objects.create(
+                        schedule=None,
+                        route=route,
+                        bus=bus,
+                        driver=driver,
+                        helper=actor,
+                        status=Trip.Status.NOT_STARTED,
+                        deviation_mode=False,
+                    )
+                    created = True
 
         # Common finalize logic
         if trip.status == Trip.Status.LIVE:
@@ -859,6 +1089,56 @@ class AcceptTripAssignmentView(APIView):
         )
 
 
+class AcceptAssignedBusView(APIView):
+    permission_classes = [IsAuthenticated, IsDriverOrHelper]
+
+    def post(self, request):
+        bus = _assigned_bus_for_user(request.user)
+        if not bus:
+            return Response({"detail": "No active bus assignment was found for this account."}, status=404)
+
+        update_fields = []
+        role = _role_label(request.user)
+        if role == "driver":
+            if bus.driver_id != request.user.id:
+                return Response({"detail": "This bus assignment does not belong to you."}, status=403)
+            if _assigned_bus_acknowledged_for_user(bus, request.user):
+                return Response(
+                    {
+                        "message": "Latest admin assignment already accepted.",
+                        "assigned_bus": DriverStartOptionBusSerializer(bus).data,
+                    },
+                    status=200,
+                )
+            bus.driver_assignment_accepted_at = timezone.now()
+            update_fields.append("driver_assignment_accepted_at")
+            success_message = "Driver assignment accepted. Your latest bus and route plan is ready."
+        else:
+            if bus.helper_id != request.user.id:
+                return Response({"detail": "This bus assignment does not belong to you."}, status=403)
+            if _assigned_bus_acknowledged_for_user(bus, request.user):
+                return Response(
+                    {
+                        "message": "Latest admin assignment already accepted.",
+                        "assigned_bus": DriverStartOptionBusSerializer(bus).data,
+                    },
+                    status=200,
+                )
+            bus.helper_assignment_accepted_at = timezone.now()
+            update_fields.append("helper_assignment_accepted_at")
+            success_message = "Helper assignment accepted. Your latest bus and route plan is ready."
+
+        bus.save(update_fields=update_fields)
+        bus.refresh_from_db()
+        return Response(
+            {
+                "message": success_message,
+                "assigned_bus": DriverStartOptionBusSerializer(bus).data,
+            },
+            status=200,
+        )
+
+
 class EndTripView(APIView):
     permission_classes = [IsAuthenticated, IsDriverOrHelper]
 
@@ -904,6 +1184,8 @@ class LatestTripLocationView(APIView):
         trip = Trip.objects.select_related("simulation").filter(id=trip_id).first()
         if not trip:
             return Response({"detail": "Trip not found"}, status=404)
+        if trip.status == Trip.Status.LIVE:
+            ensure_trip_simulation(trip)
         loc = sync_trip_simulation(trip)
         if not loc:
             return Response({"detail": "No location yet"}, status=404)
@@ -963,6 +1245,26 @@ class TripSimulationPauseView(APIView):
 
         try:
             latest_location, simulation = pause_trip_simulation(trip)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        return Response({
+            "latest_location": TripLocationSerializer(latest_location).data if latest_location else None,
+            "simulation": _serialize_simulation(simulation),
+        })
+
+
+class TripSimulationResumeView(APIView):
+    permission_classes = [IsAuthenticated, IsDriver]
+
+    def post(self, request, trip_id: int):
+        trip, denial = _driver_trip_or_403(request, trip_id)
+        if denial:
+            return denial
+
+        step_interval_ms = request.data.get("step_interval_ms")
+        try:
+            latest_location, simulation = resume_trip_simulation(trip, step_interval_ms)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=400)
 

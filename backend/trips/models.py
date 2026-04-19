@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from transport.models import Route, Bus
 
 
@@ -137,3 +138,29 @@ class TripSimulation(models.Model):
 
     def __str__(self):
         return f"Simulation for trip {self.trip_id}"
+
+
+class TripExpense(models.Model):
+    class Category(models.TextChoices):
+        FUEL = "FUEL", "Fuel"
+        REPAIR = "REPAIR", "Repair"
+        MAINTENANCE = "MAINTENANCE", "Maintenance"
+        TOLL = "TOLL", "Toll"
+        PARKING = "PARKING", "Parking"
+        CLEANING = "CLEANING", "Cleaning"
+        OTHER = "OTHER", "Other"
+
+    trip = models.ForeignKey(Trip, on_delete=models.CASCADE, related_name="expenses", null=True, blank=True)
+    bus = models.ForeignKey(Bus, on_delete=models.PROTECT, related_name="expenses")
+    driver = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="trip_expenses")
+    category = models.CharField(max_length=20, choices=Category.choices, default=Category.OTHER)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    note = models.CharField(max_length=255, blank=True, default="")
+    incurred_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-incurred_at", "-created_at"]
+
+    def __str__(self):
+        return f"{self.category} {self.amount} for bus {self.bus_id}"

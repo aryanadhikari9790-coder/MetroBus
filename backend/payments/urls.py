@@ -5,6 +5,7 @@ from .views import (
     PassengerWalletTopUpView,
     PassengerPassPurchaseView,
     VerifyCashPaymentView,
+    VerifyManualPaymentView,
     EsewaSuccessCallback,
     EsewaFailureCallback,
     KhaltiReturnCallback,
@@ -17,6 +18,7 @@ urlpatterns = [
     path("wallet/top-up/", PassengerWalletTopUpView.as_view(), name="wallet-top-up"),
     path("wallet/pass/", PassengerPassPurchaseView.as_view(), name="wallet-pass"),
     path("cash/verify/<int:booking_id>/", VerifyCashPaymentView.as_view(), name="cash-verify"),
+    path("manual/verify/<int:booking_id>/", VerifyManualPaymentView.as_view(), name="manual-verify"),
 
     # eSewa callbacks
     path("esewa/success/<int:payment_id>/", EsewaSuccessCallback.as_view(), name="esewa-success"),

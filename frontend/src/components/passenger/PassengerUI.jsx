@@ -1454,30 +1454,55 @@ export function ReservationCard({ booking, onPrimaryAction, primaryActionLabel =
 
 export function HistoryCard({ booking, onDownload }) {
   return (
-    <div className="rounded-[24px] bg-white p-5 shadow-[var(--mb-shadow)]">
+    <div className="rounded-[28px] bg-white p-5 shadow-[var(--mb-shadow)] border border-[var(--mb-border)]">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-4">
-          <div className="grid h-12 w-12 place-items-center rounded-full bg-[var(--mb-bg-alt)] text-[var(--mb-purple)]">
-            <Icon name="track" />
+          <div className="grid h-14 w-14 place-items-center rounded-full bg-[var(--mb-bg-alt)] text-[var(--mb-purple)] shadow-sm">
+            <Icon name="rides" className="h-6 w-6" />
           </div>
           <div>
-            <p className="text-2xl font-black text-[var(--mb-text)]">{fmtDate(booking.created_at)}</p>
-            <p className="mt-1 text-sm text-[var(--mb-muted)]">Ride ID: #MB{booking.id}</p>
+            <p className="text-[1.2rem] font-black text-[var(--mb-text)]">{fmtDate(booking.created_at)}</p>
+            <p className="mt-1 text-xs font-bold uppercase tracking-wider text-[var(--mb-muted)]">Booking #{booking.id}</p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-2xl font-black text-[var(--mb-text)]">{fmtMoney(booking.fare_total)}</p>
-          <p className="mt-1 text-sm font-black text-[var(--mb-purple)]">{booking.status}</p>
+          <p className="text-[1.4rem] font-black text-[var(--mb-purple)]">{fmtMoney(booking.fare_total)}</p>
+          <span className={`mt-1 inline-block rounded-full px-3 py-1 text-[0.62rem] font-black uppercase tracking-widest ${booking.status === "COMPLETED" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}>
+            {booking.status}
+          </span>
         </div>
       </div>
-      <div className="mt-5 border-t border-[var(--mb-border)] pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xl font-semibold italic text-[var(--mb-text)]">{booking.pickup_stop_name} to {booking.destination_stop_name}</p>
-          <button type="button" onClick={onDownload} className="inline-flex items-center gap-2 text-lg font-black text-[var(--mb-purple)]">
-            <Icon name="download" className="h-5 w-5" />
-            Download Invoice
-          </button>
+      <div className="mt-6 flex gap-4">
+        <div className="flex flex-col items-center">
+          <span className="h-2.5 w-2.5 rounded-full bg-[var(--mb-purple)]" />
+          <span className="h-4 border-l border-dashed border-[var(--mb-border)]" />
+          <span className="h-2.5 w-2.5 rounded-full border border-[var(--mb-purple)] bg-white" />
         </div>
+        <div className="space-y-3 flex-1">
+          <div>
+            <p className="text-[0.62rem] font-bold uppercase tracking-widest text-[var(--mb-muted)]">From</p>
+            <p className="text-sm font-black text-[var(--mb-text)]">{booking.pickup_stop_name}</p>
+          </div>
+          <div>
+            <p className="text-[0.62rem] font-bold uppercase tracking-widest text-[var(--mb-muted)]">To</p>
+            <p className="text-sm font-black text-[var(--mb-text)]">{booking.destination_stop_name}</p>
+          </div>
+        </div>
+        <div className="text-right flex flex-col justify-end">
+           <p className="text-[0.62rem] font-bold uppercase tracking-widest text-[var(--mb-muted)]">Bus</p>
+           <p className="text-sm font-black text-[var(--mb-text)]">{booking.bus_plate || "N/A"}</p>
+        </div>
+      </div>
+      <div className="mt-6 flex items-center justify-between gap-3 border-t border-[var(--mb-border)] pt-4">
+        <div className="flex gap-2">
+           <span className="rounded-md bg-[var(--mb-bg-alt)] px-2.5 py-1.5 text-[0.68rem] font-black text-[var(--mb-purple)] uppercase">
+             {booking.seats_count} Seat{booking.seats_count !== 1 ? "s" : ""}
+           </span>
+        </div>
+        <button type="button" onClick={onDownload} className="inline-flex items-center gap-2 text-sm font-black text-[var(--mb-purple)] hover:underline">
+          <Icon name="download" className="h-4 w-4" />
+          Receipt
+        </button>
       </div>
     </div>
   );

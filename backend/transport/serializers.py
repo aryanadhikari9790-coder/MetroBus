@@ -42,19 +42,25 @@ class RouteStopSerializer(serializers.ModelSerializer):
 
 class RouteListSerializer(serializers.ModelSerializer):
     stops_count = serializers.SerializerMethodField()
+    path_points = serializers.JSONField(read_only=True)
+    path_waypoints = serializers.JSONField(read_only=True)
+    path_distance_km = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
 
     def get_stops_count(self, obj):
         return obj.route_stops.count()
 
     class Meta:
         model = Route
-        fields = ("id", "name", "city", "is_active", "stops_count")
+        fields = ("id", "name", "city", "is_active", "stops_count", "path_points", "path_waypoints", "path_distance_km")
 
 
 class RouteManageSerializer(serializers.ModelSerializer):
     stops_count = serializers.SerializerMethodField()
     route_stops = serializers.SerializerMethodField()
     segment_fares = serializers.SerializerMethodField()
+    path_points = serializers.JSONField(read_only=True)
+    path_waypoints = serializers.JSONField(read_only=True)
+    path_distance_km = serializers.DecimalField(max_digits=8, decimal_places=2, read_only=True)
 
     def get_stops_count(self, obj):
         return obj.route_stops.count()
@@ -84,7 +90,7 @@ class RouteManageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Route
-        fields = ("id", "name", "city", "is_active", "stops_count", "route_stops", "segment_fares")
+        fields = ("id", "name", "city", "is_active", "stops_count", "route_stops", "segment_fares", "path_points", "path_waypoints", "path_distance_km")
 
 
 class CreateRouteSerializer(serializers.Serializer):
@@ -95,6 +101,16 @@ class CreateRouteSerializer(serializers.Serializer):
     segment_fares = serializers.ListField(
         child=serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0),
         min_length=1,
+    )
+    path_points = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        allow_empty=True,
+    )
+    path_waypoints = serializers.ListField(
+        child=serializers.DictField(),
+        required=False,
+        allow_empty=True,
     )
 
     def validate(self, attrs):
@@ -111,13 +127,25 @@ class CreateRouteSerializer(serializers.Serializer):
         if existing_stop_ids != set(stop_ids):
             raise serializers.ValidationError("One or more selected stops are invalid or inactive.")
 
+        path_points = attrs.get("path_points") or []
+        if path_points and len(path_points) < 2:
+            raise serializers.ValidationError("Route path must contain at least two map points.")
+
+        path_waypoints = attrs.get("path_waypoints") or []
+        for waypoint in path_waypoints:
+            if "segment_index" not in waypoint:
+                raise serializers.ValidationError("Each route waypoint must include a segment_index.")
+
         return attrs
 
 
 class BusSerializer(serializers.ModelSerializer):
     seats_count = serializers.SerializerMethodField()
+    route_name = serializers.CharField(source="route.name", read_only=True)
     driver_name = serializers.CharField(source="driver.full_name", read_only=True)
     helper_name = serializers.CharField(source="helper.full_name", read_only=True)
+    driver_assignment_accepted = serializers.BooleanField(read_only=True)
+    helper_assignment_accepted = serializers.BooleanField(read_only=True)
     exterior_photo_url = serializers.SerializerMethodField()
     interior_photo_url = serializers.SerializerMethodField()
     seat_photo_url = serializers.SerializerMethodField()
@@ -148,10 +176,17 @@ class BusSerializer(serializers.ModelSerializer):
             "is_active",
             "seats_count",
             "created_at",
+            "route",
+            "route_name",
             "driver",
             "helper",
             "driver_name",
             "helper_name",
+            "assignment_updated_at",
+            "driver_assignment_accepted",
+            "driver_assignment_accepted_at",
+            "helper_assignment_accepted",
+            "helper_assignment_accepted_at",
             "exterior_photo_url",
             "interior_photo_url",
             "seat_photo_url",

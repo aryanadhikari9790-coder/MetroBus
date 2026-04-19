@@ -200,3 +200,24 @@ class OfflineSeat(models.Model):
 
     def __str__(self):
         return f"Offline {self.offline_boarding_id} - {self.seat.seat_no}"
+
+
+class BookingReview(models.Model):
+    booking = models.OneToOneField(Booking, on_delete=models.CASCADE, related_name="review")
+    passenger = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="booking_reviews")
+    rating = models.PositiveSmallIntegerField()
+    note = models.CharField(max_length=500, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(rating__gte=1) & models.Q(rating__lte=5),
+                name="chk_booking_review_rating_range",
+            )
+        ]
+
+    def __str__(self):
+        return f"Review for booking {self.booking_id}"

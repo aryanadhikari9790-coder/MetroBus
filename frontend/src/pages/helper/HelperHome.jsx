@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import MetroSeatBoard from "../../components/shared/MetroSeatBoard";
+import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
 
 const LIGHT = {
@@ -47,6 +49,7 @@ const DARK = {
 const TABS = [
   { id: "home", label: "Home", icon: "home" },
   { id: "riders", label: "Riders", icon: "users" },
+  { id: "map", label: "Map", icon: "ticket" },
   { id: "payments", label: "Payments", icon: "wallet" },
   { id: "account", label: "Account", icon: "account" },
 ];
@@ -130,6 +133,34 @@ function PlaceholderPanel({ tabLabel }) {
   );
 }
 
+function TextField({ label, value, onChange, placeholder = "", type = "text" }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--muted)]">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3.5 text-sm font-semibold text-[var(--text)] outline-none"
+      />
+    </label>
+  );
+}
+
+function MapViewport({ points }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!points.length) return;
+    if (points.length === 1) {
+      map.setView(points[0], 14);
+      return;
+    }
+    map.fitBounds(points, { padding: [26, 26] });
+  }, [map, points]);
+  return null;
+}
+
 const fmtTime = (value) => {
   if (!value) return "--";
   try { return new Date(value).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch { return value; }
@@ -147,6 +178,23 @@ const initials = (name) => {
 
 const getStopName = (stops, order) => stops.find((item) => String(item.stop_order) === String(order))?.stop?.name || "--";
 const sanitizeOtp = (value) => String(value || "").replace(/\D/g, "").slice(0, 4);
+const toPoint = (lat, lng) => {
+  const nextLat = Number(lat);
+  const nextLng = Number(lng);
+  return Number.isFinite(nextLat) && Number.isFinite(nextLng) ? [nextLat, nextLng] : null;
+};
+const haversineMeters = (a, b) => {
+  if (!a || !b) return Number.POSITIVE_INFINITY;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const area =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 6371000 * (2 * Math.atan2(Math.sqrt(area), Math.sqrt(1 - area)));
+};
 
 const helperPaymentState = (booking) => {
   const status = booking?.payment_status || booking?.payment?.status || "UNPAID";
@@ -182,6 +230,9 @@ export default function HelperHome() {
   const [tab, setTab] = useState("home");
   const [selectedScheduleId, setSelectedScheduleId] = useState("");
   const [routeStops, setRouteStops] = useState([]);
+  const [routePathPoints, setRoutePathPoints] = useState([]);
+  const [roadPolyline, setRoadPolyline] = useState([]);
+  const [passengerRequests, setPassengerRequests] = useState([]);
   const [seats, setSeats] = useState([]);
   const [loadingSeats, setLoadingSeats] = useState(false);
   const [fromOrder, setFromOrder] = useState("");
@@ -189,6 +240,12 @@ export default function HelperHome() {
   const [seatSheet, setSeatSheet] = useState(null);
   const [otpCode, setOtpCode] = useState("");
   const [otpBooking, setOtpBooking] = useState(null);
+  const [historyData, setHistoryData] = useState({ summary: null, trips: [] });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [profileForm, setProfileForm] = useState({ full_name: "", email: "" });
+  const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
 
   const activeTrip = dashboard?.active_trip ?? null;
   const pendingTrip = dashboard?.pending_trip ?? null;
@@ -196,6 +253,9 @@ export default function HelperHome() {
   const seatLayoutTripId = trip?.id ?? null;
   const showSeatLayout = tab === "home" && Boolean(activeTrip);
   const schedules = dashboard?.schedules ?? [];
+  const assignedBus = dashboard?.assigned_bus ?? null;
+  const assignedRouteReady = Boolean(assignedBus?.route && assignedBus?.driver);
+  const assignedBusNeedsAcceptance = Boolean(assignedRouteReady && !assignedBus?.helper_assignment_accepted);
   const helperBookings = dashboard?.helper_bookings ?? {};
 
   useEffect(() => {
@@ -230,6 +290,39 @@ export default function HelperHome() {
   const stopOptions = routeStops.map((stop) => ({ value: String(stop.stop_order), label: `${stop.stop_order}. ${stop.stop?.name || "--"}` }));
   const selectedFromName = getStopName(routeStops, fromOrder);
   const selectedToName = getStopName(routeStops, toOrder);
+  const routePolyline = useMemo(() => {
+    const points = (routePathPoints || [])
+      .map((point) => Array.isArray(point) ? [Number(point[0]), Number(point[1])] : [Number(point?.lat), Number(point?.lng)])
+      .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+    if (points.length > 1) return points;
+    return routeStops.map((item) => [Number(item.stop?.lat), Number(item.stop?.lng)]).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  }, [routePathPoints, routeStops]);
+  const routePolylineSignature = useMemo(() => JSON.stringify(routePolyline), [routePolyline]);
+  const displayLine = useMemo(() => roadPolyline.length > 1 ? roadPolyline : routePolyline, [roadPolyline, routePolyline]);
+  const liveBusPoint = useMemo(() => {
+    const lat = Number(dashboard?.latest_location?.lat);
+    const lng = Number(dashboard?.latest_location?.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+  }, [dashboard?.latest_location?.lat, dashboard?.latest_location?.lng]);
+  const stopLookup = useMemo(() => Object.fromEntries(routeStops.map((stop) => [String(stop.stop_order), stop])), [routeStops]);
+  const dropReadyBookings = useMemo(() => {
+    if (!liveBusPoint) return [];
+    return (helperBookings.onboard || []).filter((booking) => {
+      const stop = stopLookup[String(booking.to_stop_order)];
+      const destinationPoint = toPoint(stop?.stop?.lat, stop?.stop?.lng);
+      return destinationPoint && haversineMeters(liveBusPoint, destinationPoint) <= 250;
+    });
+  }, [helperBookings.onboard, liveBusPoint, stopLookup]);
+  const mapPoints = useMemo(() => {
+    const points = [...displayLine];
+    passengerRequests.forEach((item) => {
+      const lat = Number(item.marker_lat);
+      const lng = Number(item.marker_lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) points.push([lat, lng]);
+    });
+    if (liveBusPoint) points.push(liveBusPoint);
+    return points;
+  }, [displayLine, liveBusPoint, passengerRequests]);
 
   const homeStatus = activeTrip
     ? "Trip Live"
@@ -239,9 +332,15 @@ export default function HelperHome() {
         : pendingTrip.driver_start_confirmed
           ? "Ready to Confirm"
           : "Start Pending"
-      : selectedSchedule
-        ? selectedSchedule.driver_assignment_accepted
+      : assignedBus
+        ? assignedBusNeedsAcceptance
+          ? "Assignment Pending"
+          : assignedRouteReady
           ? "Ready to Start"
+          : "Assignment Incomplete"
+        : selectedSchedule
+          ? selectedSchedule.driver_assignment_accepted
+            ? "Ready to Start"
           : "Waiting for Driver"
         : "Standby";
 
@@ -274,6 +373,9 @@ export default function HelperHome() {
     if (!tripId) {
       if (clearIfMissing) {
         setRouteStops([]);
+        setRoutePathPoints([]);
+        setRoadPolyline([]);
+        setPassengerRequests([]);
         setSeats([]);
         setSeatSheet(null);
       }
@@ -282,10 +384,15 @@ export default function HelperHome() {
     try {
       const response = await api.get(`/api/trips/${tripId}/`);
       setRouteStops(response.data.route_stops || []);
+      setRoutePathPoints(response.data.trip?.route_path_points || []);
+      setPassengerRequests(response.data.passenger_requests || []);
       setErr("");
     } catch {
       if (clearIfMissing) {
         setRouteStops([]);
+        setRoutePathPoints([]);
+        setRoadPolyline([]);
+        setPassengerRequests([]);
         setSeats([]);
         setSeatSheet(null);
       }
@@ -315,6 +422,18 @@ export default function HelperHome() {
       }
     } finally {
       setLoadingSeats(false);
+    }
+  }, []);
+
+  const loadHistory = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) setHistoryLoading(true);
+    try {
+      const response = await api.get("/api/trips/helper/history/");
+      setHistoryData({ summary: response.data.summary || null, trips: response.data.trips || [] });
+    } catch (error) {
+      if (!silent) setErr(error?.response?.data?.detail || "Unable to load helper history.");
+    } finally {
+      if (!silent) setHistoryLoading(false);
     }
   }, []);
 
@@ -407,7 +526,38 @@ export default function HelperHome() {
     }
   }, [otpLoadedBooking, refreshAfterSeatAction]);
 
+  const saveProfile = useCallback(async () => {
+    setProfileBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.patch("/api/auth/me/", profileForm);
+      setUser(response.data);
+      setMsg("Helper profile updated.");
+    } catch (error) {
+      setErr(error?.response?.data?.detail || "Unable to update the helper profile.");
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [profileForm, setUser]);
+
+  const changePassword = useCallback(async () => {
+    setPasswordBusy(true);
+    setErr("");
+    setMsg("");
+    try {
+      const response = await api.post("/api/auth/me/password/", passwordForm);
+      setPasswordForm({ current_password: "", new_password: "", confirm_password: "" });
+      setMsg(response.data.message || "Password updated.");
+    } catch (error) {
+      setErr(error?.response?.data?.current_password?.[0] || error?.response?.data?.confirm_password?.[0] || error?.response?.data?.new_password?.[0] || error?.response?.data?.detail || "Unable to change the password.");
+    } finally {
+      setPasswordBusy(false);
+    }
+  }, [passwordForm]);
+
   useEffect(() => { loadDashboard(); }, [loadDashboard]);
+  useEffect(() => { setProfileForm({ full_name: user?.full_name || "", email: user?.email || "" }); }, [user?.email, user?.full_name]);
   useEffect(() => {
     const timer = setInterval(() => {
       loadDashboard({ silent: true });
@@ -428,6 +578,19 @@ export default function HelperHome() {
   }, [trip?.schedule_id, schedules, selectedScheduleId]);
 
   useEffect(() => { loadTripContext(trip?.id, { clearIfMissing: true }); }, [trip?.id, loadTripContext]);
+  useEffect(() => {
+    if (routePolyline.length < 2) {
+      setRoadPolyline([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    snapRouteToRoad(routePolyline, controller.signal)
+      .then((points) => setRoadPolyline(points.length > 1 ? points : []))
+      .catch((error) => {
+        if (error.name !== "AbortError") setRoadPolyline([]);
+      });
+    return () => controller.abort();
+  }, [routePolylineSignature]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (routeStops.length < 2) {
       setFromOrder("");
@@ -452,6 +615,9 @@ export default function HelperHome() {
     const timer = setInterval(() => loadSeats(seatLayoutTripId, fromOrder, toOrder, { silent: true }), 4000);
     return () => clearInterval(timer);
   }, [fromOrder, loadSeats, seatLayoutTripId, toOrder]);
+  useEffect(() => {
+    if (tab === "account") loadHistory();
+  }, [loadHistory, tab]);
 
   useEffect(() => {
     if (trip?.id) return;
@@ -463,6 +629,17 @@ export default function HelperHome() {
     if (!selectedSchedule?.id) return setErr("There is no scheduled trip selected right now.");
     if (!selectedSchedule.driver_assignment_accepted) return setErr("Wait for the driver to accept the assignment before starting.");
     return runTripAction(() => api.post("/api/trips/start/", { schedule_id: selectedSchedule.id }), "Trip start confirmation sent.");
+  };
+
+  const acceptAssignedBus = async () => {
+    return runTripAction(() => api.post("/api/trips/assignment/accept/"), "Latest admin assignment accepted.");
+  };
+
+  const requestAssignedStart = async () => {
+    if (!assignedBus?.id) return setErr("There is no assigned bus for this helper right now.");
+    if (!assignedRouteReady) return setErr("The assigned bus needs both a route and a driver before helper start is available.");
+    if (assignedBusNeedsAcceptance) return setErr("Accept the latest admin assignment before starting this route.");
+    return runTripAction(() => api.post("/api/trips/start/", { route_id: assignedBus.route, bus_id: assignedBus.id, driver_id: assignedBus.driver }), "Trip start confirmation sent.");
   };
 
   const confirmPendingStart = async () => {
@@ -484,6 +661,7 @@ export default function HelperHome() {
 
   const requestPaymentForSeat = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/request-payment/`), `Payment request sent for booking #${bookingId}.`);
   const verifyCashForSeat = (bookingId) => runSeatAction(() => api.post(`/api/payments/cash/verify/${bookingId}/`), `Cash payment verified for booking #${bookingId}.`);
+  const verifyManualForSeat = (bookingId) => runSeatAction(() => api.post(`/api/payments/manual/verify/${bookingId}/`), `Payment manually verified for booking #${bookingId}.`);
   const acceptPassenger = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/accept/`), `Passenger accepted for booking #${bookingId}.`);
   const boardPassengerForSeat = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/board/`), `Passenger boarded for booking #${bookingId}.`);
   const completeRideForSeat = (bookingId) => runSeatAction(() => api.post(`/api/bookings/${bookingId}/complete/`), `Ride ended for booking #${bookingId}.`, { closeSheet: true });
@@ -501,11 +679,12 @@ export default function HelperHome() {
     }
     if (selectedBooking?.can_accept) return { label: "Accept Passenger", tone: "primary", onClick: () => acceptPassenger(seatSheet.booking_id) };
     if (selectedBooking?.can_verify_cash) return { label: "Verify Cash Payment", tone: "primary", onClick: () => verifyCashForSeat(seatSheet.booking_id) };
+    if (selectedBooking?.can_verify_manual) return { label: "Verify Manual Payment", tone: "primary", onClick: () => verifyManualForSeat(seatSheet.booking_id) };
     if (selectedBooking?.can_request_payment) return { label: "Request Payment", tone: "primary", onClick: () => requestPaymentForSeat(seatSheet.booking_id) };
     if (selectedBooking?.can_board) return { label: "Board Passenger", tone: "primary", onClick: () => boardPassengerForSeat(seatSheet.booking_id) };
     if (selectedBooking?.can_complete || (seatSheet.payment_verified && seatSheet.journey_stage === "dropoff")) return { label: "End Passenger Ride", tone: "danger", onClick: () => completeRideForSeat(seatSheet.booking_id) };
     return null;
-  }, [acceptPassenger, boardPassengerForSeat, collectOfflineCash, completeOfflineRide, completeRideForSeat, onboardOfflinePassenger, requestPaymentForSeat, seatSheet, selectedBooking?.can_accept, selectedBooking?.can_board, selectedBooking?.can_complete, selectedBooking?.can_request_payment, selectedBooking?.can_verify_cash, verifyCashForSeat]);
+  }, [acceptPassenger, boardPassengerForSeat, collectOfflineCash, completeOfflineRide, completeRideForSeat, onboardOfflinePassenger, requestPaymentForSeat, seatSheet, selectedBooking?.can_accept, selectedBooking?.can_board, selectedBooking?.can_complete, selectedBooking?.can_request_payment, selectedBooking?.can_verify_cash, selectedBooking?.can_verify_manual, verifyCashForSeat, verifyManualForSeat]);
 
   const seatStatusText = seatSheet?.available
     ? activeTrip?.id ? "Vacant and ready for an offline passenger" : "Vacant seat. Helper actions unlock after the trip goes fully live."
@@ -647,6 +826,17 @@ export default function HelperHome() {
                         <Icon name="money" className="h-4 w-4" />
                         {otpBusy ? "Saving..." : otpLoadedBooking.checked_in_at ? "Request Payment" : "Onboard & Request Payment"}
                       </ActionButton>
+                      {otpLoadedBooking.can_verify_manual ? (
+                        <ActionButton
+                          onClick={() => verifyManualForSeat(otpLoadedBooking.id)}
+                          disabled={otpBusy}
+                          tone="secondary"
+                          className="w-full sm:col-span-2"
+                        >
+                          <Icon name="shield" className="h-4 w-4" />
+                          {otpBusy ? "Saving..." : "Verify Manual Payment"}
+                        </ActionButton>
+                      ) : null}
                     </div>
                   </div>
                 ) : (
@@ -661,7 +851,156 @@ export default function HelperHome() {
           </SurfaceCard>
         ) : null}
 
-        {tab === "payments" || tab === "account" ? <PlaceholderPanel tabLabel={TABS.find((item) => item.id === tab)?.label || "Helper"} /> : null}
+        {tab === "map" ? (
+          <SurfaceCard className="overflow-hidden">
+            <div className="border-b border-[var(--border)] px-5 py-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--primary)]">Live Route Map</p>
+                  <h2 className="mt-3 text-[2rem] font-black leading-tight text-[var(--text)]">{trip?.route_name || assignedBus?.route_name || "Helper route map"}</h2>
+                  <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Monitor the live bus location, passenger pickup points, and drop points while the trip is running.</p>
+                </div>
+                <StatusPill tone={activeTrip ? "live" : "waiting"}>{activeTrip ? "Trip Live" : "Standby"}</StatusPill>
+              </div>
+            </div>
+
+            <div className="relative h-[31rem] overflow-hidden bg-[var(--bg-soft)]">
+              {mapPoints.length ? (
+                <MapContainer center={mapPoints[0]} zoom={13} className="h-full w-full" scrollWheelZoom={false}>
+                  <TileLayer attribution="&copy; OpenStreetMap contributors" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"} />
+                  <MapViewport points={mapPoints} />
+                  {displayLine.length > 1 ? <Polyline positions={displayLine} pathOptions={{ color: theme["--primary"], weight: 5, opacity: 0.92 }} /> : null}
+                  {passengerRequests.map((item) => {
+                    const lat = Number(item.marker_lat);
+                    const lng = Number(item.marker_lng);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+                    const pickup = item.stage === "pickup";
+                    return <CircleMarker key={`${item.booking_id}-${item.stage}`} center={[lat, lng]} radius={8} pathOptions={{ color: pickup ? "#15803d" : "#b91c1c", fillColor: pickup ? "#22c55e" : "#ef4444", fillOpacity: 0.96, weight: 2 }}><Popup><div className="min-w-[12rem] space-y-1 text-sm"><p className="font-black">{item.passenger_name}</p><p className="font-semibold text-[var(--primary)]">{pickup ? "Pickup point" : "Drop point"}</p><p className="text-[var(--muted)]">{item.pickup_stop_name} to {item.destination_stop_name}</p></div></Popup></CircleMarker>;
+                  })}
+                  {liveBusPoint ? <CircleMarker center={liveBusPoint} radius={10} pathOptions={{ color: theme["--accent"], fillColor: theme["--accent"], fillOpacity: 1, weight: 3 }}><Popup>Live bus location</Popup></CircleMarker> : null}
+                </MapContainer>
+              ) : (
+                <div className="grid h-full place-items-center px-6 text-center text-sm font-semibold text-[var(--muted)]">Start the trip to unlock the helper live map.</div>
+              )}
+            </div>
+
+            <div className="grid gap-3 border-t border-[var(--border)] px-5 py-4 sm:grid-cols-3">
+              <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Pickups</p><p className="mt-2 text-2xl font-black">{passengerRequests.filter((item) => item.stage === "pickup").length}</p></div>
+              <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Drop-offs</p><p className="mt-2 text-2xl font-black">{passengerRequests.filter((item) => item.stage === "dropoff").length}</p></div>
+              <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Current Bus</p><p className="mt-2 text-lg font-black">{trip?.bus_plate || assignedBus?.plate_number || "--"}</p></div>
+            </div>
+          </SurfaceCard>
+        ) : null}
+
+        {tab === "payments" ? (
+          <SurfaceCard className="overflow-hidden">
+            <div className="border-b border-[var(--border)] px-5 py-5">
+              <p className="text-[0.72rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Helper Payments</p>
+              <h2 className="mt-3 text-[2rem] font-black leading-tight text-[var(--text)]">Pending, onboard, and completed payment flow</h2>
+              <p className="mt-3 text-sm leading-7 text-[var(--muted)]">Use this page to focus on payment and passenger progress without leaving the helper dashboard flow.</p>
+            </div>
+
+            <div className="grid gap-3 border-b border-[var(--border)] px-5 py-5 sm:grid-cols-4">
+              <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Awaiting Payment</p><p className="mt-2 text-2xl font-black">{helperBookings.summary?.awaiting_payment_count || 0}</p></div>
+              <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Ready To Board</p><p className="mt-2 text-2xl font-black">{helperBookings.summary?.ready_to_board_count || 0}</p></div>
+              <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Onboard</p><p className="mt-2 text-2xl font-black">{helperBookings.summary?.onboard_count || 0}</p></div>
+              <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.66rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Completed</p><p className="mt-2 text-2xl font-black">{helperBookings.summary?.completed_recent_count || 0}</p></div>
+            </div>
+
+            {dropReadyBookings.length ? (
+              <div className="border-b border-[var(--border)] px-5 py-5">
+                <div className="rounded-[1.4rem] border border-[rgba(255,150,45,0.18)] bg-[rgba(255,150,45,0.12)] px-4 py-4">
+                  <p className="text-[0.66rem] font-black uppercase tracking-[0.18em] text-[var(--accent)]">Drop Arrival Alert</p>
+                  <h3 className="mt-2 text-lg font-black text-[var(--text)]">{dropReadyBookings.length} passenger ride{dropReadyBookings.length !== 1 ? "s are" : " is"} close to drop-off</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">Open the onboard section below and end the ride once the passenger gets off.</p>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="space-y-5 px-5 py-5">
+              {[
+                { title: "Awaiting Payment", items: helperBookings.awaiting_payment || [], tone: "default" },
+                { title: "Ready To Board", items: helperBookings.ready_to_board || [], tone: "live" },
+                { title: "Onboard", items: helperBookings.onboard || [], tone: "waiting" },
+                { title: "Completed Recent", items: helperBookings.completed_recent || [], tone: "default" },
+              ].map((group) => (
+                <div key={group.title}>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-[0.68rem] font-black uppercase tracking-[0.18em] text-[var(--primary)]">{group.title}</p>
+                    <StatusPill tone={group.tone}>{group.items.length} rides</StatusPill>
+                  </div>
+                  <div className="space-y-3">
+                    {!group.items.length ? <div className="rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4 text-sm font-semibold text-[var(--muted)]">No passenger rides in this section right now.</div> : null}
+                    {group.items.map((booking) => (
+                      <div key={`${group.title}-${booking.id}`} className="rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-black text-[var(--text)]">{booking.passenger_name}</p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">{booking.pickup_stop_name} to {booking.destination_stop_name}</p>
+                            <p className="mt-1 text-xs text-[var(--muted)]">Seats {(booking.seat_labels || []).join(", ") || "--"} | OTP {booking.boarding_otp || "--"}</p>
+                          </div>
+                          <StatusPill tone={helperPaymentState(booking).tone}>{helperPaymentState(booking).label}</StatusPill>
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-3">
+                          {booking.can_request_payment ? <ActionButton className="!py-3" onClick={() => requestPaymentForSeat(booking.id)} disabled={seatBusy}>Request Payment</ActionButton> : <ActionButton tone="secondary" className="!py-3" disabled>No Action</ActionButton>}
+                          {booking.can_complete ? <ActionButton tone="danger" className="!py-3" onClick={() => completeRideForSeat(booking.id)} disabled={seatBusy}>End Ride</ActionButton> : booking.can_verify_cash ? <ActionButton tone="secondary" className="!py-3" onClick={() => verifyCashForSeat(booking.id)} disabled={seatBusy}>Verify Cash</ActionButton> : booking.can_verify_manual ? <ActionButton tone="secondary" className="!py-3" onClick={() => verifyManualForSeat(booking.id)} disabled={seatBusy}>Verify Manual</ActionButton> : <ActionButton tone="secondary" className="!py-3" disabled>Tracked</ActionButton>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SurfaceCard>
+        ) : null}
+
+        {tab === "account" ? (
+          <section className="space-y-4">
+            <SurfaceCard className="p-6">
+              <p className="text-[0.72rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Helper Account</p>
+              <h2 className="mt-3 text-[2rem] font-black leading-tight text-[var(--text)]">{user?.full_name || "MetroBus Helper"}</h2>
+              <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{user?.phone || "--"} {user?.email ? `| ${user.email}` : ""}</p>
+            </SurfaceCard>
+
+            <SurfaceCard className="p-6">
+              <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--primary)]">Profile Details</p>
+              <div className="mt-4 grid gap-4">
+                <TextField label="Full Name" value={profileForm.full_name} onChange={(value) => setProfileForm((current) => ({ ...current, full_name: value }))} />
+                <TextField label="Email" value={profileForm.email} onChange={(value) => setProfileForm((current) => ({ ...current, email: value }))} />
+              </div>
+              <ActionButton className="mt-4" onClick={saveProfile} disabled={profileBusy}>{profileBusy ? "Saving Profile..." : "Save Profile"}</ActionButton>
+            </SurfaceCard>
+
+            <SurfaceCard className="p-6">
+              <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--primary)]">Password Change</p>
+              <div className="mt-4 grid gap-4">
+                <TextField label="Current Password" type="password" value={passwordForm.current_password} onChange={(value) => setPasswordForm((current) => ({ ...current, current_password: value }))} />
+                <TextField label="New Password" type="password" value={passwordForm.new_password} onChange={(value) => setPasswordForm((current) => ({ ...current, new_password: value }))} />
+                <TextField label="Confirm Password" type="password" value={passwordForm.confirm_password} onChange={(value) => setPasswordForm((current) => ({ ...current, confirm_password: value }))} />
+              </div>
+              <ActionButton className="mt-4" onClick={changePassword} disabled={passwordBusy}>{passwordBusy ? "Updating Password..." : "Update Password"}</ActionButton>
+            </SurfaceCard>
+
+            <SurfaceCard className="p-6">
+              <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--primary)]">Helper Summary</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.62rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Trips</p><p className="mt-2 text-2xl font-black">{historyData.summary?.total_trips || 0}</p></div>
+                <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.62rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Completed</p><p className="mt-2 text-2xl font-black">{historyData.summary?.completed_trips || 0}</p></div>
+                <div className="rounded-[1.2rem] bg-[var(--accent-soft)] px-4 py-4"><p className="text-[0.62rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Live</p><p className="mt-2 text-2xl font-black">{historyData.summary?.live_trips || 0}</p></div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {historyLoading ? <div className="rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4 text-sm font-semibold text-[var(--muted)]">Loading helper history...</div> : null}
+                {!historyLoading && !historyData.trips.length ? <div className="rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4 text-sm font-semibold text-[var(--muted)]">No helper trip history yet.</div> : null}
+                {historyData.trips.slice(0, 4).map((historyTrip) => (
+                  <div key={historyTrip.id} className="rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface)] px-4 py-4">
+                    <p className="text-sm font-black text-[var(--text)]">{historyTrip.route_name}</p>
+                    <p className="mt-1 text-xs text-[var(--muted)]">{historyTrip.bus_plate} | Driver {historyTrip.driver_name}</p>
+                  </div>
+                ))}
+              </div>
+            </SurfaceCard>
+          </section>
+        ) : null}
 
         {tab === "home" ? (
           <SurfaceCard className="overflow-hidden">
@@ -669,10 +1008,16 @@ export default function HelperHome() {
               <div className="px-4 py-4 sm:px-5 sm:py-5">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--primary)]">Ride Control</p>
-                  <StatusPill tone={pendingTrip ? "waiting" : selectedSchedule?.driver_assignment_accepted ? "default" : "danger"}>{homeStatus}</StatusPill>
+                  <StatusPill tone={pendingTrip ? "waiting" : assignedRouteReady || selectedSchedule?.driver_assignment_accepted ? "default" : "danger"}>{homeStatus}</StatusPill>
                 </div>
                 <div className="mt-4 grid gap-3">
-                  {(pendingTrip || selectedSchedule?.driver_assignment_accepted) ? <ActionButton onClick={pendingTrip ? confirmPendingStart : requestScheduledStart} disabled={busy || (pendingTrip ? pendingTrip.helper_start_confirmed : false)} className="w-full"><Icon name="play" className="h-4 w-4" />{busy ? "Sending..." : startLabel}</ActionButton> : null}
+                  {!pendingTrip && assignedBusNeedsAcceptance ? (
+                    <ActionButton onClick={acceptAssignedBus} disabled={busy} className="w-full">
+                      <Icon name="shield" className="h-4 w-4" />
+                      {busy ? "Accepting..." : "Accept Admin Assignment"}
+                    </ActionButton>
+                  ) : null}
+                  {(pendingTrip || (!assignedBusNeedsAcceptance && assignedRouteReady) || selectedSchedule?.driver_assignment_accepted) ? <ActionButton onClick={pendingTrip ? confirmPendingStart : assignedRouteReady ? requestAssignedStart : requestScheduledStart} disabled={busy || (pendingTrip ? pendingTrip.helper_start_confirmed : false)} className="w-full"><Icon name="play" className="h-4 w-4" />{busy ? "Sending..." : startLabel}</ActionButton> : null}
                 </div>
               </div>
             ) : null}
@@ -683,7 +1028,7 @@ export default function HelperHome() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-[0.72rem] font-black uppercase tracking-[0.24em] text-[var(--primary)]">Seat Layout</p>
-                      <h2 className="mt-2 break-words text-[1.6rem] font-black leading-tight">{trip?.route_name || selectedSchedule?.route_name || "Helper seat layout"}</h2>
+                      <h2 className="mt-2 break-words text-[1.6rem] font-black leading-tight">{trip?.route_name || assignedBus?.route_name || selectedSchedule?.route_name || "Helper seat layout"}</h2>
                       <p className="mt-2 text-sm leading-6 text-[var(--muted)]">The main seat screen shows occupancy and payment status directly. Tap any seat to open its helper action window.</p>
                     </div>
                     <StatusPill tone={activeTrip ? "live" : pendingTrip ? "waiting" : "default"}>{activeTrip ? "Ride Live" : pendingTrip ? "Start Pending" : "Standby"}</StatusPill>
@@ -698,6 +1043,18 @@ export default function HelperHome() {
                   </div>
                 </div>
 
+                {dropReadyBookings.length ? (
+                  <div className="border-b border-[var(--border)] px-5 py-4">
+                    <div className="rounded-[1.4rem] border border-[rgba(255,150,45,0.18)] bg-[rgba(255,150,45,0.12)] px-4 py-4">
+                      <p className="text-[0.66rem] font-black uppercase tracking-[0.18em] text-[var(--accent)]">Passenger Drop Alert</p>
+                      <p className="mt-2 text-sm leading-6 text-[var(--text)]">
+                        {dropReadyBookings.map((booking) => `${booking.passenger_name} (${booking.destination_stop_name})`).slice(0, 3).join(", ")}
+                        {dropReadyBookings.length > 3 ? ` and ${dropReadyBookings.length - 3} more` : ""} {dropReadyBookings.length === 1 ? "is" : "are"} ready for ride completion.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="border-b border-[var(--border)] px-5 py-4">
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">Current Segment</p>
                   <p className="mt-2 text-sm leading-6 text-[var(--muted)]">This segment is used when you onboard an offline passenger from the seat popup.</p>
@@ -710,8 +1067,8 @@ export default function HelperHome() {
                 <div className="px-5 py-5">
                   <MetroSeatBoard
                     title="Seat Layout"
-                    routeName={trip?.route_name || selectedSchedule?.route_name || "Helper seat layout"}
-                    busLabel={trip?.bus_plate || selectedSchedule?.bus_plate || "--"}
+                    routeName={trip?.route_name || assignedBus?.route_name || selectedSchedule?.route_name || "Helper seat layout"}
+                    busLabel={trip?.bus_plate || assignedBus?.plate_number || selectedSchedule?.bus_plate || "--"}
                     seats={seats}
                     mode="helper"
                     activeSeatId={seatSheet?.seat_id}
@@ -773,7 +1130,7 @@ export default function HelperHome() {
 
       <footer className="fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(0.55rem+env(safe-area-inset-bottom))] pt-2">
         <div className={`${shell} rounded-[1.45rem] border border-[var(--border)] bg-[var(--footer)] p-1.5 shadow-[var(--shadow)] backdrop-blur-xl`}>
-          <div className="grid grid-cols-4 gap-1.5">
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${TABS.length}, minmax(0, 1fr))` }}>
             {TABS.map((item) => {
               const active = tab === item.id;
               return <button key={item.id} type="button" onClick={() => setTab(item.id)} className={`flex flex-col items-center gap-1 rounded-[1rem] px-2 py-2.5 text-center transition ${active ? "bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-[var(--shadow-strong)]" : "text-[var(--muted)]"}`}><Icon name={item.icon} className="h-4 w-4" /><span className="text-[0.6rem] font-black uppercase tracking-[0.12em]">{item.label}</span></button>;

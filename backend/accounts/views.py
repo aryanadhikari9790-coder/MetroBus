@@ -4,23 +4,24 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db.models.deletion import ProtectedError
-from django.db.models import Count, Sum, Q, Value, DecimalField
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Sum, Q, Value, DecimalField, Avg
+from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from bookings.models import Booking
+from bookings.models import Booking, BookingReview
 from payments.models import PassengerWallet, Payment
 from payments.wallets import FREE_RIDE_REWARD_POINTS
-from transport.models import Route, Stop, Bus, Seat
+from transport.models import Route, Stop, Bus, Seat, RouteStop
 from trips.models import Trip
 from .models import AuthOTP
 from .otp_delivery import OTPDeliveryError, send_password_reset_otp, send_registration_otp
 from .serializers import (
     RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
     PasswordResetOTPRequestSerializer, PasswordResetConfirmSerializer,
+    PasswordChangeSerializer,
     AdminCreateUserSerializer, AdminUserListSerializer,
     AdminUserReviewSerializer,
     AdminUpdateUserSerializer,
@@ -152,6 +153,16 @@ class MeView(APIView):
         return Response(MeSerializer(request.user, context={"request": request}).data)
 
 
+class PasswordChangeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = PasswordChangeSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"message": "Password updated successfully."}, status=200)
+
+
 class AdminDashboardView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -238,6 +249,25 @@ class AdminDashboardView(APIView):
             monthly_passes=Count("id", filter=Q(pass_plan="MONTHLY", pass_valid_until__gte=timezone.localdate(), pass_rides_remaining__gt=0)),
             flex_passes=Count("id", filter=Q(pass_plan="FLEX_20", pass_valid_until__gte=timezone.localdate(), pass_rides_remaining__gt=0)),
         )
+        review_totals = BookingReview.objects.aggregate(
+            total=Count("id"),
+            avg_rating=Avg("rating"),
+            positive=Count("id", filter=Q(rating__gte=4)),
+            critical=Count("id", filter=Q(rating__lte=2)),
+        )
+        recent_reviews = (
+            BookingReview.objects.select_related("booking__trip__route", "booking__trip__bus", "passenger")
+            .order_by("-created_at")[:6]
+        )
+        review_trend_rows = (
+            BookingReview.objects.annotate(day=TruncDate("created_at"))
+            .values("day")
+            .annotate(
+                total=Count("id"),
+                avg_rating=Avg("rating"),
+            )
+            .order_by("-day")[:7]
+        )
 
         live_trip_rows = []
         for trip in live_trips:
@@ -270,6 +300,10 @@ class AdminDashboardView(APIView):
                 booking__trip__route=route,
                 status=Payment.Status.SUCCESS,
             ).aggregate(total=Coalesce(Sum("amount"), money_zero))["total"]
+            route_reviews = BookingReview.objects.filter(booking__trip__route=route).aggregate(
+                total=Count("id"),
+                avg_rating=Avg("rating"),
+            )
             route_analytics.append(
                 {
                     "route_id": route.id,
@@ -283,6 +317,8 @@ class AdminDashboardView(APIView):
                     "bookings": route_bookings.count(),
                     "completed_bookings": route_bookings.filter(status=Booking.Status.COMPLETED).count(),
                     "revenue_success": float(route_revenue),
+                    "reviews_total": route_reviews["total"],
+                    "avg_rating": round(float(route_reviews["avg_rating"] or 0), 2),
                 }
             )
 
@@ -293,6 +329,10 @@ class AdminDashboardView(APIView):
                 booking__trip__bus=bus,
                 status=Payment.Status.SUCCESS,
             ).aggregate(total=Coalesce(Sum("amount"), money_zero))["total"]
+            bus_reviews = BookingReview.objects.filter(booking__trip__bus=bus).aggregate(
+                total=Count("id"),
+                avg_rating=Avg("rating"),
+            )
             bus_analytics.append(
                 {
                     "bus_id": bus.id,
@@ -309,8 +349,54 @@ class AdminDashboardView(APIView):
                     "bookings": bus_bookings.count(),
                     "completed_bookings": bus_bookings.filter(status=Booking.Status.COMPLETED).count(),
                     "revenue_success": float(bus_revenue),
+                    "reviews_total": bus_reviews["total"],
+                    "avg_rating": round(float(bus_reviews["avg_rating"] or 0), 2),
                 }
             )
+
+        route_stop_index = {
+            (route_stop.route_id, route_stop.stop_order): route_stop.stop_id
+            for route_stop in RouteStop.objects.select_related("stop")
+        }
+        station_counters = {
+            stop.id: {
+                "stop_id": stop.id,
+                "stop_name": stop.name,
+                "pickups": 0,
+                "dropoffs": 0,
+                "completed_bookings": 0,
+            }
+            for stop in Stop.objects.order_by("name")[:200]
+        }
+        station_bookings = (
+            Booking.objects.select_related("trip__route")
+            .exclude(status=Booking.Status.CANCELLED)
+            .only("trip__route_id", "from_stop_order", "to_stop_order", "status")
+        )
+        for booking in station_bookings:
+            route_id = booking.trip.route_id
+            pickup_stop_id = route_stop_index.get((route_id, booking.from_stop_order))
+            drop_stop_id = route_stop_index.get((route_id, booking.to_stop_order))
+            if pickup_stop_id in station_counters:
+                station_counters[pickup_stop_id]["pickups"] += 1
+                if booking.status == Booking.Status.COMPLETED:
+                    station_counters[pickup_stop_id]["completed_bookings"] += 1
+            if drop_stop_id in station_counters:
+                station_counters[drop_stop_id]["dropoffs"] += 1
+                if booking.status == Booking.Status.COMPLETED:
+                    station_counters[drop_stop_id]["completed_bookings"] += 1
+        station_analytics = sorted(
+            [
+                {
+                    **row,
+                    "touchpoints": row["pickups"] + row["dropoffs"],
+                }
+                for row in station_counters.values()
+                if row["pickups"] or row["dropoffs"] or row["completed_bookings"]
+            ],
+            key=lambda item: (item["touchpoints"], item["completed_bookings"], item["stop_name"]),
+            reverse=True,
+        )[:20]
 
         data = {
             "overview": {
@@ -367,6 +453,12 @@ class AdminDashboardView(APIView):
                     "flex_passes": wallet_totals["flex_passes"],
                     "reward_threshold": FREE_RIDE_REWARD_POINTS,
                     "free_rides_redeemed": payment_methods.get(Payment.Method.REWARD, {"success": 0})["success"],
+                },
+                "reviews": {
+                    "total": review_totals["total"],
+                    "avg_rating": round(float(review_totals["avg_rating"] or 0), 2),
+                    "positive": review_totals["positive"],
+                    "critical": review_totals["critical"],
                 },
             },
             "live_trips": live_trip_rows,
@@ -443,6 +535,29 @@ class AdminDashboardView(APIView):
                 }
                 for wallet in wallet_rows
             ],
+            "recent_reviews": [
+                {
+                    "id": review.id,
+                    "booking_id": review.booking_id,
+                    "route_name": review.booking.trip.route.name,
+                    "bus_plate": review.booking.trip.bus.plate_number,
+                    "passenger_name": review.passenger.full_name,
+                    "rating": review.rating,
+                    "note": review.note,
+                    "created_at": review.created_at,
+                }
+                for review in recent_reviews
+            ],
+            "review_trend": [
+                {
+                    "day": row["day"],
+                    "label": row["day"].strftime("%b %d") if row["day"] else "--",
+                    "total": row["total"],
+                    "avg_rating": round(float(row["avg_rating"] or 0), 2),
+                }
+                for row in reversed(list(review_trend_rows))
+            ],
+            "station_analytics": station_analytics,
             "route_analytics": route_analytics,
             "bus_analytics": bus_analytics,
         }

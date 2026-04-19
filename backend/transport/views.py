@@ -1,12 +1,13 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models.deletion import ProtectedError
+from django.utils import timezone
 from rest_framework import permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Stop, Route, RouteStop, RouteFare, Bus
-from .services import ensure_bus_seats
+from .services import ensure_bus_seats, normalize_route_path_points, route_distance_km, stop_points_for_ids
 from .serializers import (
     StopSerializer,
     CreateStopSerializer,
@@ -43,10 +44,13 @@ def _route_segment_fares(route):
     ]
 
 
-def _replace_route_layout(route, stop_ids, segment_fares):
+def _replace_route_layout(route, stop_ids, segment_fares, path_points=None, path_waypoints=None):
     ordered_stops = list(Stop.objects.filter(id__in=stop_ids))
     stop_map = {stop.id: stop for stop in ordered_stops}
     ordered_stop_objects = [stop_map[stop_id] for stop_id in stop_ids]
+    normalized_path = normalize_route_path_points(path_points)
+    if len(normalized_path) < 2:
+        normalized_path = stop_points_for_ids(stop_ids)
 
     route.route_stops.all().delete()
     route.fares.all().delete()
@@ -64,6 +68,11 @@ def _replace_route_layout(route, stop_ids, segment_fares):
                 to_stop_order=end_index + 1,
                 fare_amount=running_total,
             )
+
+    route.path_points = normalized_path
+    route.path_waypoints = path_waypoints or []
+    route.path_distance_km = route_distance_km(normalized_path)
+    route.save(update_fields=["path_points", "path_waypoints", "path_distance_km"])
 
 
 class ActiveStopsView(APIView):
@@ -152,9 +161,11 @@ class AdminTransportRouteBuilderView(APIView):
         is_active = serializer.validated_data["is_active"]
         stop_ids = serializer.validated_data["stop_ids"]
         segment_fares = serializer.validated_data["segment_fares"]
+        path_points = serializer.validated_data.get("path_points") or []
+        path_waypoints = serializer.validated_data.get("path_waypoints") or []
 
         route = Route.objects.create(name=name, city=city, is_active=is_active)
-        _replace_route_layout(route, stop_ids, segment_fares)
+        _replace_route_layout(route, stop_ids, segment_fares, path_points, path_waypoints)
 
         return Response(
             {
@@ -210,6 +221,8 @@ class AdminTransportRouteDetailView(APIView):
             "is_active": request.data.get("is_active", route.is_active),
             "stop_ids": request.data.get("stop_ids", current_stop_ids),
             "segment_fares": request.data.get("segment_fares", _route_segment_fares(route)),
+            "path_points": request.data.get("path_points", route.path_points or []),
+            "path_waypoints": request.data.get("path_waypoints", route.path_waypoints or []),
         }
         serializer = CreateRouteSerializer(data=payload)
         serializer.is_valid(raise_exception=True)
@@ -218,7 +231,13 @@ class AdminTransportRouteDetailView(APIView):
         route.city = serializer.validated_data["city"]
         route.is_active = serializer.validated_data["is_active"]
         route.save(update_fields=["name", "city", "is_active"])
-        _replace_route_layout(route, serializer.validated_data["stop_ids"], serializer.validated_data["segment_fares"])
+        _replace_route_layout(
+            route,
+            serializer.validated_data["stop_ids"],
+            serializer.validated_data["segment_fares"],
+            serializer.validated_data.get("path_points") or [],
+            serializer.validated_data.get("path_waypoints") or [],
+        )
 
         route.refresh_from_db()
         return Response(
@@ -277,6 +296,7 @@ class AdminBusManageView(APIView):
         layout_columns_raw = request.data.get("layout_columns", 4)
         capacity_raw = request.data.get("capacity")
         is_active = _parse_bool(request.data.get("is_active", True), default=True)
+        route_id = request.data.get("route")
         driver_id = request.data.get("driver")
         helper_id = request.data.get("helper")
 
@@ -313,6 +333,12 @@ class AdminBusManageView(APIView):
         if condition not in Bus.Condition.values:
             return Response({"detail": "condition must be NEW, NORMAL, or OLD."}, status=400)
             
+        route = None
+        if route_id not in (None, ""):
+            route = Route.objects.filter(id=route_id, is_active=True).first()
+            if not route:
+                return Response({"detail": "Invalid route."}, status=400)
+
         driver, helper = None, None
         if driver_id:
             driver = User.objects.filter(id=driver_id, role=User.Role.DRIVER).first()
@@ -333,8 +359,10 @@ class AdminBusManageView(APIView):
             interior_photo=request.data.get("interior_photo"),
             seat_photo=request.data.get("seat_photo"),
             is_active=is_active,
+            route=route,
             driver=driver,
             helper=helper,
+            assignment_updated_at=timezone.now(),
         )
         ensure_bus_seats(bus)
         return Response({
@@ -361,11 +389,26 @@ class AdminBusDetailView(APIView):
         except Bus.DoesNotExist:
             return Response({"detail": "Bus not found."}, status=404)
             
+        route_id = request.data.get("route")
         driver_id = request.data.get("driver")
         helper_id = request.data.get("helper")
         updated_fields = []
+        assignment_changed = False
+
+        if route_id is not None:
+            previous_route_id = bus.route_id
+            if route_id == "":
+                bus.route = None
+            else:
+                route = Route.objects.filter(id=route_id, is_active=True).first()
+                if not route:
+                    return Response({"detail": "Invalid route."}, status=400)
+                bus.route = route
+            updated_fields.append("route")
+            assignment_changed = assignment_changed or previous_route_id != bus.route_id
 
         if driver_id is not None:
+            previous_driver_id = bus.driver_id
             if driver_id == "":
                 bus.driver = None
             else:
@@ -373,8 +416,10 @@ class AdminBusDetailView(APIView):
                 if not driver: return Response({"detail": "Invalid driver."}, status=400)
                 bus.driver = driver
             updated_fields.append("driver")
+            assignment_changed = assignment_changed or previous_driver_id != bus.driver_id
                 
         if helper_id is not None:
+            previous_helper_id = bus.helper_id
             if helper_id == "":
                 bus.helper = None
             else:
@@ -382,6 +427,7 @@ class AdminBusDetailView(APIView):
                 if not helper: return Response({"detail": "Invalid helper."}, status=400)
                 bus.helper = helper
             updated_fields.append("helper")
+            assignment_changed = assignment_changed or previous_helper_id != bus.helper_id
 
         if "display_name" in request.data:
             bus.display_name = (request.data.get("display_name") or "").strip()
@@ -457,7 +503,7 @@ class AdminBusDetailView(APIView):
             updated_fields.append("capacity")
             seat_layout_updated = True
 
-        if next_capacity > next_rows * next_columns:
+        if seat_layout_updated and next_capacity > next_rows * next_columns:
             return Response({"detail": "Seat capacity cannot be greater than rows × columns."}, status=400)
         if "capacity" in request.data and next_capacity < bus.seats.count():
             return Response(
@@ -487,6 +533,18 @@ class AdminBusDetailView(APIView):
         if _parse_bool(request.data.get("clear_seat_photo"), default=False):
             bus.seat_photo = None
             updated_fields.append("seat_photo")
+
+        if assignment_changed:
+            bus.assignment_updated_at = timezone.now()
+            bus.driver_assignment_accepted_at = None
+            bus.helper_assignment_accepted_at = None
+            updated_fields.extend(
+                [
+                    "assignment_updated_at",
+                    "driver_assignment_accepted_at",
+                    "helper_assignment_accepted_at",
+                ]
+            )
 
         bus.save(update_fields=sorted(set(updated_fields)) or None)
         if seat_layout_updated:

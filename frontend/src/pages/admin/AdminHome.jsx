@@ -1,11 +1,13 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { divIcon } from "leaflet";
+import { CircleMarker, MapContainer, Marker, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
 import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
+import { useNotification } from "../../NotificationContext";
 
 const LIGHT = {
   "--bg": "#f7efe7",
@@ -134,8 +136,70 @@ function StopMapPicker({ onPick }) {
   });
   return null;
 }
+function RouteWaypointPicker({ enabled, onPick }) {
+  useMapEvents({
+    click(event) {
+      if (!enabled) return;
+      onPick?.(event.latlng);
+    },
+  });
+  return null;
+}
+function RouteStopDraftPicker({ enabled, onPick }) {
+  useMapEvents({
+    click(event) {
+      if (!enabled) return;
+      onPick?.(event.latlng);
+    },
+  });
+  return null;
+}
+function RouteDiversionPicker({ enabled, onPick }) {
+  useMapEvents({
+    click(event) {
+      if (!enabled) return;
+      onPick?.(event.latlng);
+    },
+  });
+  return null;
+}
 function fmt(v) { if (!v) return "--"; try { return new Date(v).toLocaleString(); } catch { return v; } }
 function fmtMoney(v) { return `NPR ${Number(v || 0).toLocaleString()}`; }
+function buildRouteAnchorPoints(stops, waypoints) {
+  if (!stops.length) return [];
+  const points = [];
+  stops.forEach((stop, index) => {
+    const stopPoint = [Number(stop.lat), Number(stop.lng)];
+    if (Number.isFinite(stopPoint[0]) && Number.isFinite(stopPoint[1])) points.push(stopPoint);
+    const segmentWaypoints = (waypoints || [])
+      .filter((waypoint) => Number(waypoint.segment_index) === index)
+      .sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0));
+    segmentWaypoints.forEach((waypoint) => {
+      const point = [Number(waypoint.lat), Number(waypoint.lng)];
+      if (Number.isFinite(point[0]) && Number.isFinite(point[1])) points.push(point);
+    });
+  });
+  return points;
+}
+function buildRouteSegmentLines(stops, waypoints) {
+  return stops.slice(0, -1).map((stop, index) => {
+    const start = [Number(stop.lat), Number(stop.lng)];
+    const endStop = stops[index + 1];
+    const end = [Number(endStop.lat), Number(endStop.lng)];
+    const segmentWaypoints = (waypoints || [])
+      .filter((waypoint) => Number(waypoint.segment_index) === index)
+      .sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0))
+      .map((waypoint) => [Number(waypoint.lat), Number(waypoint.lng)])
+      .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+    return [start, ...segmentWaypoints, end].filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  });
+}
+const routeWaypointIcon = (active = false) => divIcon({
+  className: "",
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+  html: `<div style="width:16px;height:16px;border-radius:999px;background:${active ? "#ff8a1f" : "#fff7f0"};border:3px solid #4b2666;box-shadow:0 6px 14px rgba(75,38,102,0.20);"></div>`,
+});
 
 function SimpleLineChart({ points, color = "var(--accent)" }) {
   const values = (points || []).map((point) => Number(point.value || 0));
@@ -233,6 +297,22 @@ function SeatLayoutPreview({ rows = 0, columns = 0, capacity = 0 }) {
   );
 }
 
+function ConfirmModal({ isOpen, title, message, onConfirm, onCancel, busy }) {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#00000088] p-5 backdrop-blur-sm">
+      <GlassCard className="w-full max-w-md !p-8 shadow-[0_32px_64px_rgba(0,0,0,0.4)]">
+        <p className="text-[0.68rem] font-black uppercase tracking-[0.24em] text-[var(--muted)]">{title || "Confirm Action"}</p>
+        <p className="mt-4 text-xl font-bold leading-relaxed text-[var(--text)]">{message}</p>
+        <div className="mt-8 flex items-center gap-3">
+          <Btn tone="ghost" onClick={onCancel} disabled={busy} className="flex-1 !py-4">Cancel</Btn>
+          <Btn tone="danger" onClick={onConfirm} disabled={busy} className="flex-1 !py-4">{busy ? "Working..." : "Confirm"}</Btn>
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
+
 const EMPTY_OBJ = {};
 const ADMIN_SECTIONS = [
   { id: "dashboard", label: "Dashboard", icon: "dashboard", description: "Overview and control tower" },
@@ -263,12 +343,14 @@ export default function AdminHome() {
   const location = useLocation();
   const { user, setUser } = useAuth();
   const { isDark } = useTheme();
+  const { notify } = useNotification();
   const theme = useMemo(() => (isDark ? DARK : LIGHT), [isDark]);
 
   const [dashboard, setDashboard]           = useState(null);
   const [loading, setLoading]               = useState(true);
   const [err, setErr]                       = useState("");
   const [msg, setMsg]                       = useState("");
+  const [confirmModal, setConfirmModal]     = useState(null);
   const [adminSearch, setAdminSearch]       = useState("");
   const [quickOpen, setQuickOpen]           = useState(false);
   const [profileOpen, setProfileOpen]       = useState(false);
@@ -279,21 +361,27 @@ export default function AdminHome() {
   const [recentStops, setRecentStops]       = useState([]);
   const [recentRoutes, setRecentRoutes]     = useState([]);
   const [routeBusy, setRouteBusy]           = useState(false);
-  const [routeMsg, setRouteMsg]             = useState("");
   const [editingRouteId, setEditingRouteId] = useState(null);
   const [routeDeleteBusyId, setRouteDeleteBusyId] = useState(null);
-  const [stopMsg, setStopMsg]               = useState("");
-  const [scheduleMsg, setScheduleMsg]       = useState("");
   const [stopName, setStopName]             = useState("");
   const [stopLat, setStopLat]               = useState("");
   const [stopLng, setStopLng]               = useState("");
   const [stopActive, setStopActive]         = useState(true);
   const [stopBusy, setStopBusy]             = useState(false);
+  const [uBusy, setUBusy]                   = useState(false);
   const [routeName, setRouteName]           = useState("");
   const [routeCity, setRouteCity]           = useState("Pokhara");
   const [routeActive, setRouteActive]       = useState(true);
+  const [routePinMode, setRoutePinMode]     = useState(false);
+  const [routeDraftStopName, setRouteDraftStopName] = useState("");
+  const [routeDraftStopLat, setRouteDraftStopLat] = useState("");
+  const [routeDraftStopLng, setRouteDraftStopLng] = useState("");
+  const [routeDraftStopBusy, setRouteDraftStopBusy] = useState(false);
   const [selectedStopIds, setSelectedStopIds] = useState([]);
   const [segmentFares, setSegmentFares]     = useState([]);
+  const [routeWaypoints, setRouteWaypoints] = useState([]);
+  const [selectedSegmentIndex, setSelectedSegmentIndex] = useState(0);
+  const [pendingDiversionSegmentIndex, setPendingDiversionSegmentIndex] = useState(null);
   const [roadPolyline, setRoadPolyline]     = useState([]);
   const [scheduleBusy, setScheduleBusy]     = useState(false);
   const [schedOpts, setSchedOpts]           = useState({ routes: [], buses: [], drivers: [], helpers: [], recent_schedules: [], schedules: [] });
@@ -318,14 +406,13 @@ export default function AdminHome() {
   const [busInteriorPhoto, setBusInteriorPhoto] = useState(null);
   const [busSeatPhoto, setBusSeatPhoto]     = useState(null);
   const [busMgmtBusy, setBusMgmtBusy]       = useState(false);
-  const [busMgmtMsg, setBusMgmtMsg]         = useState("");
   const [editingBusId, setEditingBusId]     = useState(null);
   const [busDeleteBusyId, setBusDeleteBusyId] = useState(null);
   const [assignBusId, setAssignBusId]       = useState("");
+  const [assignRouteId, setAssignRouteId]   = useState("");
   const [assignDriverId, setAssignDriverId] = useState("");
   const [assignHelperId, setAssignHelperId] = useState("");
   const [assignBusy, setAssignBusy]         = useState(false);
-  const [assignMsg, setAssignMsg]           = useState("");
   const [uName, setUName]                   = useState("");
   const [uPhone, setUPhone]                 = useState("");
   const [uEmail, setUEmail]                 = useState("");
@@ -335,22 +422,19 @@ export default function AdminHome() {
   const [uLicenseNumber, setULicenseNumber] = useState("");
   const [uLicensePhoto, setULicensePhoto]   = useState(null);
   const [uRole, setURole]                   = useState("DRIVER");
-  const [uMgmtBusy, setUMgmtBusy]           = useState(false);
-  const [uMgmtMsg, setUMgmtMsg]             = useState("");
   const [editingUserId, setEditingUserId]   = useState(null);
   const [userDeleteBusyId, setUserDeleteBusyId] = useState(null);
   const [userRoleFilter, setUserRoleFilter] = useState("ALL");
   const [reviewBusyId, setReviewBusyId]     = useState(null);
-  const [reviewMsg, setReviewMsg]           = useState("");
   const [selectedDriverId, setSelectedDriverId] = useState(null);
   const [selectedHelperId, setSelectedHelperId] = useState(null);
   const [selectedBusId, setSelectedBusId] = useState(null);
   const [selectedRouteId, setSelectedRouteId] = useState(null);
   const [selectedStopId, setSelectedStopId] = useState(null);
 
-  const loadDB     = async ({ silent = false } = {}) => { if (!silent) setLoading(true); try { const r = await api.get("/api/auth/admin/dashboard/"); setDashboard(r.data); setErr(""); } catch (e) { setErr(e?.response?.data?.detail || "Failed to load dashboard."); } finally { if (!silent) setLoading(false); } };
-  const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentStops(r.data.recent_stops || []); setRecentRoutes(r.data.routes || r.data.recent_routes || []); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load routes."); } };
-  const loadSched  = async () => { try { const r = await api.get("/api/trips/admin/schedules/"); setSchedOpts({ routes: r.data.routes || [], buses: r.data.buses || [], drivers: r.data.drivers || [], helpers: r.data.helpers || [], recent_schedules: r.data.recent_schedules || [], schedules: r.data.schedules || [] }); } catch (e) { setErr(p => p || e?.response?.data?.detail || "Failed to load schedules."); } };
+  const loadDB     = async ({ silent = false } = {}) => { if (!silent) setLoading(true); try { const r = await api.get("/api/auth/admin/dashboard/"); setDashboard(r.data); } catch (e) { notify(e?.response?.data?.detail || "Failed to load dashboard.", "error"); } finally { if (!silent) setLoading(false); } };
+  const loadRoute  = async () => { try { const r = await api.get("/api/transport/admin/route-builder/"); setBuilderStops(r.data.stops || []); setRecentStops(r.data.recent_stops || []); setRecentRoutes(r.data.routes || r.data.recent_routes || []); } catch (e) { notify(e?.response?.data?.detail || "Failed to load routes.", "error"); } };
+  const loadSched  = async () => { try { const r = await api.get("/api/trips/admin/schedules/"); setSchedOpts({ routes: r.data.routes || [], buses: r.data.buses || [], drivers: r.data.drivers || [], helpers: r.data.helpers || [], recent_schedules: r.data.recent_schedules || [], schedules: r.data.schedules || [] }); } catch (e) { notify(e?.response?.data?.detail || "Failed to load schedules.", "error"); } };
   const loadBuses  = async () => { try { const r = await api.get("/api/transport/admin/buses/"); setBusList(r.data.buses || []); } catch { /* silent */ } };
   const loadUsers  = async (role = null) => {
     try {
@@ -369,12 +453,16 @@ export default function AdminHome() {
       navigate(`/admin/${DEFAULT_ADMIN_SECTION}`, { replace: true });
     }
   }, [location.pathname, navigate]);
-  useEffect(() => {
-    if (!msg) return undefined;
-    const timer = setTimeout(() => setMsg(""), 4000);
-    return () => clearTimeout(timer);
-  }, [msg]);
   useEffect(() => { setSegmentFares(c => Array.from({ length: Math.max(selectedStopIds.length - 1, 0) }, (_, i) => c[i] || "")); }, [selectedStopIds]);
+  useEffect(() => {
+    const maxSegmentIndex = Math.max(selectedStopIds.length - 2, 0);
+    setRouteWaypoints((current) => current
+      .filter((waypoint) => Number(waypoint.segment_index) <= maxSegmentIndex)
+      .map((waypoint, index) => ({ ...waypoint, key: waypoint.key || `waypoint-${index}` })));
+    setSelectedSegmentIndex((current) => Math.min(Math.max(current, 0), maxSegmentIndex));
+    setPendingDiversionSegmentIndex((current) => (current == null ? null : Math.min(Math.max(current, 0), maxSegmentIndex)));
+  }, [selectedStopIds.length]);
+  useEffect(() => { if (routePinMode) setPendingDiversionSegmentIndex(null); }, [routePinMode]);
   useEffect(() => {
     if (!sRouteId && schedOpts.routes.length) setSRouteId(String(schedOpts.routes[0].id));
     if (!sBusId && schedOpts.buses.length) setSBusId(String(schedOpts.buses[0].id));
@@ -389,6 +477,7 @@ export default function AdminHome() {
   }, [selectedScheduleBus]);
   useEffect(() => {
     if (!selectedAssignBus) return;
+    setAssignRouteId(selectedAssignBus.route ? String(selectedAssignBus.route) : "");
     setAssignDriverId(selectedAssignBus.driver ? String(selectedAssignBus.driver) : "");
     setAssignHelperId(selectedAssignBus.helper ? String(selectedAssignBus.helper) : "");
   }, [selectedAssignBus]);
@@ -406,16 +495,22 @@ export default function AdminHome() {
     if (activeSection === "helpers" && uRole !== "HELPER") setURole("HELPER");
     if (activeSection === "settings" && uRole !== "ADMIN") setURole("ADMIN");
   }, [activeSection, editingUserId, uRole]);
-  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const transport = overview?.transport || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const rideOps = overview?.ride_ops || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ;
+  const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const transport = overview?.transport || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const rideOps = overview?.ride_ops || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ; const reviews = overview?.reviews || EMPTY_OBJ;
   const paymentRows = useMemo(() => Object.entries(payments?.methods || {}).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [payments]);
   const recentBookingFlow = dashboard?.recent_booking_flow || [];
   const rewardLeaderboard = dashboard?.reward_leaderboard || [];
+  const recentReviews = dashboard?.recent_reviews || [];
+  const reviewTrend = dashboard?.review_trend || [];
+  const stationAnalytics = dashboard?.station_analytics || [];
   const routeAnalytics = dashboard?.route_analytics || [];
   const busAnalytics = dashboard?.bus_analytics || [];
   const staffUsers = useMemo(() => userList.filter(item => item.role !== "PASSENGER"), [userList]);
   const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
   const selPts = useMemo(() => selectedStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)), [selectedStops]);
-  const dispPts = roadPolyline.length > 1 ? roadPolyline : selPts;
+  const routeAnchorPoints = useMemo(() => buildRouteAnchorPoints(selectedStops, routeWaypoints), [selectedStops, routeWaypoints]);
+  const routeSegmentLines = useMemo(() => buildRouteSegmentLines(selectedStops, routeWaypoints), [selectedStops, routeWaypoints]);
+  const segmentWaypointGroups = useMemo(() => selectedStops.slice(0, -1).map((_, index) => routeWaypoints.filter((waypoint) => Number(waypoint.segment_index) === index).sort((a, b) => Number(a.seq || 0) - Number(b.seq || 0))), [routeWaypoints, selectedStops]);
+  const dispPts = roadPolyline.length > 1 ? roadPolyline : routeAnchorPoints;
   const mapPts  = useMemo(() => dispPts.length > 0 ? dispPts : builderStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)).slice(0, 12), [builderStops, dispPts]);
   const busCapacityPreview = useMemo(() => {
     const rows = parseInt(busRows, 10);
@@ -434,6 +529,14 @@ export default function AdminHome() {
   const filteredRoutes = useMemo(() => recentRoutes.filter((item) => matchesSearch(item.name, item.city, item.route_stops?.[0]?.stop?.name, item.route_stops?.[item.route_stops.length - 1]?.stop?.name)), [recentRoutes, searchQuery]);
   const filteredStops = useMemo(() => builderStops.filter((item) => matchesSearch(item.name, item.lat, item.lng)), [builderStops, searchQuery]);
   const filteredSchedules = useMemo(() => (schedOpts.schedules || []).filter((item) => matchesSearch(item.route_name, item.bus_plate, item.driver_name, item.helper_name, item.status)), [schedOpts.schedules, searchQuery]);
+  const assignmentRouteOptions = useMemo(() => [{ value: "", label: "Unassigned route" }, ...recentRoutes.map((route) => ({ value: route.id, label: route.name }))], [recentRoutes]);
+  const assignmentDriverOptions = useMemo(() => [{ value: "", label: "Unassigned" }, ...driverUsers.map((driver) => ({ value: driver.id, label: driver.full_name }))], [driverUsers]);
+  const assignmentHelperOptions = useMemo(() => [{ value: "", label: "Unassigned" }, ...helperUsers.map((helper) => ({ value: helper.id, label: helper.full_name }))], [helperUsers]);
+  const assignmentHealth = useMemo(() => ({
+    fullyAssigned: busList.filter((bus) => bus.route && bus.driver && bus.helper).length,
+    missingRoute: busList.filter((bus) => !bus.route).length,
+    missingStaff: busList.filter((bus) => !bus.driver || !bus.helper).length,
+  }), [busList]);
   const selectedDriver = useMemo(() => filteredDrivers.find((item) => item.id === selectedDriverId) || filteredDrivers[0] || null, [filteredDrivers, selectedDriverId]);
   const selectedHelper = useMemo(() => filteredHelpers.find((item) => item.id === selectedHelperId) || filteredHelpers[0] || null, [filteredHelpers, selectedHelperId]);
   const selectedBusPreview = useMemo(() => filteredBuses.find((item) => item.id === selectedBusId) || filteredBuses[0] || null, [filteredBuses, selectedBusId]);
@@ -489,6 +592,9 @@ export default function AdminHome() {
   const busFilterOptions = useMemo(() => [{ value: "ALL", label: "All buses" }, ...busAnalytics.map((bus) => ({ value: String(bus.bus_id), label: bus.display_name }))], [busAnalytics]);
   const filteredRouteAnalytics = useMemo(() => routeAnalytics.filter((route) => analyticsRouteFilter === "ALL" || String(route.route_id) === String(analyticsRouteFilter)), [analyticsRouteFilter, routeAnalytics]);
   const filteredBusAnalytics = useMemo(() => busAnalytics.filter((bus) => analyticsBusFilter === "ALL" || String(bus.bus_id) === String(analyticsBusFilter)), [analyticsBusFilter, busAnalytics]);
+  const topRatedRoutes = useMemo(() => [...routeAnalytics].filter((route) => route.reviews_total > 0).sort((a, b) => (b.avg_rating - a.avg_rating) || (b.reviews_total - a.reviews_total)).slice(0, 5), [routeAnalytics]);
+  const topRatedBuses = useMemo(() => [...busAnalytics].filter((bus) => bus.reviews_total > 0).sort((a, b) => (b.avg_rating - a.avg_rating) || (b.reviews_total - a.reviews_total)).slice(0, 5), [busAnalytics]);
+  const topStations = useMemo(() => stationAnalytics.slice(0, 6).map((station) => ({ label: station.stop_name, value: station.touchpoints || 0 })), [stationAnalytics]);
   const assignmentConflicts = useMemo(() => {
     const counts = {};
     (schedOpts.schedules || []).forEach((schedule) => {
@@ -505,7 +611,7 @@ export default function AdminHome() {
   }, [schedOpts.schedules]);
   const notificationCount = payments.pending + rideOps.awaiting_acceptance + rideOps.awaiting_payment + fleetStatus.delayed;
 
-  useEffect(() => { if (selPts.length < 2) { setRoadPolyline([]); return; } const c = new AbortController(); snapRouteToRoad(selPts, c.signal).then(p => setRoadPolyline(p.length > 1 ? p : [])).catch(e => { if (e.name !== "AbortError") setRoadPolyline([]); }); return () => c.abort(); }, [selPts]);
+  useEffect(() => { if (routeAnchorPoints.length < 2) { setRoadPolyline([]); return; } const c = new AbortController(); snapRouteToRoad(routeAnchorPoints, c.signal).then(p => setRoadPolyline(p.length > 1 ? p : [])).catch(e => { if (e.name !== "AbortError") setRoadPolyline([]); }); return () => c.abort(); }, [routeAnchorPoints]);
   useEffect(() => { if (!selectedDriver && selectedDriverId !== null) setSelectedDriverId(null); else if (selectedDriver && selectedDriverId == null) setSelectedDriverId(selectedDriver.id); }, [selectedDriver, selectedDriverId]);
   useEffect(() => { if (!selectedHelper && selectedHelperId !== null) setSelectedHelperId(null); else if (selectedHelper && selectedHelperId == null) setSelectedHelperId(selectedHelper.id); }, [selectedHelper, selectedHelperId]);
   useEffect(() => { if (!selectedBusPreview && selectedBusId !== null) setSelectedBusId(null); else if (selectedBusPreview && selectedBusId == null) setSelectedBusId(selectedBusPreview.id); }, [selectedBusId, selectedBusPreview]);
@@ -515,8 +621,9 @@ export default function AdminHome() {
   const toggleStop = id => setSelectedStopIds(c => c.includes(id) ? c.filter(x => x !== id) : [...c, id]);
   const moveStop = (i, dir) => setSelectedStopIds(c => { const ti = i + dir; if (ti < 0 || ti >= c.length) return c; const n = [...c]; [n[i], n[ti]] = [n[ti], n[i]]; return n; });
   const clearStopForm = () => { setStopName(""); setStopLat(""); setStopLng(""); setStopActive(true); };
-  const clearRoute  = () => { setEditingRouteId(null); setRouteName(""); setRouteCity("Pokhara"); setRouteActive(true); setSelectedStopIds([]); setSegmentFares([]); setRouteMsg(""); };
-  const clearScheduleForm = () => { setEditingScheduleId(null); setScheduleMsg(""); setSStartTime(""); };
+  const clearRouteDraftStop = () => { setRouteDraftStopName(""); setRouteDraftStopLat(""); setRouteDraftStopLng(""); setRoutePinMode(false); };
+  const clearRoute  = () => { setEditingRouteId(null); setRouteName(""); setRouteCity("Pokhara"); setRouteActive(true); setSelectedStopIds([]); setSegmentFares([]); setRouteWaypoints([]); setSelectedSegmentIndex(0); setPendingDiversionSegmentIndex(null); setRoadPolyline([]); clearRouteDraftStop(); };
+  const clearScheduleForm = () => { setEditingScheduleId(null); setSStartTime(""); };
   const resetBusForm = () => {
     setEditingBusId(null);
     setBusName("");
@@ -529,7 +636,6 @@ export default function AdminHome() {
     setBusExteriorPhoto(null);
     setBusInteriorPhoto(null);
     setBusSeatPhoto(null);
-    setBusMgmtMsg("");
   };
   const resetUserForm = () => {
     setEditingUserId(null);
@@ -542,95 +648,172 @@ export default function AdminHome() {
     setULicenseNumber("");
     setULicensePhoto(null);
     setURole("DRIVER");
-    setUMgmtMsg("");
   };
   const handleMapPick = ({ lat, lng }) => { setStopLat(Number(lat).toFixed(6)); setStopLng(Number(lng).toFixed(6)); };
+  const handleRouteDraftStopPick = ({ lat, lng }) => {
+    setRouteDraftStopLat(Number(lat).toFixed(6));
+    setRouteDraftStopLng(Number(lng).toFixed(6));
+  };
+  const beginSegmentDiversionPick = (segmentIndex) => {
+    setSelectedSegmentIndex(segmentIndex);
+    setPendingDiversionSegmentIndex(segmentIndex);
+    notify(`Click the map to add a diversion point for segment ${segmentIndex + 1}.`, "success");
+  };
+  const addRouteWaypoint = ({ lat, lng }, segmentIndex = selectedSegmentIndex) => {
+    if (selectedStops.length < 2) return;
+    setRouteWaypoints((current) => {
+      const segmentPoints = current.filter((waypoint) => Number(waypoint.segment_index) === segmentIndex);
+      return [
+        ...current,
+        {
+          key: `waypoint-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          segment_index: segmentIndex,
+          seq: segmentPoints.length + 1,
+          lat: Number(lat).toFixed(6),
+          lng: Number(lng).toFixed(6),
+        },
+      ];
+    });
+  };
+  const placeDiversionPoint = ({ lat, lng }) => {
+    if (pendingDiversionSegmentIndex == null || routePinMode) return;
+    addRouteWaypoint({ lat, lng }, pendingDiversionSegmentIndex);
+    setPendingDiversionSegmentIndex(null);
+  };
+  const moveRouteWaypoint = (waypointKey, { lat, lng }) => {
+    setRouteWaypoints((current) => current.map((waypoint) => waypoint.key === waypointKey ? { ...waypoint, lat: Number(lat).toFixed(6), lng: Number(lng).toFixed(6) } : waypoint));
+  };
+  const removeRouteWaypoint = (waypointKey) => {
+    setRouteWaypoints((current) => {
+      const next = current.filter((waypoint) => waypoint.key !== waypointKey);
+      const counts = {};
+      return next.map((waypoint) => {
+        const segmentKey = String(waypoint.segment_index ?? 0);
+        counts[segmentKey] = (counts[segmentKey] || 0) + 1;
+        return { ...waypoint, seq: counts[segmentKey] };
+      });
+    });
+  };
+  const clearRouteShaping = () => { setRouteWaypoints([]); setPendingDiversionSegmentIndex(null); setRoadPolyline([]); };
+  const createStopFromRouteMap = async () => {
+    if (!routeDraftStopName.trim()) { notify("Enter a stop name for the dropped pin.", "error"); return; }
+    if (routeDraftStopLat === "" || routeDraftStopLng === "") { notify("Drop a pin on the route map first.", "error"); return; }
+    if (Number.isNaN(Number(routeDraftStopLat)) || Number.isNaN(Number(routeDraftStopLng))) { notify("Pinned stop coordinates are invalid.", "error"); return; }
+    setRouteDraftStopBusy(true);
+    try {
+      const response = await api.post("/api/transport/admin/stops/", {
+        name: routeDraftStopName.trim(),
+        lat: Number(routeDraftStopLat),
+        lng: Number(routeDraftStopLng),
+        is_active: true,
+      });
+      const createdStop = response?.data?.stop;
+      notify("Stop created successfully from the route map.", "success");
+      await Promise.all([loadDB({ silent: true }), loadRoute()]);
+      if (createdStop?.id) {
+        setSelectedStopIds((current) => (current.includes(createdStop.id) ? current : [...current, createdStop.id]));
+        setSelectedStopId(createdStop.id);
+      }
+      clearRouteDraftStop();
+    } catch (e) {
+      notify(e?.response?.data?.detail || "Failed to create stop from the route map.", "error");
+    } finally {
+      setRouteDraftStopBusy(false);
+    }
+  };
 
   const createStop = async () => {
-    if (!stopName.trim()) { setErr("Enter a stop name."); return; }
-    if (stopLat === "" || stopLng === "") { setErr("Tap the map or enter valid stop coordinates."); return; }
-    if (Number.isNaN(Number(stopLat)) || Number.isNaN(Number(stopLng))) { setErr("Stop coordinates must be valid numbers."); return; }
-    setStopBusy(true); setErr(""); setStopMsg("");
+    if (!stopName.trim()) { notify("Enter a stop name.", "error"); return; }
+    if (stopLat === "" || stopLng === "") { notify("Tap the map or enter valid stop coordinates.", "error"); return; }
+    if (Number.isNaN(Number(stopLat)) || Number.isNaN(Number(stopLng))) { notify("Stop coordinates must be valid numbers.", "error"); return; }
+    setStopBusy(true);
     try {
-      const r = await api.post("/api/transport/admin/stops/", {
+      await api.post("/api/transport/admin/stops/", {
         name: stopName.trim(),
         lat: Number(stopLat),
         lng: Number(stopLng),
         is_active: stopActive,
       });
-      setStopMsg(r.data.message || "Stop added.");
       clearStopForm();
+      notify("Stop created successfully.", "success");
       await Promise.all([loadDB({ silent: true }), loadRoute()]);
     } catch (e) {
-      const d = e?.response?.data;
-      setErr(d?.name?.[0] || d?.lat?.[0] || d?.lng?.[0] || d?.detail || "Failed to create stop.");
+      notify(e?.response?.data?.detail || "Failed to create stop.", "error");
     } finally {
       setStopBusy(false);
     }
   };
 
   const saveRoute = async () => {
-    if (!routeName.trim()) { setErr("Enter a route name."); return; } if (selectedStopIds.length < 2) { setErr("Select at least two stops."); return; } if (segmentFares.some(f => f === "" || Number(f) < 0)) { setErr("Fill every segment fare."); return; }
-    setRouteBusy(true); setErr(""); setRouteMsg("");
+    if (!routeName.trim()) { notify("Enter a route name.", "error"); return; } if (selectedStopIds.length < 2) { notify("Select at least two stops.", "error"); return; } if (segmentFares.some(f => f === "" || Number(f) < 0)) { notify("Fill every segment fare.", "error"); return; }
+    setRouteBusy(true);
     try {
-      const payload = { name: routeName.trim(), city: routeCity.trim() || "Pokhara", is_active: routeActive, stop_ids: selectedStopIds, segment_fares: segmentFares.map(Number) };
-      const r = editingRouteId
+      const pathPoints = (roadPolyline.length > 1 ? roadPolyline : routeAnchorPoints).map(([lat, lng], index) => ({ seq: index + 1, lat: Number(lat), lng: Number(lng) }));
+      const pathWaypoints = routeWaypoints.map((waypoint, index) => ({ seq: index + 1, segment_index: Number(waypoint.segment_index || 0), lat: Number(waypoint.lat), lng: Number(waypoint.lng) }));
+      const payload = { name: routeName.trim(), city: routeCity.trim() || "Pokhara", is_active: routeActive, stop_ids: selectedStopIds, segment_fares: segmentFares.map(Number), path_points: pathPoints, path_waypoints: pathWaypoints };
+      editingRouteId
         ? await api.patch(`/api/transport/admin/routes/${editingRouteId}/`, payload)
         : await api.post("/api/transport/admin/route-builder/", payload);
-      setRouteMsg(r.data.message || (editingRouteId ? "Route updated." : "Route created."));
       clearRoute();
+      notify(`Route ${editingRouteId ? "updated" : "created"} successfully.`, "success");
       await Promise.all([loadDB({ silent: true }), loadRoute(), loadSched()]);
     }
-    catch (e) { setErr(e?.response?.data?.detail || `Failed to ${editingRouteId ? "update" : "create"} route.`); } finally { setRouteBusy(false); }
+    catch (e) { notify(e?.response?.data?.detail || `Failed to ${editingRouteId ? "update" : "create"} route.`, "error"); } finally { setRouteBusy(false); }
   };
 
   const startEditingRoute = (route) => {
-    setErr("");
-    setRouteMsg("");
     setEditingRouteId(route.id);
     setRouteName(route.name || "");
     setRouteCity(route.city || "Pokhara");
     setRouteActive(Boolean(route.is_active));
     setSelectedStopIds((route.route_stops || []).map(item => item.stop.id));
     setSegmentFares((route.segment_fares || []).map(value => String(value)));
+    setRouteWaypoints((route.path_waypoints || []).map((waypoint, index) => ({ key: `waypoint-${route.id}-${index}`, segment_index: Number(waypoint.segment_index || 0), seq: Number(waypoint.seq || index + 1), lat: Number(waypoint.lat).toFixed(6), lng: Number(waypoint.lng).toFixed(6) })));
+    setSelectedSegmentIndex(0);
+    setRoadPolyline((route.path_points || []).map((point) => [Number(point.lat), Number(point.lng)]).filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng)));
     navigate("/admin/routes");
   };
 
   const deleteRoute = async (route) => {
-    if (!window.confirm(`Delete route ${route.name}? This cannot be undone.`)) return;
-    setRouteDeleteBusyId(route.id);
-    setErr("");
-    setRouteMsg("");
-    try {
-      const r = await api.delete(`/api/transport/admin/routes/${route.id}/`);
-      setRouteMsg(r.data.message || "Route deleted.");
-      if (editingRouteId === route.id) clearRoute();
-      await Promise.all([loadDB({ silent: true }), loadRoute(), loadSched()]);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to delete route.");
-    } finally {
-      setRouteDeleteBusyId(null);
-    }
+    const performDelete = async () => {
+      setRouteDeleteBusyId(route.id);
+      try {
+        await api.delete(`/api/transport/admin/routes/${route.id}/`);
+        if (editingRouteId === route.id) clearRoute();
+        notify("Route deleted.", "success");
+        await Promise.all([loadRoute(), loadSched(), loadDB({ silent: true })]);
+      } catch (e) {
+        notify(e?.response?.data?.detail || "Failed to delete route.", "error");
+      } finally {
+        setRouteDeleteBusyId(null);
+        setConfirmModal(null);
+      }
+    };
+
+    setConfirmModal({
+      title: "Delete Route",
+      message: `Confirm deletion of ${route.name}? All associated fares and data will be lost.`,
+      onConfirm: performDelete,
+      onCancel: () => setConfirmModal(null),
+    });
   };
 
   const saveSchedule = async () => {
-    if (!(sRouteId && sBusId && sDriverId && sHelperId && sStartTime)) { setErr("Fill all schedule fields."); return; }
-    setScheduleBusy(true); setErr(""); setScheduleMsg("");
+    if (!(sRouteId && sBusId && sDriverId && sHelperId && sStartTime)) { notify("Fill all schedule fields.", "error"); return; }
+    setScheduleBusy(true);
     try {
       const payload = { route_id: +sRouteId, bus_id: +sBusId, driver_id: +sDriverId, helper_id: +sHelperId, scheduled_start_time: new Date(sStartTime).toISOString() };
-      const r = editingScheduleId
+      editingScheduleId
         ? await api.patch(`/api/trips/admin/schedules/${editingScheduleId}/`, payload)
         : await api.post("/api/trips/admin/schedules/", payload);
-      setScheduleMsg(r.data.message || (editingScheduleId ? "Schedule updated." : "Schedule created."));
       clearScheduleForm();
+      notify(`Schedule ${editingScheduleId ? "updated" : "created"} successfully.`, "success");
       await Promise.all([loadDB({ silent: true }), loadSched()]);
     }
-    catch (e) { setErr(e?.response?.data?.detail || `Failed to ${editingScheduleId ? "update" : "create"} schedule.`); } finally { setScheduleBusy(false); }
+    catch (e) { notify(e?.response?.data?.detail || `Failed to ${editingScheduleId ? "update" : "create"} schedule.`, "error"); } finally { setScheduleBusy(false); }
   };
 
   const startEditingSchedule = (schedule) => {
-    setErr("");
-    setScheduleMsg("");
     setEditingScheduleId(schedule.id);
     setSRouteId(String(schedule.route));
     setSBusId(String(schedule.bus));
@@ -641,27 +824,34 @@ export default function AdminHome() {
   };
 
   const deleteSchedule = async (schedule) => {
-    if (!window.confirm(`Delete the schedule for ${schedule.route_name}? This cannot be undone.`)) return;
-    setScheduleDeleteBusyId(schedule.id);
-    setErr("");
-    setScheduleMsg("");
-    try {
-      const r = await api.delete(`/api/trips/admin/schedules/${schedule.id}/`);
-      setScheduleMsg(r.data.message || "Schedule deleted.");
-      if (editingScheduleId === schedule.id) clearScheduleForm();
-      await Promise.all([loadDB({ silent: true }), loadSched()]);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to delete schedule.");
-    } finally {
-      setScheduleDeleteBusyId(null);
-    }
+    const performDelete = async () => {
+      setScheduleDeleteBusyId(schedule.id);
+      try {
+        await api.delete(`/api/trips/admin/schedules/${schedule.id}/`);
+        if (editingScheduleId === schedule.id) clearScheduleForm();
+        notify("Schedule deleted.", "success");
+        await Promise.all([loadSched(), loadDB({ silent: true })]);
+      } catch (e) {
+        notify(e?.response?.data?.detail || "Failed to delete schedule.", "error");
+      } finally {
+        setScheduleDeleteBusyId(null);
+        setConfirmModal(null);
+      }
+    };
+
+    setConfirmModal({
+      title: "Delete Schedule",
+      message: `Delete schedule for ${schedule.route_name} at ${fmt(schedule.scheduled_start_time)}? ${schedule.status === "COMPLETED" ? "(This is a completed trip)" : ""}`,
+      onConfirm: performDelete,
+      onCancel: () => setConfirmModal(null),
+    });
   };
 
   const saveBus = async () => {
-    if (!busPlate.trim()) { setErr("Enter a plate number."); return; }
-    if (!busName.trim()) { setErr("Enter a bus name for identification."); return; }
-    if (!busCapacityPreview || busCapacityPreview > 200) { setErr("Seat layout must resolve to 1-200 seats."); return; }
-    setBusMgmtBusy(true); setErr(""); setBusMgmtMsg("");
+    if (!busPlate.trim()) { notify("Enter a plate number.", "error"); return; }
+    if (!busName.trim()) { notify("Enter a bus name for identification.", "error"); return; }
+    if (!busCapacityPreview || busCapacityPreview > 200) { notify("Seat layout must resolve to 1-200 seats.", "error"); return; }
+    setBusMgmtBusy(true);
     try {
       const formData = new FormData();
       formData.append("display_name", busName.trim());
@@ -675,19 +865,17 @@ export default function AdminHome() {
       if (busExteriorPhoto) formData.append("exterior_photo", busExteriorPhoto);
       if (busInteriorPhoto) formData.append("interior_photo", busInteriorPhoto);
       if (busSeatPhoto) formData.append("seat_photo", busSeatPhoto);
-      const r = editingBusId
+      editingBusId
         ? await api.patch(`/api/transport/admin/buses/${editingBusId}/`, formData)
         : await api.post("/api/transport/admin/buses/", formData);
-      setBusMgmtMsg(r.data.message || (editingBusId ? "Bus updated." : "Bus created."));
       resetBusForm();
+      notify(`Bus ${editingBusId ? "updated" : "created"} successfully.`, "success");
       await Promise.all([loadBuses(), loadSched(), loadDB({ silent: true })]);
     }
-    catch (e) { setErr(e?.response?.data?.detail || `Failed to ${editingBusId ? "update" : "create"} bus.`); } finally { setBusMgmtBusy(false); }
+    catch (e) { notify(e?.response?.data?.detail || `Failed to ${editingBusId ? "update" : "create"} bus.`, "error"); } finally { setBusMgmtBusy(false); }
   };
 
   const startEditingBus = (bus) => {
-    setErr("");
-    setBusMgmtMsg("");
     setEditingBusId(bus.id);
     setBusName(bus.display_name || "");
     setBusPlate(bus.plate_number || "");
@@ -703,51 +891,60 @@ export default function AdminHome() {
   };
 
   const deleteBus = async (bus) => {
-    if (!window.confirm(`Delete bus ${bus.display_name || bus.plate_number}? This cannot be undone.`)) return;
-    setBusDeleteBusyId(bus.id);
-    setErr("");
-    setBusMgmtMsg("");
-    try {
-      const r = await api.delete(`/api/transport/admin/buses/${bus.id}/`);
-      setBusMgmtMsg(r.data.message || "Bus deleted.");
-      if (editingBusId === bus.id) resetBusForm();
-      if (assignBusId === String(bus.id)) {
-        setAssignBusId("");
-        setAssignDriverId("");
-        setAssignHelperId("");
+    const performDelete = async () => {
+      setBusDeleteBusyId(bus.id);
+      try {
+        await api.delete(`/api/transport/admin/buses/${bus.id}/`);
+        if (editingBusId === bus.id) resetBusForm();
+        if (assignBusId === String(bus.id)) {
+          setAssignBusId("");
+          setAssignRouteId("");
+          setAssignDriverId("");
+          setAssignHelperId("");
+        }
+        notify("Bus deleted.", "success");
+        await Promise.all([loadBuses(), loadSched(), loadDB({ silent: true })]);
+      } catch (e) {
+        notify(e?.response?.data?.detail || "Failed to delete bus.", "error");
+      } finally {
+        setBusDeleteBusyId(null);
+        setConfirmModal(null);
       }
-      await Promise.all([loadBuses(), loadSched(), loadDB({ silent: true })]);
-    } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to delete bus.");
-    } finally {
-      setBusDeleteBusyId(null);
-    }
+    };
+
+    setConfirmModal({
+      title: "Delete Bus",
+      message: `Delete bus ${bus.display_name || bus.plate_number}? This action cannot be reversed.`,
+      onConfirm: performDelete,
+      onCancel: () => setConfirmModal(null),
+    });
   };
 
   const assignStaffToBus = async () => {
-    if (!assignBusId) { setErr("Select a bus to assign staff."); return; }
-    setAssignBusy(true); setErr(""); setAssignMsg("");
+    if (!assignBusId) { notify("Select a bus to assign staff.", "error"); return; }
+    setAssignBusy(true);
     try {
-      const r = await api.patch(`/api/transport/admin/buses/${assignBusId}/`, {
+      await api.patch(`/api/transport/admin/buses/${assignBusId}/`, {
+        route: assignRouteId || "",
         driver: assignDriverId || "",
         helper: assignHelperId || ""
       });
-      setAssignMsg(r.data.message || "Bus staff updated.");
-      setAssignBusId(""); setAssignDriverId(""); setAssignHelperId("");
+      setAssignBusId(""); setAssignRouteId(""); setAssignDriverId(""); setAssignHelperId("");
+      notify("Bus assignment updated successfully.", "success");
       await loadBuses();
     } catch (e) {
-      setErr(e?.response?.data?.detail || "Failed to update bus staff.");
+      notify(e?.response?.data?.detail || "Failed to update bus staff.", "error");
     } finally {
       setAssignBusy(false);
     }
   };
 
   const saveUser = async () => {
-    if (!uName.trim() || !uPhone.trim() || (!editingUserId && !uPass.trim())) { setErr("Name, phone, and password are required."); return; }
-    if ((uRole === "DRIVER" || uRole === "HELPER") && !uAddress.trim()) { setErr("Address is required for staff accounts."); return; }
-    if ((uRole === "DRIVER" || uRole === "HELPER") && !uOfficialPhoto && !editingUserId) { setErr("An official photo is required for staff accounts."); return; }
-    if (uRole === "DRIVER" && (!uLicenseNumber.trim() || (!uLicensePhoto && !editingUserId))) { setErr("Driver license number and license photo are required."); return; }
-    setUMgmtBusy(true); setErr(""); setUMgmtMsg("");
+    if (!uName.trim() || !uPhone.trim() || (!editingUserId && !uPass.trim())) { notify("Name, phone, and password are required.", "error"); return; }
+    if ((uRole === "DRIVER" || uRole === "HELPER") && !uAddress.trim()) { notify("Address is required for staff accounts.", "error"); return; }
+    if ((uRole === "DRIVER" || uRole === "HELPER") && !uOfficialPhoto && !editingUserId) { notify("An official photo is required for staff accounts.", "error"); return; }
+    if (uRole === "DRIVER" && (!uLicenseNumber.trim() || (!uLicensePhoto && !editingUserId))) { notify("Driver license number and license photo are required.", "error"); return; }
+    setUBusy(true);
     try {
       const formData = new FormData();
       formData.append("full_name", uName.trim());
@@ -759,19 +956,17 @@ export default function AdminHome() {
       if (uOfficialPhoto) formData.append("official_photo", uOfficialPhoto);
       if (uRole === "DRIVER" && uLicenseNumber.trim()) formData.append("license_number", uLicenseNumber.trim());
       if (uRole === "DRIVER" && uLicensePhoto) formData.append("license_photo", uLicensePhoto);
-      const r = editingUserId
+      editingUserId
         ? await api.patch(`/api/auth/admin/users/${editingUserId}/`, formData)
         : await api.post("/api/auth/admin/users/", formData);
-      setUMgmtMsg(r.data.message || (editingUserId ? "User updated." : "User created."));
       resetUserForm();
+      notify(`User ${editingUserId ? "updated" : "created"} successfully.`, "success");
       await Promise.all([reloadFilteredUsers(), loadSched(), loadDB({ silent: true })]);
     }
-    catch (e) { const d = e?.response?.data; setErr(d?.phone?.[0] || d?.email?.[0] || d?.detail || `Failed to ${editingUserId ? "update" : "create"} user.`); } finally { setUMgmtBusy(false); }
+    catch (e) { const d = e?.response?.data; notify(d?.phone?.[0] || d?.email?.[0] || d?.detail || `Failed to ${editingUserId ? "update" : "create"} user.`, "error"); } finally { setUBusy(false); }
   };
 
   const startEditingUser = (staffUser) => {
-    setErr("");
-    setUMgmtMsg("");
     setEditingUserId(staffUser.id);
     setURole(staffUser.role || "DRIVER");
     setUName(staffUser.full_name || "");
@@ -785,23 +980,28 @@ export default function AdminHome() {
     navigate(`/admin/${staffUser.role === "HELPER" ? "helpers" : staffUser.role === "ADMIN" ? "settings" : "drivers"}`);
   };
 
-  const deleteUser = async (staffUser) => {
-    if (!window.confirm(`Delete ${staffUser.full_name}? This cannot be undone.`)) return;
-    setUserDeleteBusyId(staffUser.id);
-    setErr("");
-    setUMgmtMsg("");
-    setReviewMsg("");
-    try {
-      const r = await api.delete(`/api/auth/admin/users/${staffUser.id}/`);
-      setUMgmtMsg(r.data.message || "User deleted.");
-      if (editingUserId === staffUser.id) resetUserForm();
-      await Promise.all([reloadFilteredUsers(), loadSched(), loadDB({ silent: true })]);
-    } catch (e) {
-      const d = e?.response?.data;
-      setErr(d?.detail || "Failed to delete user.");
-    } finally {
-      setUserDeleteBusyId(null);
-    }
+  const deleteUser = async (targetUser) => {
+    const performDelete = async () => {
+      setUserDeleteBusyId(targetUser.id);
+      try {
+        await api.delete(`/api/auth/admin/users/${targetUser.id}/`);
+        notify("User deleted.", "success");
+        if (editingUserId === targetUser.id) resetUserForm();
+        await Promise.all([reloadFilteredUsers(), loadSched(), loadDB({ silent: true })]);
+      } catch (e) {
+        notify(e?.response?.data?.detail || "Failed to delete user.", "error");
+      } finally {
+        setUserDeleteBusyId(null);
+        setConfirmModal(null);
+      }
+    };
+
+    setConfirmModal({
+      title: "Delete User",
+      message: `Are you sure you want to delete ${targetUser.full_name}? This will permanently remove their account.`,
+      onConfirm: performDelete,
+      onCancel: () => setConfirmModal(null),
+    });
   };
 
   const setStaffFilter = async (role) => {
@@ -811,18 +1011,16 @@ export default function AdminHome() {
 
   const reviewUser = async (staffUser, payload) => {
     setReviewBusyId(staffUser.id);
-    setErr("");
-    setReviewMsg("");
     try {
       const r = await api.patch(`/api/auth/admin/users/${staffUser.id}/review/`, payload);
       const updatedUser = r.data.user;
       setUserList(current => current.map(row => (row.id === updatedUser.id ? updatedUser : row)));
-      setReviewMsg(r.data.message || `Updated ${staffUser.full_name}.`);
+      notify(r.data.message || `Updated ${staffUser.full_name}.`, "success");
       await loadDB({ silent: true });
       await loadSched();
     } catch (e) {
       const d = e?.response?.data;
-      setErr(d?.official_photo_verified?.[0] || d?.license_verified?.[0] || d?.detail || "Failed to update staff review.");
+      notify(d?.official_photo_verified?.[0] || d?.license_verified?.[0] || d?.detail || "Failed to update staff review.", "error");
     } finally {
       setReviewBusyId(null);
     }
@@ -841,9 +1039,10 @@ export default function AdminHome() {
 
   const exportReport = () => {
     const rows = [
-      ["Category", "Name", "Trips", "Bookings", "Revenue"],
-      ...routeAnalytics.map((route) => ["Route", route.route_name, route.total_trips, route.bookings, route.revenue_success]),
-      ...busAnalytics.map((bus) => ["Bus", bus.display_name, bus.total_trips, bus.bookings, bus.revenue_success]),
+      ["Category", "Name", "Trips", "Bookings", "Revenue", "Avg Rating", "Reviews"],
+      ...routeAnalytics.map((route) => ["Route", route.route_name, route.total_trips, route.bookings, route.revenue_success, route.avg_rating || 0, route.reviews_total || 0]),
+      ...busAnalytics.map((bus) => ["Bus", bus.display_name, bus.total_trips, bus.bookings, bus.revenue_success, bus.avg_rating || 0, bus.reviews_total || 0]),
+      ...stationAnalytics.map((station) => ["Station", station.stop_name, "", station.touchpoints || 0, "", "", station.completed_bookings || 0]),
     ];
     const csv = rows.map((row) => row.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -855,7 +1054,7 @@ export default function AdminHome() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(href);
-    setMsg("MetroBus report exported.");
+    notify("MetroBus report exported.", "success");
   };
 
   if (loading) return <div style={theme} className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,#fff5eb_0%,var(--bg)_42%,var(--bg-soft)_100%)]"><div className="text-center"><div className="mx-auto h-12 w-12 animate-spin rounded-full border-4 border-[var(--primary)] border-t-transparent" /><p className="mt-4 text-sm font-semibold text-[var(--muted)]">Loading MetroBus admin dashboard...</p></div></div>;
@@ -875,7 +1074,6 @@ export default function AdminHome() {
         </div>
         {editingUserId ? <Btn tone="ghost" onClick={resetUserForm} className="!px-4 !py-2">Cancel</Btn> : null}
       </div>
-      {uMgmtMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{uMgmtMsg}</p> : null}
       <div className="grid gap-4">
         <InputField label="Full Name" value={uName} onChange={setUName} placeholder="Ramesh Kumar" />
         <div className="grid gap-4 xl:grid-cols-2">
@@ -897,8 +1095,8 @@ export default function AdminHome() {
             <FileField label="License Photo" file={uLicensePhoto} onChange={setULicensePhoto} />
           </div>
         ) : null}
-        <Btn tone="success" onClick={saveUser} disabled={uMgmtBusy} className="w-full !py-4">
-          {uMgmtBusy ? (editingUserId ? "Saving..." : "Creating...") : (editingUserId ? `Save ${role}` : `Add ${role}`)}
+        <Btn tone="success" onClick={saveUser} disabled={uBusy} className="w-full !py-4">
+          {uBusy ? (editingUserId ? "Saving..." : "Creating...") : (editingUserId ? `Save ${role}` : `Add ${role}`)}
         </Btn>
       </div>
     </GlassCard>
@@ -1039,7 +1237,7 @@ export default function AdminHome() {
             <StatCard label="Today's Trips" value={trips.today || trips.live || 0} sub={`${trips.total || 0} total recorded trips`} accent="text-[var(--success)]" />
             <StatCard label="Total Earnings" value={fmtMoney(payments.revenue_success || 0)} sub={`${payments.success || 0} successful payments`} accent="text-[var(--primary)]" />
             <StatCard label="Occupancy Rate" value={`${overallOccupancyRate}%`} sub={`${rideOps.onboard || 0} onboard | ${rideOps.awaiting_payment || 0} awaiting payment`} accent="text-[var(--accent-strong)]" />
-            <StatCard label="Total Stations" value={builderStops.length} sub={`${recentStops.length} recent station records`} />
+            <StatCard label="Passenger Rating" value={reviews.avg_rating ? `${Number(reviews.avg_rating).toFixed(1)} / 5` : "--"} sub={`${reviews.total || 0} reviews | ${reviews.positive || 0} positive`} accent="text-[var(--success)]" />
           </div>
           <div className="grid gap-5 xl:grid-cols-[1.35fr_0.85fr]">
             <GlassCard>
@@ -1119,6 +1317,76 @@ export default function AdminHome() {
                       <Pill color="amber">{schedule.status}</Pill>
                     </div>
                     <p className="mt-3 text-xs text-[var(--muted)]">Starts {fmt(schedule.scheduled_start_time)}</p>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr_1fr]">
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Review Snapshot</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Passenger satisfaction pulse</p>
+                </div>
+                <Pill color={reviews.critical ? "amber" : "emerald"}>{reviews.total || 0} total</Pill>
+              </div>
+              <div className="grid gap-3">
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Average rating</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{reviews.avg_rating ? Number(reviews.avg_rating).toFixed(1) : "--"}</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Positive reviews</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{reviews.positive || 0}</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Critical reviews</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{reviews.critical || 0}</p>
+                </div>
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Recent Reviews</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Latest passenger feedback</p>
+                </div>
+                <Pill color="indigo">{recentReviews.length}</Pill>
+              </div>
+              <div className="space-y-3">
+                {!recentReviews.length ? <p className="text-sm text-[var(--muted)]">No ride reviews submitted yet.</p> : recentReviews.map((review) => (
+                  <div key={review.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{review.passenger_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{review.route_name} | Bus {review.bus_plate}</p>
+                      </div>
+                      <Pill color={review.rating >= 4 ? "emerald" : review.rating <= 2 ? "red" : "amber"}>{review.rating}/5</Pill>
+                    </div>
+                    <p className="mt-3 text-sm text-[var(--muted)]">{review.note || "Passenger left a rating without additional notes."}</p>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <SLabel>Top Rated Corridors</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Best performing routes</p>
+                </div>
+                <Pill color="sky">{topRatedRoutes.length}</Pill>
+              </div>
+              <div className="space-y-3">
+                {!topRatedRoutes.length ? <p className="text-sm text-[var(--muted)]">Route review analytics will appear after completed rides are rated.</p> : topRatedRoutes.map((route) => (
+                  <div key={route.route_id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{route.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{route.city} | {route.reviews_total} reviews</p>
+                      </div>
+                      <Pill color="emerald">{Number(route.avg_rating || 0).toFixed(1)}/5</Pill>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1205,12 +1473,15 @@ export default function AdminHome() {
           <GlassCard>
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
-                <SLabel>{editingBusId ? "Edit Bus" : "Add Bus"}</SLabel>
+                <SLabel>{editingBusId ? "Edit Bus" : "Add New Bus"}</SLabel>
                 <p className="text-xl font-black text-[var(--text)]">Fleet registration</p>
               </div>
-              {editingBusId ? <Btn tone="ghost" onClick={resetBusForm} className="!px-4 !py-2">Cancel</Btn> : null}
+              {editingBusId ? (
+                <button type="button" onClick={resetBusForm} className={`rounded-[1rem] border px-3 py-2 text-xs font-black transition ${rowBg} text-[var(--text)]`}>
+                  Cancel
+                </button>
+              ) : null}
             </div>
-            {busMgmtMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{busMgmtMsg}</p> : null}
             <div className="grid gap-4">
               <InputField label="Bus Name" value={busName} onChange={setBusName} placeholder="MetroBus Lakeside Express" />
               <InputField label="Plate Number" value={busPlate} onChange={setBusPlate} placeholder="BA 1 CHA 2233" />
@@ -1330,9 +1601,8 @@ export default function AdminHome() {
                 <SLabel>Add Stop / Station</SLabel>
                 <p className="text-xl font-black text-[var(--text)]">Pin new station on map</p>
               </div>
-              {stopMsg ? <Pill color="emerald">Saved</Pill> : null}
+              {stopBusy ? <Pill color="amber">Saving...</Pill> : null}
             </div>
-            {stopMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{stopMsg}</p> : null}
             <div className="grid gap-4">
               <InputField label="Stop Name" value={stopName} onChange={setStopName} placeholder="Bindhyabasini Gate" />
               <div className="grid gap-4 xl:grid-cols-2">
@@ -1432,7 +1702,6 @@ export default function AdminHome() {
                 </div>
                 {editingRouteId ? <Btn tone="ghost" onClick={clearRoute} className="!px-4 !py-2">Cancel</Btn> : null}
               </div>
-              {routeMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{routeMsg}</p> : null}
               <div className="grid gap-4">
                 <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" />
                 <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
@@ -1470,10 +1739,16 @@ export default function AdminHome() {
             </GlassCard>
             {selectedStops.length >= 2 ? (
               <GlassCard>
-                <SLabel>Segment Fare Editor</SLabel>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <div>
+                    <SLabel>Segment Fare Editor</SLabel>
+                    <p className="text-xl font-black text-[var(--text)]">Fare and route shaping controls</p>
+                  </div>
+                  <Btn tone="ghost" onClick={clearRouteShaping} className="!px-4 !py-2">Reset Path</Btn>
+                </div>
                 <div className="space-y-4">
                   {selectedStops.slice(0, -1).map((stop, index) => (
-                    <div key={`${stop.id}-${index}`}>
+                    <div key={`${stop.id}-${index}`} className={`rounded-[1rem] border px-4 py-4 ${selectedSegmentIndex === index ? "border-[var(--accent)] bg-[var(--accent-soft)]" : rowBg}`}>
                       <label className="mb-1.5 block text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">{stop.name} to {selectedStops[index + 1].name}</label>
                       <input
                         type="number"
@@ -1488,6 +1763,30 @@ export default function AdminHome() {
                         className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] outline-none focus:border-[var(--primary)]"
                         placeholder="Enter fare"
                       />
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Btn tone={selectedSegmentIndex === index ? "primary" : "ghost"} onClick={() => setSelectedSegmentIndex(index)} className="!px-3 !py-2 text-xs">
+                          {selectedSegmentIndex === index ? "Selected Segment" : "Select Segment"}
+                        </Btn>
+                        <Btn tone={pendingDiversionSegmentIndex === index ? "success" : "ghost"} onClick={() => beginSegmentDiversionPick(index)} className="!px-3 !py-2 text-xs">
+                          {pendingDiversionSegmentIndex === index ? "Click Map Now" : "Add Diversion"}
+                        </Btn>
+                        <Pill color="indigo">{segmentWaypointGroups[index]?.length || 0} control point{(segmentWaypointGroups[index]?.length || 0) === 1 ? "" : "s"}</Pill>
+                      </div>
+                      {segmentWaypointGroups[index]?.length ? (
+                        <div className="mt-3 space-y-2">
+                          {segmentWaypointGroups[index].map((waypoint, waypointIndex) => (
+                            <div key={waypoint.key} className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-[0.16em] text-[var(--primary)]">Control Point {waypointIndex + 1}</p>
+                                <p className="text-xs text-[var(--muted)]">{Number(waypoint.lat).toFixed(5)}, {Number(waypoint.lng).toFixed(5)}</p>
+                              </div>
+                              <Btn tone="danger" onClick={() => removeRouteWaypoint(waypoint.key)} className="!px-3 !py-2 text-xs">Remove</Btn>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-xs text-[var(--muted)]">Select the segment, click `Add Diversion`, then click the map where the route should pass. The system will recalculate the shortest road path while covering that diversion point.</p>
+                      )}
                     </div>
                   ))}
                   <Btn tone="success" onClick={saveRoute} disabled={routeBusy} className="w-full !py-4">
@@ -1499,15 +1798,104 @@ export default function AdminHome() {
           </div>
           <GlassCard className="overflow-hidden !p-0">
             <div className="border-b border-[var(--border)] px-5 py-5">
-              <SLabel>Route Map</SLabel>
-              <p className="text-xl font-black text-[var(--text)]">Stations and visual route path</p>
-              <p className="mt-1 text-sm text-[var(--muted)]">Click stations to add or remove them from the route builder.</p>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <SLabel>Route Map</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Stations and visual route path</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">Click stations to add or remove stops. Then choose a segment, press `Add Diversion`, and click the map where you want the road route to pass. Existing handles can still be dragged to fine-tune the path.</p>
+                </div>
+                <Btn tone={routePinMode ? "danger" : "ghost"} onClick={() => { if (routePinMode) clearRouteDraftStop(); else setRoutePinMode(true); }} className="!px-4 !py-2">
+                  {routePinMode ? "Cancel Pin" : "Pin New Stop"}
+                </Btn>
+              </div>
+              {(routePinMode || routeDraftStopLat || routeDraftStopLng) ? (
+                <div className={`mt-4 rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Route map pin</p>
+                  <p className="mt-2 text-sm text-[var(--muted)]">{routePinMode ? "Click the map to drop a new stop pin, then give the stop a name." : "Review the dropped pin, name the stop, and save it into MetroBus."}</p>
+                  <div className="mt-4 grid gap-4">
+                    <InputField label="Stop Name" value={routeDraftStopName} onChange={setRouteDraftStopName} placeholder="Zero KM Gate" />
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <InputField label="Latitude" value={routeDraftStopLat} onChange={setRouteDraftStopLat} placeholder="28.233421" />
+                      <InputField label="Longitude" value={routeDraftStopLng} onChange={setRouteDraftStopLng} placeholder="83.996812" />
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      <Btn tone="success" onClick={createStopFromRouteMap} disabled={routeDraftStopBusy} className="!px-4 !py-2">
+                        {routeDraftStopBusy ? "Saving..." : "Create Stop"}
+                      </Btn>
+                      <Btn tone="ghost" onClick={clearRouteDraftStop} className="!px-4 !py-2">Remove Pin</Btn>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="h-[42rem]">
               <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom className="h-full w-full">
                 <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={mapTileUrl} />
                 <MapViewport points={mapPts} />
+                <RouteStopDraftPicker enabled={routePinMode} onPick={handleRouteDraftStopPick} />
+                <RouteDiversionPicker enabled={!routePinMode && pendingDiversionSegmentIndex != null} onPick={placeDiversionPoint} />
+                {routeSegmentLines.map((segmentPoints, index) => (
+                  segmentPoints.length > 1 ? (
+                    <Polyline
+                      key={`segment-hit-${index}`}
+                      positions={segmentPoints}
+                      pathOptions={{ color: selectedSegmentIndex === index ? "#ff8a1f" : "#4b2666", weight: selectedSegmentIndex === index ? 14 : 12, opacity: 0.001 }}
+                      eventHandlers={{ click: () => { if (routePinMode) return; beginSegmentDiversionPick(index); } }}
+                    />
+                  ) : null
+                ))}
                 {dispPts.length > 1 ? <Polyline positions={dispPts} pathOptions={{ color: "#ff8a1f", weight: 5, opacity: 0.9 }} /> : null}
+                {routeDraftStopLat && routeDraftStopLng ? (
+                  <Marker
+                    position={[Number(routeDraftStopLat), Number(routeDraftStopLng)]}
+                    draggable
+                    icon={routeWaypointIcon(true)}
+                    eventHandlers={{
+                      dragend: (event) => handleRouteDraftStopPick(event.target.getLatLng()),
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-sm font-semibold text-slate-900">{routeDraftStopName?.trim() || "New stop pin"}</div>
+                      <div className="mt-1 text-xs text-slate-500">Drag to fine-tune the location, or remove this pin.</div>
+                      <button
+                        type="button"
+                        onClick={clearRouteDraftStop}
+                        className="mt-3 rounded-lg bg-[#fce7eb] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#b4233d]"
+                      >
+                        Remove Pin
+                      </button>
+                    </Popup>
+                  </Marker>
+                ) : null}
+                {routeWaypoints.map((waypoint) => (
+                  <Marker
+                    key={waypoint.key}
+                    position={[Number(waypoint.lat), Number(waypoint.lng)]}
+                    draggable
+                    icon={routeWaypointIcon(Number(waypoint.segment_index) === selectedSegmentIndex)}
+                    eventHandlers={{
+                      click: () => setSelectedSegmentIndex(Number(waypoint.segment_index) || 0),
+                      dblclick: () => removeRouteWaypoint(waypoint.key),
+                      contextmenu: () => removeRouteWaypoint(waypoint.key),
+                      dragend: (event) => {
+                        const latlng = event.target.getLatLng();
+                        moveRouteWaypoint(waypoint.key, latlng);
+                      },
+                    }}
+                  >
+                    <Popup>
+                      <div className="text-sm font-semibold text-slate-900">Segment {(Number(waypoint.segment_index) || 0) + 1} route handle</div>
+                      <div className="mt-1 text-xs text-slate-500">Drag to bend the route line, or remove this handle.</div>
+                      <button
+                        type="button"
+                        onClick={() => removeRouteWaypoint(waypoint.key)}
+                        className="mt-3 rounded-lg bg-[#fce7eb] px-3 py-2 text-xs font-black uppercase tracking-[0.12em] text-[#b4233d]"
+                      >
+                        Remove Handle
+                      </button>
+                    </Popup>
+                  </Marker>
+                ))}
                 {builderStops.map((stop) => {
                   const lat = Number(stop.lat);
                   const lng = Number(stop.lng);
@@ -1575,28 +1963,29 @@ export default function AdminHome() {
 
     if (activeSection === "assignments") {
       return (
-        <div className="grid gap-5 xl:grid-cols-[0.95fr_0.95fr_1.1fr]">
+        <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr_1fr]">
           <GlassCard>
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
-                <SLabel>Assign Driver / Helper</SLabel>
-                <p className="text-xl font-black text-[var(--text)]">Bus staffing controls</p>
+                <SLabel>Permanent Assignment</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">Bus, route, driver, and helper</p>
               </div>
-              {assignMsg ? <Pill color="emerald">Saved</Pill> : null}
             </div>
-            {assignMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{assignMsg}</p> : null}
             <div className="grid gap-4">
               <SelectField label="Bus" value={assignBusId} onChange={setAssignBusId} options={[{ value: "", label: "-- Select Bus --" }, ...busList.map((bus) => ({ value: bus.id, label: `${bus.display_name || bus.plate_number} | ${bus.plate_number}` }))]} />
+              <SelectField label="Route" value={assignRouteId} onChange={setAssignRouteId} options={assignmentRouteOptions} />
               <div className="grid gap-4 xl:grid-cols-2">
-                <SelectField label="Driver" value={assignDriverId} onChange={setAssignDriverId} options={[{ value: "", label: "Unassigned" }, ...schedOpts.drivers.map((driver) => ({ value: driver.id, label: driver.full_name }))]} />
-                <SelectField label="Helper" value={assignHelperId} onChange={setAssignHelperId} options={[{ value: "", label: "Unassigned" }, ...schedOpts.helpers.map((helper) => ({ value: helper.id, label: helper.full_name }))]} />
+                <SelectField label="Driver" value={assignDriverId} onChange={setAssignDriverId} options={assignmentDriverOptions} />
+                <SelectField label="Helper" value={assignHelperId} onChange={setAssignHelperId} options={assignmentHelperOptions} />
               </div>
               {selectedAssignBus ? (
                 <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Current assignment</p>
                   <p className="mt-2 font-bold text-[var(--text)]">{selectedAssignBus.display_name || selectedAssignBus.plate_number}</p>
                   <p className="mt-1 text-sm text-[var(--muted)]">{selectedAssignBus.plate_number} | {selectedAssignBus.capacity} seats | {selectedAssignBus.condition}</p>
-                  <p className="mt-2 text-sm text-[var(--muted)]">Driver: {selectedAssignBus.driver_name || "Unassigned"} | Helper: {selectedAssignBus.helper_name || "Unassigned"}</p>
+                  <p className="mt-2 text-sm text-[var(--muted)]">Route: {selectedAssignBus.route_name || "Unassigned"}</p>
+                  <p className="mt-1 text-sm text-[var(--muted)]">Driver: {selectedAssignBus.driver_name || "Unassigned"} | Helper: {selectedAssignBus.helper_name || "Unassigned"}</p>
+                  <p className="mt-3 text-xs text-[var(--muted)]">Once this is saved, the same bus, route, driver, and helper stay linked until admin edits the assignment.</p>
                 </div>
               ) : null}
               <Btn tone="primary" onClick={assignStaffToBus} disabled={assignBusy} className="w-full !py-4">{assignBusy ? "Updating..." : "Save Assignment"}</Btn>
@@ -1605,76 +1994,62 @@ export default function AdminHome() {
           <GlassCard>
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
-                <SLabel>{editingScheduleId ? "Edit Schedule" : "Create Schedule"}</SLabel>
-                <p className="text-xl font-black text-[var(--text)]">Route departure planner</p>
+                <SLabel>Assignment Registry</SLabel>
+                <p className="text-xl font-black text-[var(--text)]">Current fleet assignment list</p>
               </div>
-              {editingScheduleId ? <Btn tone="ghost" onClick={clearScheduleForm} className="!px-4 !py-2">Cancel</Btn> : null}
             </div>
-            {scheduleMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{scheduleMsg}</p> : null}
-            <div className="grid gap-4">
-              <SelectField label="Route" value={sRouteId} onChange={setSRouteId} options={schedOpts.routes.map((route) => ({ value: route.id, label: route.name }))} />
-              <SelectField label="Bus" value={sBusId} onChange={setSBusId} options={schedOpts.buses.map((bus) => ({ value: bus.id, label: `${bus.display_name || bus.plate_number} | ${bus.plate_number}` }))} />
-              <div className="grid gap-4 xl:grid-cols-2">
-                <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} options={schedOpts.drivers.map((driver) => ({ value: driver.id, label: driver.full_name }))} />
-                <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} options={schedOpts.helpers.map((helper) => ({ value: helper.id, label: helper.full_name }))} />
-              </div>
-              <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} />
-              {selectedScheduleBus ? (
-                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
-                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Schedule snapshot</p>
-                  <p className="mt-2 font-bold text-[var(--text)]">{selectedScheduleBus.display_name || selectedScheduleBus.plate_number}</p>
-                  <p className="mt-1 text-sm text-[var(--muted)]">{selectedScheduleBus.capacity} seats | Driver {selectedScheduleBus.driver_name || "--"} | Helper {selectedScheduleBus.helper_name || "--"}</p>
+            <div className="space-y-3">
+              {!filteredBuses.length ? <p className="text-sm text-[var(--muted)]">No buses match the current search.</p> : filteredBuses.map((bus) => (
+                <div key={bus.id} className={`rounded-[1.1rem] border px-4 py-4 ${selectedAssignBus?.id === bus.id ? "border-transparent bg-[var(--accent-soft)]" : rowBg}`}>
+                  <button type="button" className="w-full text-left" onClick={() => setAssignBusId(String(bus.id))}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-bold text-[var(--text)]">{bus.display_name || bus.plate_number}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{bus.plate_number} | {bus.capacity} seats | {bus.condition}</p>
+                        <p className="mt-2 text-xs text-[var(--muted)]">Route: {bus.route_name || "Unassigned"}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">Driver: {bus.driver_name || "Unassigned"} | Helper: {bus.helper_name || "Unassigned"}</p>
+                      </div>
+                      <Pill color={bus.route && bus.driver && bus.helper ? "emerald" : "amber"}>{bus.route && bus.driver && bus.helper ? "Ready" : "Needs setup"}</Pill>
+                    </div>
+                  </button>
                 </div>
-              ) : null}
-              <Btn tone="success" onClick={saveSchedule} disabled={scheduleBusy} className="w-full !py-4">
-                {scheduleBusy ? (editingScheduleId ? "Saving..." : "Creating...") : (editingScheduleId ? "Save Schedule Changes" : "Create Trip Schedule")}
-              </Btn>
+              ))}
             </div>
           </GlassCard>
           <div className="space-y-5">
             <GlassCard>
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div>
-                  <SLabel>Conflict Detection</SLabel>
-                  <p className="text-xl font-black text-[var(--text)]">Assignment validation</p>
+                  <SLabel>Assignment Health</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Permanent setup summary</p>
                 </div>
-                <Pill color={assignmentConflicts.length ? "red" : "emerald"}>{assignmentConflicts.length ? `${assignmentConflicts.length} conflicts` : "No conflicts"}</Pill>
+                <Pill color={assignmentHealth.missingRoute || assignmentHealth.missingStaff ? "amber" : "emerald"}>{assignmentHealth.fullyAssigned} ready</Pill>
               </div>
-              <div className="space-y-3">
-                {!assignmentConflicts.length ? <p className="text-sm text-[var(--muted)]">No driver, helper, or bus is assigned twice in the current planned schedules.</p> : assignmentConflicts.map((schedule) => (
-                  <div key={schedule.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
-                    <p className="font-bold text-[var(--text)]">{schedule.route_name}</p>
-                    <p className="mt-1 text-xs text-[var(--muted)]">{schedule.bus_plate} | {schedule.driver_name || "--"} | {schedule.helper_name || "--"}</p>
-                    <p className="mt-2 text-xs text-[var(--danger)]">Conflict detected in current plan. Review this schedule before dispatch.</p>
-                  </div>
-                ))}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Fully assigned</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{assignmentHealth.fullyAssigned}</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Missing route</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{assignmentHealth.missingRoute}</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Missing staff</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--text)]">{assignmentHealth.missingStaff}</p>
+                </div>
               </div>
             </GlassCard>
             <GlassCard>
               <div className="mb-5 flex items-center justify-between gap-3">
                 <div>
-                  <SLabel>Active and Planned Schedules</SLabel>
-                  <p className="text-xl font-black text-[var(--text)]">{filteredSchedules.length} schedule rows</p>
+                  <SLabel>How It Works</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">No trip scheduling required</p>
                 </div>
-                <Pill color="amber">{schedOpts.schedules.length} total</Pill>
+                <Pill color="indigo">MetroBus flow</Pill>
               </div>
-              <div className="space-y-3">
-                {!filteredSchedules.length ? <p className="text-sm text-[var(--muted)]">No schedules match the current search.</p> : filteredSchedules.map((schedule) => (
-                  <div key={schedule.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-bold text-[var(--text)]">{schedule.route_name}</p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">{schedule.bus_plate} | {schedule.driver_name || "--"} | {schedule.helper_name || "--"}</p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">Starts {fmt(schedule.scheduled_start_time)}</p>
-                      </div>
-                      <Pill color={schedule.status === "PLANNED" ? "amber" : schedule.status === "COMPLETED" ? "emerald" : "indigo"}>{schedule.status}</Pill>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Btn tone="ghost" onClick={() => startEditingSchedule(schedule)} className="!px-3 !py-2 text-xs">Edit</Btn>
-                      <Btn tone="danger" onClick={() => deleteSchedule(schedule)} disabled={scheduleDeleteBusyId === schedule.id} className="!px-3 !py-2 text-xs">{scheduleDeleteBusyId === schedule.id ? "Deleting..." : "Delete"}</Btn>
-                    </div>
-                  </div>
-                ))}
+              <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-sm leading-7 text-[var(--muted)]">Admin now assigns one permanent bus setup: route, driver, and helper. The driver and helper keep using that same bus until you edit the assignment here. When they start a ride from their dashboard, MetroBus creates the pending/live trip from that saved setup automatically.</p>
               </div>
             </GlassCard>
           </div>
@@ -1730,6 +2105,31 @@ export default function AdminHome() {
               </div>
             </GlassCard>
           </div>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Review Trend</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Passenger ratings over time</p>
+                </div>
+                <Pill color="emerald">{reviewTrend.length} days</Pill>
+              </div>
+              <SimpleLineChart points={reviewTrend.length ? reviewTrend.map((item) => ({ label: item.label, value: item.avg_rating || 0 })) : [{ label: "No data", value: 0 }]} />
+              <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-[var(--muted)] xl:grid-cols-4">
+                {(reviewTrend.length ? reviewTrend.slice(-4) : []).map((point) => <div key={point.label} className={`rounded-[1rem] border px-3 py-3 ${rowBg}`}>{point.label}: {Number(point.avg_rating || 0).toFixed(1)} / 5</div>)}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Station Activity</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Most used stops across MetroBus</p>
+                </div>
+                <Pill color="amber">{stationAnalytics.length} stations</Pill>
+              </div>
+              <SimpleBarChart items={topStations.length ? topStations : [{ label: "No data", value: 0 }]} color="var(--success)" />
+            </GlassCard>
+          </div>
           <GlassCard>
             <div className="mb-5 flex items-center justify-between gap-3">
               <div>
@@ -1738,13 +2138,17 @@ export default function AdminHome() {
               </div>
               <Btn tone="ghost" onClick={exportReport} className="!px-4 !py-2"><Icon name="download" className="mr-2 h-4 w-4" />Export</Btn>
             </div>
-            <div className="grid gap-4 xl:grid-cols-4">
+            <div className="grid gap-4 xl:grid-cols-5">
               <SelectField label="Date Range" value={reportRange} onChange={setReportRange} options={[{ value: "7D", label: "Last 7 days" }, { value: "30D", label: "Last 30 days" }, { value: "90D", label: "Last 90 days" }]} />
               <SelectField label="Route Filter" value={analyticsRouteFilter} onChange={setAnalyticsRouteFilter} options={routeFilterOptions} />
               <SelectField label="Bus Filter" value={analyticsBusFilter} onChange={setAnalyticsBusFilter} options={busFilterOptions} />
               <div className={`rounded-[1rem] border px-4 py-4 ${rowBg}`}>
                 <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Growth indicator</p>
                 <p className="mt-2 text-3xl font-black text-[var(--success)]">+{Math.max(8, Math.round(overallOccupancyRate / 2))}%</p>
+              </div>
+              <div className={`rounded-[1rem] border px-4 py-4 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Average rating</p>
+                <p className="mt-2 text-3xl font-black text-[var(--text)]">{reviews.avg_rating ? Number(reviews.avg_rating).toFixed(1) : "--"}</p>
               </div>
             </div>
           </GlassCard>
@@ -1758,15 +2162,16 @@ export default function AdminHome() {
                 <Pill color="indigo">{filteredRouteAnalytics.length}</Pill>
               </div>
               <div className="overflow-hidden rounded-[1.2rem] border border-[var(--border)]">
-                <div className="grid grid-cols-[1.2fr_0.75fr_0.75fr_0.8fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
+                <div className="grid grid-cols-[1.2fr_0.75fr_0.75fr_0.8fr_0.7fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
                   <span>Route</span>
                   <span>Trips</span>
                   <span>Bookings</span>
                   <span>Revenue</span>
+                  <span>Rating</span>
                 </div>
                 <div className="max-h-[30rem] overflow-y-auto bg-[var(--surface-strong)]">
                   {!filteredRouteAnalytics.length ? <div className="px-4 py-8 text-sm text-[var(--muted)]">No route analytics available.</div> : filteredRouteAnalytics.map((route) => (
-                    <div key={route.route_id} className="grid grid-cols-[1.2fr_0.75fr_0.75fr_0.8fr] gap-3 border-t border-[var(--border)] px-4 py-4 text-sm">
+                    <div key={route.route_id} className="grid grid-cols-[1.2fr_0.75fr_0.75fr_0.8fr_0.7fr] gap-3 border-t border-[var(--border)] px-4 py-4 text-sm">
                       <div>
                         <p className="font-bold text-[var(--text)]">{route.route_name}</p>
                         <p className="mt-1 text-xs text-[var(--muted)]">{route.city}</p>
@@ -1774,6 +2179,7 @@ export default function AdminHome() {
                       <span className="font-semibold text-[var(--text)]">{route.total_trips}</span>
                       <span className="font-semibold text-[var(--text)]">{route.bookings}</span>
                       <span className="font-semibold text-[var(--text)]">{fmtMoney(route.revenue_success)}</span>
+                      <span className="font-semibold text-[var(--text)]">{route.reviews_total ? `${Number(route.avg_rating || 0).toFixed(1)} (${route.reviews_total})` : "--"}</span>
                     </div>
                   ))}
                 </div>
@@ -1788,15 +2194,16 @@ export default function AdminHome() {
                 <Pill color="sky">{filteredBusAnalytics.length}</Pill>
               </div>
               <div className="overflow-hidden rounded-[1.2rem] border border-[var(--border)]">
-                <div className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.85fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
+                <div className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.85fr_0.7fr] gap-3 bg-[var(--surface-muted)] px-4 py-3 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">
                   <span>Bus</span>
                   <span>Trips</span>
                   <span>Bookings</span>
                   <span>Revenue</span>
+                  <span>Rating</span>
                 </div>
                 <div className="max-h-[30rem] overflow-y-auto bg-[var(--surface-strong)]">
                   {!filteredBusAnalytics.length ? <div className="px-4 py-8 text-sm text-[var(--muted)]">No bus analytics available.</div> : filteredBusAnalytics.map((bus) => (
-                    <div key={bus.bus_id} className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.85fr] gap-3 border-t border-[var(--border)] px-4 py-4 text-sm">
+                    <div key={bus.bus_id} className="grid grid-cols-[1.2fr_0.7fr_0.7fr_0.85fr_0.7fr] gap-3 border-t border-[var(--border)] px-4 py-4 text-sm">
                       <div>
                         <p className="font-bold text-[var(--text)]">{bus.display_name}</p>
                         <p className="mt-1 text-xs text-[var(--muted)]">{bus.plate_number}</p>
@@ -1804,6 +2211,7 @@ export default function AdminHome() {
                       <span className="font-semibold text-[var(--text)]">{bus.total_trips}</span>
                       <span className="font-semibold text-[var(--text)]">{bus.bookings}</span>
                       <span className="font-semibold text-[var(--text)]">{fmtMoney(bus.revenue_success)}</span>
+                      <span className="font-semibold text-[var(--text)]">{bus.reviews_total ? `${Number(bus.avg_rating || 0).toFixed(1)} (${bus.reviews_total})` : "--"}</span>
                     </div>
                   ))}
                 </div>
@@ -1846,6 +2254,23 @@ export default function AdminHome() {
               </div>
             </GlassCard>
             <GlassCard>
+              <SLabel>Ride Reviews</SLabel>
+              <div className="mt-4 space-y-3">
+                {!recentReviews.length ? <p className="text-sm text-[var(--muted)]">No recent reviews to inspect yet.</p> : recentReviews.slice(0, 5).map((review) => (
+                  <div key={review.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{review.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{review.passenger_name} | Bus {review.bus_plate}</p>
+                      </div>
+                      <Pill color={review.rating >= 4 ? "emerald" : review.rating <= 2 ? "red" : "amber"}>{review.rating}/5</Pill>
+                    </div>
+                    <p className="mt-2 text-xs text-[var(--muted)]">{review.note || "No written feedback left."}</p>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
               <SLabel>Payment Status</SLabel>
               <div className="mt-4 space-y-3">
                 {[{ label: "Success", value: payments.success || 0, color: "emerald" }, { label: "Pending", value: payments.pending || 0, color: "amber" }, { label: "Failed", value: payments.failed || 0, color: "red" }].map((item) => (
@@ -1876,7 +2301,7 @@ export default function AdminHome() {
               <div className="grid gap-4">
                 <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Included sheets</p>
-                  <p className="mt-2 text-sm font-semibold text-[var(--text)]">Route revenue, bus revenue, trip volume, booking summary</p>
+                  <p className="mt-2 text-sm font-semibold text-[var(--text)]">Route revenue, bus revenue, trip volume, booking summary, and ride ratings</p>
                 </div>
                 <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
                   <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Reporting range</p>
@@ -1919,10 +2344,11 @@ export default function AdminHome() {
                       </div>
                       <Pill color="indigo">{fmtMoney(route.revenue_success)}</Pill>
                     </div>
-                    <div className="mt-3 grid gap-2 xl:grid-cols-3">
+                    <div className="mt-3 grid gap-2 xl:grid-cols-4">
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Trips {route.total_trips}</div>
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Bookings {route.bookings}</div>
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Completed {route.completed_bookings}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Rating {route.reviews_total ? `${Number(route.avg_rating || 0).toFixed(1)}/5` : "--"}</div>
                     </div>
                   </div>
                 ))}
@@ -1940,10 +2366,84 @@ export default function AdminHome() {
                       </div>
                       <Pill color={bus.is_active ? "emerald" : "slate"}>{bus.is_active ? "Active" : "Inactive"}</Pill>
                     </div>
-                    <div className="mt-3 grid gap-2 xl:grid-cols-3">
+                    <div className="mt-3 grid gap-2 xl:grid-cols-4">
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Trips {bus.total_trips}</div>
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Bookings {bus.bookings}</div>
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Revenue {fmtMoney(bus.revenue_success)}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Rating {bus.reviews_total ? `${Number(bus.avg_rating || 0).toFixed(1)}/5` : "--"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+            <GlassCard>
+              <SLabel>Top Rated Routes</SLabel>
+              <div className="mt-4 space-y-3">
+                {!topRatedRoutes.length ? <p className="text-sm text-[var(--muted)]">No route review scores yet.</p> : topRatedRoutes.map((route) => (
+                  <div key={route.route_id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{route.route_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{route.city} | {route.reviews_total} reviews</p>
+                      </div>
+                      <Pill color="emerald">{Number(route.avg_rating || 0).toFixed(1)}/5</Pill>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <SLabel>Top Rated Buses</SLabel>
+              <div className="mt-4 space-y-3">
+                {!topRatedBuses.length ? <p className="text-sm text-[var(--muted)]">No bus review scores yet.</p> : topRatedBuses.map((bus) => (
+                  <div key={bus.bus_id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{bus.display_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{bus.plate_number} | {bus.reviews_total} reviews</p>
+                      </div>
+                      <Pill color="emerald">{Number(bus.avg_rating || 0).toFixed(1)}/5</Pill>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+            <GlassCard>
+              <SLabel>Station Report Table</SLabel>
+              <div className="mt-4 space-y-3">
+                {!stationAnalytics.length ? <p className="text-sm text-[var(--muted)]">No station analytics available yet.</p> : stationAnalytics.map((station) => (
+                  <div key={station.stop_id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{station.stop_name}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{station.touchpoints} total touchpoints</p>
+                      </div>
+                      <Pill color="sky">{station.completed_bookings} completed</Pill>
+                    </div>
+                    <div className="mt-3 grid gap-2 xl:grid-cols-3">
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Pickups {station.pickups}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Dropoffs {station.dropoffs}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Completed {station.completed_bookings}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <SLabel>Review Trend Feed</SLabel>
+              <div className="mt-4 space-y-3">
+                {!reviewTrend.length ? <p className="text-sm text-[var(--muted)]">No review trend data available yet.</p> : reviewTrend.map((item) => (
+                  <div key={item.label} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-[var(--text)]">{item.label}</p>
+                        <p className="mt-1 text-xs text-[var(--muted)]">{item.total} reviews recorded</p>
+                      </div>
+                      <Pill color={item.avg_rating >= 4 ? "emerald" : item.avg_rating <= 2 ? "red" : "amber"}>{Number(item.avg_rating || 0).toFixed(1)}/5</Pill>
                     </div>
                   </div>
                 ))}
@@ -1997,7 +2497,6 @@ export default function AdminHome() {
                 ))}
               </div>
             </div>
-            {reviewMsg ? <p className="mb-4 text-sm font-semibold text-[var(--success)]">{reviewMsg}</p> : null}
             <div className="space-y-3">
               {!adminUsers.length ? <p className="text-sm text-[var(--muted)]">No additional admin accounts found.</p> : adminUsers.map((adminUser) => (
                 <div key={adminUser.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
@@ -2030,15 +2529,17 @@ export default function AdminHome() {
                 <p className="mt-2 text-sm font-bold text-[var(--text)]">{isDark ? "Dark operations mode" : "Light operations mode"}</p>
                 <p className="mt-1 text-xs text-[var(--muted)]">Theme switching is still handled globally from the shared MetroBus theme provider.</p>
               </div>
-              <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Notification settings</p>
-                <p className="mt-2 text-sm font-bold text-[var(--text)]">Live alerts active</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">Admin is currently watching bookings, pending payments, and delayed buses.</p>
-              </div>
-              <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Password change</p>
-                <p className="mt-2 text-sm font-bold text-[var(--text)]">Use the admin form to update credentials</p>
-                <p className="mt-1 text-xs text-[var(--muted)]">Editing an admin account with a new password acts as the password reset flow for the dashboard.</p>
+              <div className="space-y-4">
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Notification settings</p>
+                  <p className="mt-2 text-sm font-bold text-[var(--text)]">Live alerts active</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">Admin is currently watching bookings, pending payments, and delayed buses.</p>
+                </div>
+                <div className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Password change</p>
+                  <p className="mt-2 text-sm font-bold text-[var(--text)]">Use the admin form to update credentials</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">Editing an admin account with a new password acts as the password reset flow for the dashboard.</p>
+                </div>
               </div>
             </div>
           </GlassCard>
@@ -2175,688 +2676,14 @@ export default function AdminHome() {
           {renderSectionContent()}
         </main>
       </div>
-    </div>
-  );
-
-  return (
-      <div className={`min-h-screen font-sans transition-colors duration-200 ${t.page}`}>
-        <header className={`sticky top-0 z-30 border-b backdrop-blur-md px-3 py-3 sm:px-4 ${t.nav}`}>
-          <div className="mx-auto flex max-w-[76rem] flex-wrap items-center justify-between gap-3 sm:gap-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-sm font-black text-white shadow-[0_10px_24px_rgba(46,18,79,0.16)]">MB</div>
-              <div className="min-w-0"><p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>MetroBus Admin</p><p className={`truncate text-sm font-bold leading-none ${t.text}`}>{user?.full_name || "Admin"}</p></div>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <Pill color="emerald" isDark={isDark}>{trips.live || 0} live</Pill>
-              <Pill color="amber" isDark={isDark}>{payments.pending || 0} pending</Pill>
-            <Btn tone="ghost" onClick={() => { loadDB(); loadRoute(); loadSched(); }} className="!py-2 !px-3 text-xs">Reload</Btn>
-            <Btn tone="danger" onClick={handleLogout} className="!py-2 !px-3 text-xs">Logout</Btn>
-          </div>
-        </div>
-      </header>
-
-        <div className="mx-auto max-w-[76rem] px-3 py-4 sm:px-4 sm:py-5">
-        {err ? <p className="mb-4 text-sm font-semibold text-red-600">{err}</p> : null}
-        {/* Tabs */}
-          <div className={`enterprise-inline-scroll mb-6 flex gap-1.5 rounded-2xl border p-1.5 backdrop-blur ${t.tabBar}`}>
-            {ADMIN_SECTIONS.map(section => (
-              <button key={section.id} type="button" onClick={() => navigate(`/admin/${section.id}`)}
-                className={`flex min-w-[7rem] items-center justify-center rounded-xl px-3 py-2.5 text-[0.72rem] font-bold leading-tight transition-all sm:min-w-0 sm:flex-1 ${activeSection === section.id ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white shadow-[0_18px_34px_rgba(46,18,79,0.18)]" : t.tabInactive}`}>
-                <span>{section.label}</span>
-              </button>
-            ))}
-          </div>
-
-        {/* OVERVIEW */}
-        {activeSection === "analytics" && (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard label="Total Users" value={overview?.users_total ?? 0} sub={`${roleCounts.PASSENGER || 0} passengers | ${roleCounts.DRIVER || 0} drivers`} accent="text-[var(--brand-primary)]" t={t} />
-              <StatCard label="Live Trips" value={trips.live ?? 0} sub={`${trips.total || 0} total`} accent="text-emerald-500" t={t} />
-              <StatCard label="Bookings" value={bookings.total ?? 0} sub={`${bookings.confirmed || 0} confirmed`} accent="text-amber-500" t={t} />
-              <StatCard label="Revenue" value={fmtMoney(payments.revenue_success ?? 0)} sub={`${payments.success || 0} successful`} t={t} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard label="Wallet Float" value={fmtMoney(wallets.total_balance ?? 0)} sub="Passenger balance held" accent="text-fuchsia-500" t={t} />
-              <StatCard label="Active Passes" value={wallets.active_passes ?? 0} sub={`${wallets.weekly_passes || 0} weekly | ${wallets.monthly_passes || 0} monthly`} accent="text-sky-500" t={t} />
-              <StatCard label="Reward Ready" value={wallets.reward_ready ?? 0} sub={`${wallets.reward_threshold || 100} points unlock a free ride`} accent="text-violet-500" t={t} />
-              <StatCard label="Free Rides Used" value={wallets.free_rides_redeemed ?? 0} sub={`${wallets.total_reward_points || 0} live points across wallets`} accent="text-emerald-500" t={t} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <StatCard label="Await Accept" value={rideOps.awaiting_acceptance ?? 0} sub="Helper has not accepted yet" accent="text-amber-500" t={t} />
-              <StatCard label="Await Payment" value={rideOps.awaiting_payment ?? 0} sub="Accepted but not paid" accent="text-rose-500" t={t} />
-              <StatCard label="Ready To Board" value={rideOps.ready_to_board ?? 0} sub="Paid and waiting" accent="text-sky-500" t={t} />
-              <StatCard label="Onboard" value={rideOps.onboard ?? 0} sub="Passengers riding now" accent="text-emerald-500" t={t} />
-              <StatCard label="Completed Today" value={rideOps.completed_today ?? 0} sub="Seats released today" accent="text-violet-500" t={t} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard label="Routes" value={transport.routes ?? 0} sub={`${routeAnalytics.filter(route => route.is_active).length} active across ${new Set(routeAnalytics.map(route => route.city)).size || 1} city`} accent="text-indigo-500" t={t} />
-              <StatCard label="Stops" value={transport.stops ?? 0} sub="Shared map stops managed by admin" accent="text-sky-500" t={t} />
-              <StatCard label="Buses" value={transport.buses ?? 0} sub={`${busAnalytics.filter(bus => bus.is_active).length} active fleet vehicles`} accent="text-fuchsia-500" t={t} />
-              <StatCard label="Seats" value={transport.seats ?? 0} sub="Total seats mapped across the fleet" accent="text-orange-500" t={t} />
-            </div>
-            <div className="grid gap-5 xl:grid-cols-2">
-              <GlassCard t={t}>
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <SLabel t={t}>Route Analytics</SLabel>
-                  <Pill color="indigo" isDark={isDark}>{routeAnalytics.length} routes</Pill>
-                </div>
-                <div className="space-y-3">
-                  {routeAnalytics.length === 0 ? <p className={`text-sm ${t.textSub}`}>No route analytics yet.</p> : routeAnalytics.slice(0, 8).map(route => (
-                    <div key={route.route_id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`break-words text-sm font-bold ${t.text}`}>{route.route_name}</p>
-                          <p className={`mt-1 text-xs ${t.textSub}`}>{route.city} | {route.stops_count} stops</p>
-                        </div>
-                        <Pill color={route.is_active ? "emerald" : "slate"} isDark={isDark}>{route.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Schedules {route.planned_schedules}</div>
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Live {route.live_trips}</div>
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Bookings {route.bookings}</div>
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Revenue {fmtMoney(route.revenue_success)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-              <GlassCard t={t}>
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <SLabel t={t}>Bus Analytics</SLabel>
-                  <Pill color="fuchsia" isDark={isDark}>{busAnalytics.length} buses</Pill>
-                </div>
-                <div className="space-y-3">
-                  {busAnalytics.length === 0 ? <p className={`text-sm ${t.textSub}`}>No fleet analytics yet.</p> : busAnalytics.slice(0, 8).map(bus => (
-                    <div key={bus.bus_id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`break-words text-sm font-bold ${t.text}`}>{bus.display_name}</p>
-                          <p className={`mt-1 text-xs ${t.textSub}`}>{bus.plate_number} | {bus.capacity} seats | {bus.condition}</p>
-                          <p className={`mt-1 text-xs ${t.textSub}`}>Driver {bus.driver_name || "Unassigned"} | Helper {bus.helper_name || "Unassigned"}</p>
-                        </div>
-                        <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Schedules {bus.planned_schedules}</div>
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Live {bus.live_trips}</div>
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Trips {bus.total_trips}</div>
-                        <div className={`rounded-xl px-3 py-2 text-xs ${rowBg}`}>Revenue {fmtMoney(bus.revenue_success)}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-            </div>
-            <GlassCard t={t}>
-              <SLabel t={t}>Payment Method Performance</SLabel>
-              <div className="space-y-3">
-                {paymentRows.length === 0 && <p className={`text-sm ${t.textSub}`}>No payment data yet.</p>}
-                {paymentRows.map(row => (
-                  <div key={row.method} className="flex items-center gap-4">
-                    <p className={`w-24 text-xs font-bold flex-shrink-0 ${t.text}`}>{row.method}</p>
-                    <div className={`flex-1 h-2 rounded-full ${isDark ? "bg-white/10" : "bg-slate-200"}`}><div className="h-2 rounded-full bg-[linear-gradient(90deg,var(--brand-primary),var(--brand-accent))] transition-all" style={{ width: `${row.rate}%` }} /></div>
-                    <div className="flex items-center gap-2 flex-shrink-0"><Pill color={row.rate >= 70 ? "emerald" : row.rate > 0 ? "amber" : "slate"} isDark={isDark}>{row.rate}%</Pill><span className={`text-xs ${t.textMuted}`}>{row.success}/{row.total}</span></div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {[{ label: "Success", v: payments.success || 0, a: "text-emerald-500" }, { label: "Pending", v: payments.pending || 0, a: "text-amber-500" }, { label: "Failed", v: payments.failed || 0, a: "text-red-500" }].map(r => (
-                  <div key={r.label} className={`rounded-xl border px-4 py-3 ${rowBg}`}><p className={`text-[10px] uppercase tracking-widest ${t.label}`}>{r.label}</p><p className={`text-2xl font-black mt-1 ${r.a}`}>{r.v}</p></div>
-                ))}
-              </div>
-            </GlassCard>
-            <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
-              <GlassCard t={t}>
-                <SLabel t={t}>Reward Leaderboard</SLabel>
-                <div className="space-y-3">
-                  {rewardLeaderboard.length === 0 ? <p className={`text-sm ${t.textSub}`}>No passenger wallet activity yet.</p> : rewardLeaderboard.map((row, index) => (
-                    <div key={row.passenger_id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`text-sm font-bold ${t.text}`}>{index + 1}. {row.passenger_name}</p>
-                          <p className={`text-xs mt-0.5 ${t.textSub}`}>{row.phone}</p>
-                          <p className={`text-xs mt-1 ${t.textSub}`}>{row.pass_plan ? `${row.pass_plan} | ${row.pass_rides_remaining} rides left` : "No active pass"}</p>
-                        </div>
-                        <Pill color={row.reward_points >= (wallets.reward_threshold || 100) ? "emerald" : "amber"} isDark={isDark}>
-                          {row.reward_points} pts
-                        </Pill>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Wallet {fmtMoney(row.balance)}</div>
-                        <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Lifetime {row.lifetime_reward_points} pts</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-              <GlassCard t={t}>
-                <SLabel t={t}>Pass Mix</SLabel>
-                <div className="space-y-3">
-                  {[{ label: "Weekly Passes", value: wallets.weekly_passes || 0, tone: "sky" }, { label: "Monthly Passes", value: wallets.monthly_passes || 0, tone: "indigo" }, { label: "Flex 20 Passes", value: wallets.flex_passes || 0, tone: "amber" }].map(item => (
-                    <div key={item.label} className="flex items-center justify-between gap-3 rounded-xl border px-4 py-4 border-transparent bg-white/40">
-                      <div>
-                        <p className={`text-sm font-bold ${t.text}`}>{item.label}</p>
-                        <p className={`text-xs mt-1 ${t.textSub}`}>Active now in MetroBus wallets</p>
-                      </div>
-                      <Pill color={item.tone} isDark={isDark}>{item.value}</Pill>
-                    </div>
-                  ))}
-                </div>
-                <div className={`mt-4 rounded-xl border px-4 py-4 text-sm ${rowBg}`}>
-                  <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Reward Policy</p>
-                  <p className={`mt-2 font-bold ${t.text}`}>{wallets.reward_threshold || 100} points = 1 free ride</p>
-                  <p className={`mt-2 ${t.textSub}`}>Passengers earn reward points from Metro Wallet and Ride Pass payments. Admin can monitor redemption pressure here before it affects route demand.</p>
-                </div>
-              </GlassCard>
-            </div>
-          </div>
-        )}
-
-        {/* ROUTES */}
-        {activeSection === "routes" && (
-          <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
-            <div className="space-y-4">
-              <GlassCard t={t}>
-                <SLabel t={t}>Add Stop To Main Map</SLabel>
-                <div className="space-y-3">
-                  <InputField label="Stop Name" value={stopName} onChange={setStopName} placeholder="Bindhyabasini Gate" t={t} />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <InputField label="Latitude" value={stopLat} onChange={setStopLat} placeholder="28.233421" t={t} />
-                    <InputField label="Longitude" value={stopLng} onChange={setStopLng} placeholder="83.996812" t={t} />
-                  </div>
-                  <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Pinned Coordinate</p>
-                    <p className={`mt-2 text-sm font-bold ${t.text}`}>{stopLat && stopLng ? `${stopLat}, ${stopLng}` : "Tap anywhere on the map to pin this stop."}</p>
-                  </div>
-                  <div>
-                    <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label>
-                    <button type="button" onClick={() => setStopActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${stopActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
-                      {stopActive ? "Active For Routes" : "Saved As Inactive"}
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Btn tone="ghost" onClick={clearStopForm} className="w-full !py-4">Clear</Btn>
-                    <Btn tone="success" onClick={createStop} disabled={stopBusy} className="w-full !py-4">{stopBusy ? "Saving..." : "Add Stop"}</Btn>
-                  </div>
-                </div>
-              </GlassCard>
-              <GlassCard t={t}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <SLabel t={t}>{editingRouteId ? "Edit Route" : "Route Builder"}</SLabel>
-                  {editingRouteId ? <button type="button" onClick={clearRoute} className={`rounded-lg border px-3 py-2 text-xs font-bold ${rowBg} ${t.text}`}>Cancel</button> : null}
-                </div>
-                <div className="space-y-3">
-                  <InputField label="Route Name" value={routeName} onChange={setRouteName} placeholder="Lakeside to Prithvi Chowk" t={t} />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-                    <InputField label="City" value={routeCity} onChange={setRouteCity} placeholder="Pokhara" t={t} />
-                    <div><label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Active</label><button type="button" onClick={() => setRouteActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${routeActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>{routeActive ? "YES" : "NO"}</button></div>
-                  </div>
-                  {routeMsg ? <p className="text-sm font-semibold text-emerald-600">{routeMsg}</p> : null}
-                </div>
-              </GlassCard>
-              <GlassCard t={t}>
-                <div className="flex items-center justify-between mb-3"><SLabel t={t}>Selected Stops ({selectedStops.length})</SLabel><button type="button" onClick={clearRoute} className={`text-xs hover:text-red-400 transition ${t.textSub}`}>Clear all</button></div>
-                {selectedStops.length === 0 ? <p className={`text-sm ${t.textSub}`}>Click map markers to add stops in order.</p>
-                  : selectedStops.map((stop, i) => (
-                    <div key={stop.id} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 mb-2 ${rowBg}`}>
-                      <span className="text-xs text-[var(--brand-primary)] font-bold w-5 flex-shrink-0">{i + 1}</span>
-                      <span className={`text-sm flex-1 break-words leading-snug ${t.text}`}>{stop.name}</span>
-                      <div className="flex gap-1">
-                        <button type="button" onClick={() => moveStop(i, -1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Up</button>
-                        <button type="button" onClick={() => moveStop(i, 1)} className={`rounded-lg px-2 py-1 text-xs transition ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-slate-200 hover:bg-slate-300"} ${t.text}`}>Down</button>
-                        <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-[var(--brand-soft)] px-2 py-1 text-xs text-[var(--brand-primary)] hover:bg-[#efe2f0]">Remove</button>
-                      </div>
-                    </div>
-                  ))}
-              </GlassCard>
-              {selectedStops.length >= 2 && (
-                <GlassCard t={t}>
-                  <SLabel t={t}>Segment Fares (NPR)</SLabel>
-                  {selectedStops.slice(0, -1).map((stop, i) => (
-                    <div key={`${stop.id}-fare`} className="mb-3"><label className={`block text-[10px] mb-1 ${t.textSub}`}>{stop.name} to {selectedStops[i + 1].name}</label><input type="number" min="0" step="0.01" value={segmentFares[i] || ""} placeholder="Enter fare" onChange={e => { const n = [...segmentFares]; n[i] = e.target.value; setSegmentFares(n); }} className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:border-[var(--brand-primary)] ${t.input}`} /></div>
-                  ))}
-                </GlassCard>
-              )}
-              <Btn tone="success" onClick={saveRoute} disabled={routeBusy} className="w-full !py-4">{routeBusy ? (editingRouteId ? "Saving..." : "Creating...") : (editingRouteId ? "Save Route Changes" : "Create Route")}</Btn>
-            </div>
-            <div className="space-y-4">
-              <GlassCard t={t} className="!p-0 overflow-hidden">
-                <div className={`px-5 py-4 border-b ${t.divider}`}><SLabel t={t}>Stop Map - Build Routes + Pin Stops</SLabel><p className={`text-sm font-bold -mt-2 ${t.text}`}>{selectedStopIds.length} stops selected for the route builder</p></div>
-                <div className="h-80">
-                  <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom={false} className="h-full w-full">
-                    <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={t.mapTile} />
-                    <MapViewport points={mapPts} />
-                    <StopMapPicker onPick={handleMapPick} />
-                    {dispPts.length > 1 && <Polyline positions={dispPts} pathOptions={{ color: "#818cf8", weight: 4, opacity: 0.9 }} />}
-                    {builderStops.map(stop => {
-                      const la = Number(stop.lat), lo = Number(stop.lng); if (!isFinite(la) || !isFinite(lo)) return null;
-                      const oi = selectedStopIds.indexOf(stop.id), sel = oi !== -1;
-                      return <CircleMarker key={stop.id} center={[la, lo]} radius={sel ? 9 : 6} eventHandlers={{ click: () => toggleStop(stop.id) }} pathOptions={{ color: sel ? "#818cf8" : "#475569", fillColor: sel ? "#818cf8" : "#64748b", fillOpacity: 0.95 }}><Popup><div className={`text-sm font-semibold ${isDark ? "text-white" : "text-slate-900"}`}>{stop.name}</div><div className="text-xs text-slate-500 mt-0.5">{sel ? `Stop ${oi + 1}` : "Click to add"}</div></Popup></CircleMarker>;
-                    })}
-                  </MapContainer>
-                </div>
-              </GlassCard>
-              <GlassCard t={t}>
-                <SLabel t={t}>Recent Stops</SLabel>
-                {recentStops.length === 0 ? <p className={`text-sm ${t.textSub}`}>No stops added yet.</p>
-                  : recentStops.map(stop => (
-                    <div key={stop.id} className={`flex items-center justify-between rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
-                      <div className="min-w-0">
-                        <p className={`text-sm font-bold ${t.text}`}>{stop.name}</p>
-                        <p className={`text-xs mt-0.5 ${t.textSub}`}>{Number(stop.lat).toFixed(4)}, {Number(stop.lng).toFixed(4)}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {stop.is_active ? <button type="button" onClick={() => toggleStop(stop.id)} className="rounded-lg bg-[var(--brand-soft)] px-3 py-2 text-[11px] font-bold text-[var(--brand-primary)]">{selectedStopIds.includes(stop.id) ? "Remove" : "Use"}</button> : null}
-                        <Pill color={stop.is_active ? "emerald" : "slate"} isDark={isDark}>{stop.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
-                      </div>
-                    </div>
-                  ))}
-              </GlassCard>
-              <GlassCard t={t}>
-                <SLabel t={t}>Routes ({recentRoutes.length})</SLabel>
-                {recentRoutes.length === 0 ? <p className={`text-sm ${t.textSub}`}>No routes yet.</p>
-                  : recentRoutes.map(r => (
-                    <div key={r.id} className={`rounded-xl border px-4 py-3 mb-2 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{r.name}</p>
-                          <p className={`mt-0.5 break-words text-xs leading-5 ${t.textSub}`}>{r.city} | {r.stops_count} stops</p>
-                          {r.route_stops?.length ? <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>{r.route_stops[0].stop.name} to {r.route_stops[r.route_stops.length - 1].stop.name}</p> : null}
-                        </div>
-                        <Pill color={r.is_active ? "emerald" : "slate"} isDark={isDark}>{r.is_active ? "ACTIVE" : "INACTIVE"}</Pill>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Btn tone="primary" onClick={() => startEditingRoute(r)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
-                        <Btn tone="danger" onClick={() => deleteRoute(r)} disabled={routeDeleteBusyId === r.id} className="!rounded-full !px-3 !py-2 text-[11px]">
-                          {routeDeleteBusyId === r.id ? "Deleting..." : "Delete"}
-                        </Btn>
-                      </div>
-                    </div>
-                  ))}
-              </GlassCard>
-            </div>
-          </div>
-        )}
-
-        {/* SCHEDULES */}
-        {activeSection === "assignments" && (
-          <div className="grid gap-5 xl:grid-cols-[1fr_1.1fr]">
-            <div className="space-y-4">
-              <GlassCard t={t}>
-                <SLabel t={t}>Assign Bus And Staff</SLabel>
-                <div className="space-y-3">
-                  {assignMsg ? <p className="text-sm font-semibold text-emerald-600">{assignMsg}</p> : null}
-                  <SelectField label="Bus" value={assignBusId} onChange={setAssignBusId} t={t} options={[{ value: "", label: "-- Select Bus --" }, ...busList.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} | ${b.plate_number}` }))]} />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <SelectField label="Driver" value={assignDriverId} onChange={setAssignDriverId} t={t} options={[{ value: "", label: "Unassigned" }, ...schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))]} />
-                    <SelectField label="Helper" value={assignHelperId} onChange={setAssignHelperId} t={t} options={[{ value: "", label: "Unassigned" }, ...schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))]} />
-                  </div>
-                  {selectedAssignBus ? (
-                    <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
-                      <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Current Assignment</p>
-                      <p className={`mt-2 text-sm font-bold ${t.text}`}>{selectedAssignBus.display_name || selectedAssignBus.plate_number}</p>
-                      <p className={`mt-1 ${t.textSub}`}>{selectedAssignBus.plate_number} | {selectedAssignBus.capacity} seats | {selectedAssignBus.condition}</p>
-                      <p className={`mt-2 ${t.textSub}`}>Driver: {selectedAssignBus.driver_name || "Unassigned"} | Helper: {selectedAssignBus.helper_name || "Unassigned"}</p>
-                    </div>
-                  ) : null}
-                  <Btn tone="primary" onClick={assignStaffToBus} disabled={assignBusy} className="w-full !py-4">
-                    {assignBusy ? "Updating..." : "Save Assignment"}
-                  </Btn>
-                </div>
-              </GlassCard>
-              <GlassCard t={t}>
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div>
-                    <SLabel t={t}>{editingScheduleId ? "Edit Trip Schedule" : "Create Trip Schedule"}</SLabel>
-                  </div>
-                  {editingScheduleId ? (
-                    <button type="button" onClick={clearScheduleForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
-                      Cancel
-                    </button>
-                  ) : null}
-                </div>
-                <div className="space-y-3">
-                  {scheduleMsg ? <p className="text-sm font-semibold text-emerald-600">{scheduleMsg}</p> : null}
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <SelectField label="Route" value={sRouteId} onChange={setSRouteId} t={t} options={schedOpts.routes.map(r => ({ value: r.id, label: r.name }))} />
-                    <SelectField label="Bus" value={sBusId} onChange={setSBusId} t={t} options={schedOpts.buses.map(b => ({ value: b.id, label: `${b.display_name || b.plate_number} | ${b.plate_number}` }))} />
-                    <SelectField label="Driver" value={sDriverId} onChange={setSDriverId} t={t} options={schedOpts.drivers.map(d => ({ value: d.id, label: d.full_name }))} />
-                    <SelectField label="Helper" value={sHelperId} onChange={setSHelperId} t={t} options={schedOpts.helpers.map(h => ({ value: h.id, label: h.full_name }))} />
-                  </div>
-                  {selectedScheduleBus ? (
-                    <div className={`rounded-xl border px-4 py-3 text-xs ${rowBg}`}>
-                      <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Schedule Snapshot</p>
-                      <p className={`mt-2 text-sm font-bold ${t.text}`}>{selectedScheduleBus.display_name || selectedScheduleBus.plate_number}</p>
-                      <p className={`mt-1 ${t.textSub}`}>{selectedScheduleBus.plate_number} | {selectedScheduleBus.capacity} seats</p>
-                      <p className={`mt-2 ${t.textSub}`}>Driver: {selectedScheduleBus.driver_name || "Not assigned"} | Helper: {selectedScheduleBus.helper_name || "Not assigned"}</p>
-                    </div>
-                  ) : null}
-                  <InputField label="Scheduled Start Time" type="datetime-local" value={sStartTime} onChange={setSStartTime} t={t} />
-                  <Btn tone="primary" onClick={saveSchedule} disabled={scheduleBusy} className="w-full !py-4">
-                    {scheduleBusy ? (editingScheduleId ? "Saving..." : "Creating...") : (editingScheduleId ? "Save Schedule Changes" : "Create Trip Schedule")}
-                  </Btn>
-                </div>
-              </GlassCard>
-            </div>
-            <div className="space-y-4">
-              <GlassCard t={t}>
-                <SLabel t={t}>Bus Assignment Snapshot</SLabel>
-                <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
-                  {busList.length === 0 ? <p className={`text-sm ${t.textSub}`}>No buses registered yet.</p> : busList.map(bus => (
-                    <div key={bus.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`break-words text-sm font-bold ${t.text}`}>{bus.display_name || bus.plate_number}</p>
-                          <p className={`mt-1 text-xs ${t.textSub}`}>{bus.plate_number} | {bus.capacity} seats | {bus.condition}</p>
-                          <p className={`mt-1 text-xs ${t.textSub}`}>Driver: {bus.driver_name || "Unassigned"} | Helper: {bus.helper_name || "Unassigned"}</p>
-                        </div>
-                        <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Btn tone="primary" onClick={() => setAssignBusId(String(bus.id))} className="!rounded-full !px-3 !py-2 text-[11px]">Load Assignment</Btn>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-              <GlassCard t={t}>
-                <SLabel t={t}>Trip Schedules ({schedOpts.schedules.length})</SLabel>
-                <div className="max-h-[32rem] space-y-3 overflow-y-auto pr-1">
-                  {schedOpts.schedules.length === 0 ? <p className={`text-sm ${t.textSub}`}>No schedules yet.</p> : schedOpts.schedules.map(s => (
-                    <div key={s.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`break-words text-sm font-bold ${t.text}`}>{s.route_name}</p>
-                          <p className={`mt-1 text-xs ${t.textSub}`}>{s.bus_plate} | {s.driver_name || "--"} | {s.helper_name || "--"}</p>
-                          <p className={`mt-1 text-xs ${t.textMuted}`}>Starts {fmt(s.scheduled_start_time)}</p>
-                        </div>
-                        <Pill color={s.status === "PLANNED" ? "amber" : s.status === "COMPLETED" ? "emerald" : "slate"} isDark={isDark}>{s.status}</Pill>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Btn tone="primary" onClick={() => startEditingSchedule(s)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
-                        <Btn tone="danger" onClick={() => deleteSchedule(s)} disabled={scheduleDeleteBusyId === s.id} className="!rounded-full !px-3 !py-2 text-[11px]">
-                          {scheduleDeleteBusyId === s.id ? "Deleting..." : "Delete"}
-                        </Btn>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-            </div>
-          </div>
-        )}
-
-        {/* ACTIVITY */}
-        {activeSection === "analytics" && (
-          <div className="grid gap-5 xl:grid-cols-2">
-            <div>
-              <SLabel t={t}>Live Trips</SLabel>
-              {dashboard?.live_trips?.length ? dashboard.live_trips.map(trip => (
-                <GlassCard key={trip.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>{trip.route_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Bus {trip.bus_plate} | {trip.driver_name} | {trip.helper_name}</p></div><Pill color={trip.deviation_mode ? "amber" : "emerald"} isDark={isDark}>{trip.deviation_mode ? "Deviation" : "Normal"}</Pill></div>
-                  <div className="mt-3 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs leading-5 ${t.textSub} ${rowBg}`}>Started {fmt(trip.started_at)}</div><div className={`rounded-xl px-3 py-2 text-xs break-all leading-5 ${t.textSub} ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS yet"}</div></div>
-                </GlassCard>
-              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No live trips right now.</p></GlassCard>}
-            </div>
-            <div>
-              <SLabel t={t}>Recent Bookings</SLabel>
-              {dashboard?.recent_bookings?.length ? dashboard.recent_bookings.map(b => (
-                <GlassCard key={b.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Booking #{b.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{b.route_name} | {b.bus_plate}</p></div><Pill color={b.status === "CONFIRMED" ? "emerald" : b.status === "CANCELLED" ? "red" : "amber"} isDark={isDark}>{b.status}</Pill></div>
-                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.passenger_name}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{b.seats_count} seats | {fmtMoney(b.fare_total)}</div></div>
-                </GlassCard>
-              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No bookings yet.</p></GlassCard>}
-            </div>
-            <div>
-              <SLabel t={t}>Booking Lifecycle</SLabel>
-              {recentBookingFlow.length ? recentBookingFlow.map(flow => (
-                <GlassCard key={flow.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className={`text-sm font-bold ${t.text}`}>Booking #{flow.id} | {flow.passenger_name}</p>
-                      <p className={`text-xs mt-0.5 ${t.textSub}`}>{flow.route_name} | {flow.bus_plate}</p>
-                    </div>
-                    <Pill color={flow.completed_at ? "emerald" : flow.checked_in_at ? "sky" : flow.accepted_by_helper_at ? "amber" : "slate"} isDark={isDark}>
-                      {flow.completed_at ? "Completed" : flow.checked_in_at ? "Onboard" : flow.accepted_by_helper_at ? "Accepted" : "Pending"}
-                    </Pill>
-                  </div>
-                  <div className="mt-3 space-y-2">
-                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Payment: {flow.payment_method || "UNPAID"} | {flow.payment_status}</div>
-                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Accepted: {flow.accepted_by_helper_name ? `${flow.accepted_by_helper_name} at ${fmt(flow.accepted_by_helper_at)}` : "Waiting for helper acceptance"}</div>
-                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Boarded: {flow.checked_in_by_name ? `${flow.checked_in_by_name} at ${fmt(flow.checked_in_at)}` : "Not boarded yet"}</div>
-                    <div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>Completed: {flow.completed_by_name ? `${flow.completed_by_name} at ${fmt(flow.completed_at)}` : "Ride still active"}</div>
-                  </div>
-                </GlassCard>
-              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No booking lifecycle activity yet.</p></GlassCard>}
-            </div>
-            <div>
-              <SLabel t={t}>Recent Payments</SLabel>
-              {dashboard?.recent_payments?.length ? dashboard.recent_payments.map(p => (
-                <GlassCard key={p.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-start justify-between"><div><p className={`text-sm font-bold ${t.text}`}>Payment #{p.id}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>Booking #{p.booking_id} | {p.route_name}</p></div><Pill color={p.status === "SUCCESS" ? "emerald" : p.status === "FAILED" ? "red" : "amber"} isDark={isDark}>{p.status}</Pill></div>
-                  <div className="mt-2 grid grid-cols-2 gap-2"><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.method} | {fmtMoney(p.amount)}</div><div className={`rounded-xl px-3 py-2 text-xs ${t.textSub} ${rowBg}`}>{p.created_by_name}</div></div>
-                </GlassCard>
-              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No payments yet.</p></GlassCard>}
-            </div>
-            <div>
-              <SLabel t={t}>Newest Users</SLabel>
-              {dashboard?.recent_users?.length ? dashboard.recent_users.map(u => (
-                <GlassCard key={u.id} t={t} className="!p-4 mb-3">
-                  <div className="flex items-center justify-between"><div><p className={`text-sm font-bold ${t.text}`}>{u.full_name}</p><p className={`text-xs mt-0.5 ${t.textSub}`}>{u.phone}</p></div><Pill color="indigo" isDark={isDark}>{u.role}</Pill></div>
-                  <p className={`mt-1 text-xs ${t.textMuted}`}>Joined {fmt(u.created_at)}</p>
-                </GlassCard>
-              )) : <GlassCard t={t}><p className={`text-sm ${t.textSub}`}>No users yet.</p></GlassCard>}
-            </div>
-          </div>
-        )}
-
-        {/* MANAGE */}
-        {activeSection === "buses" && (
-          <div className="space-y-4">
-              <GlassCard t={t}>
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div>
-                    <SLabel t={t}>{editingBusId ? "Edit Bus" : "Add New Bus"}</SLabel>
-                  </div>
-                  {editingBusId ? (
-                    <button type="button" onClick={resetBusForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
-                      Cancel
-                    </button>
-                  ) : null}
-                </div>
-                <div className="space-y-3">
-                  {busMgmtMsg ? <p className="text-sm font-semibold text-emerald-600">{busMgmtMsg}</p> : null}
-                  <InputField label="Bus Name / Identifier" value={busName} onChange={setBusName} placeholder="MetroBus Lakeside Express" t={t} />
-                  <InputField label="Plate Number" value={busPlate} onChange={setBusPlate} placeholder="BA 1 CHA 2233" t={t} />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <InputField label="Model Year" value={busYear} onChange={setBusYear} type="number" placeholder="2024" t={t} />
-                    <SelectField label="Condition" value={busCondition} onChange={setBusCondition} t={t} options={[{ value: "NEW", label: "New" }, { value: "NORMAL", label: "Normal" }, { value: "OLD", label: "Old" }]} />
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <InputField label="Seat Rows" value={busRows} onChange={setBusRows} type="number" placeholder="9" t={t} />
-                    <InputField label="Seat Columns" value={busCols} onChange={setBusCols} type="number" placeholder="4" t={t} />
-                  </div>
-                  <div className={`rounded-xl border px-4 py-3 text-sm ${rowBg}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-widest ${t.label}`}>Seat Capacity Preview</p>
-                    <p className={`mt-2 text-2xl font-black ${t.text}`}>{busCapacityPreview || 0} seats</p>
-                  </div>
-                  <FileField label="Exterior Photo" file={busExteriorPhoto} onChange={setBusExteriorPhoto} t={t} />
-                  <FileField label="Interior Photo" file={busInteriorPhoto} onChange={setBusInteriorPhoto} t={t} />
-                  <FileField label="Seats Photo" file={busSeatPhoto} onChange={setBusSeatPhoto} t={t} />
-                  <div>
-                    <label className={`block text-[10px] font-bold uppercase tracking-widest mb-1.5 ${t.label}`}>Status</label>
-                    <button type="button" onClick={() => setBusActive(v => !v)} className={`w-full rounded-xl px-4 py-3 text-sm font-bold transition ${busActive ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
-                      {busActive ? "Active" : "Inactive"}
-                    </button>
-                  </div>
-                  <Btn tone="primary" onClick={saveBus} disabled={busMgmtBusy} className="w-full !py-4">
-                    {busMgmtBusy ? (editingBusId ? "Saving..." : "Creating...") : (editingBusId ? "Save Bus Changes" : "Add Bus")}
-                  </Btn>
-                </div>
-              </GlassCard>
-
-              <GlassCard t={t}>
-                <SLabel t={t}>Existing Buses ({busList.length})</SLabel>
-                <div className="max-h-[48rem] overflow-y-auto space-y-3 pr-1">
-                  {busList.length === 0 && <p className={`text-sm ${t.textSub}`}>No buses registered yet.</p>}
-                  {busList.map(bus => (
-                    <div key={bus.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{bus.display_name || bus.plate_number}</p>
-                          <p className={`mt-0.5 break-words text-xs leading-5 ${t.textSub}`}>{bus.plate_number} | {bus.condition} | {bus.model_year || "Year N/A"}</p>
-                          <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>{bus.capacity} seats | layout {bus.layout_rows}x{bus.layout_columns}</p>
-                          <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>driver: {bus.driver_name || "--"} | helper: {bus.helper_name || "--"}</p>
-                        </div>
-                        <Pill color={bus.is_active ? "emerald" : "slate"} isDark={isDark}>{bus.is_active ? "ACTIVE" : "OFF"}</Pill>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Btn tone="primary" onClick={() => startEditingBus(bus)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
-                        <Btn tone="danger" onClick={() => deleteBus(bus)} disabled={busDeleteBusyId === bus.id} className="!rounded-full !px-3 !py-2 text-[11px]">
-                          {busDeleteBusyId === bus.id ? "Deleting..." : "Delete"}
-                        </Btn>
-                      </div>
-                      {(bus.exterior_photo_url || bus.interior_photo_url || bus.seat_photo_url) ? (
-                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                          {[bus.exterior_photo_url, bus.interior_photo_url, bus.seat_photo_url].filter(Boolean).map((url, index) => (
-                            <img key={`${bus.id}-${index}`} src={url} alt={`${bus.display_name || bus.plate_number} view ${index + 1}`} className="h-20 w-full rounded-xl object-cover" />
-                          ))}
-                        </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-          </div>
-        )}
-
-        {activeSection === "staff" && (
-          <div className="space-y-4">
-              <GlassCard t={t}>
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <div>
-                    <SLabel t={t}>{editingUserId ? "Edit Staff Account" : "Add Staff Account"}</SLabel>
-                  </div>
-                  {editingUserId ? (
-                    <button type="button" onClick={resetUserForm} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${rowBg} ${t.text}`}>
-                      Cancel
-                    </button>
-                  ) : null}
-                </div>
-                <div className="space-y-3">
-                  {uMgmtMsg ? <p className="text-sm font-semibold text-emerald-600">{uMgmtMsg}</p> : null}
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    {["DRIVER", "HELPER", "ADMIN"].map(role => (
-                      <button key={role} type="button" onClick={() => setURole(role)} className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest transition ${uRole === role ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
-                        {role}
-                      </button>
-                    ))}
-                  </div>
-                  <InputField label="Full Name" value={uName} onChange={setUName} placeholder="Ramesh Kumar" t={t} />
-                  <InputField label="Phone (login ID)" value={uPhone} onChange={setUPhone} placeholder="9800000000" t={t} />
-                  <InputField label="Email (optional)" value={uEmail} onChange={setUEmail} placeholder="ramesh@example.com" t={t} />
-                  <InputField label="Address" value={uAddress} onChange={setUAddress} placeholder="Pokhara-8, Nepal" t={t} />
-                  <InputField label={editingUserId ? "Password (optional)" : "Password"} value={uPass} onChange={setUPass} placeholder={editingUserId ? "Leave blank to keep current password" : "Min 6 characters"} type="password" t={t} />
-                  <FileField label="Official Staff Photo" file={uOfficialPhoto} onChange={setUOfficialPhoto} t={t} />
-                  {uRole === "DRIVER" ? (
-                    <>
-                      <InputField label="License Number" value={uLicenseNumber} onChange={setULicenseNumber} placeholder="NP-DRV-009812" t={t} />
-                      <FileField label="License Photo" file={uLicensePhoto} onChange={setULicensePhoto} t={t} />
-                    </>
-                  ) : null}
-                  <Btn tone="success" onClick={saveUser} disabled={uMgmtBusy} className="w-full !py-4">
-                    {uMgmtBusy ? (editingUserId ? "Saving..." : "Creating...") : (editingUserId ? "Save Staff Changes" : `Add ${uRole.charAt(0) + uRole.slice(1).toLowerCase()}`)}
-                  </Btn>
-                </div>
-              </GlassCard>
-
-              <GlassCard t={t}>
-                <div className="flex items-center justify-between mb-3">
-                  <SLabel t={t}>Staff Accounts ({staffUsers.length})</SLabel>
-                  <div className="flex gap-1">
-                    {["ALL", "DRIVER", "HELPER", "ADMIN"].map(r => (
-                      <button key={r} type="button" onClick={() => setStaffFilter(r)} className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide transition ${userRoleFilter === r ? "bg-[linear-gradient(135deg,var(--brand-primary),var(--brand-accent-2))] text-white" : isDark ? "bg-white/10 text-slate-400 hover:bg-white/20" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {reviewMsg ? <p className="mb-3 text-sm font-semibold text-emerald-600">{reviewMsg}</p> : null}
-                <div className="max-h-[48rem] overflow-y-auto space-y-3 pr-1">
-                  {staffUsers.length === 0 && <p className={`text-sm ${t.textSub}`}>No staff users loaded.</p>}
-                  {staffUsers.map(u => (
-                    <div key={u.id} className={`rounded-xl border px-4 py-4 ${rowBg}`}>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3 min-w-0">
-                          {u.official_photo_url ? <img src={u.official_photo_url} alt={u.full_name} className="h-14 w-14 rounded-2xl object-cover" /> : <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-soft)] text-sm font-black text-[var(--brand-primary)]">{(u.full_name || "MB").slice(0, 2).toUpperCase()}</div>}
-                          <div className="min-w-0">
-                            <p className={`break-words text-sm font-bold leading-snug ${t.text}`}>{u.full_name}</p>
-                            <p className={`mt-0.5 break-all text-xs leading-5 ${t.textSub}`}>{u.phone}{u.email ? ` | ${u.email}` : ""}</p>
-                            {u.address ? <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>{u.address}</p> : null}
-                            {u.license_number ? <p className={`mt-1 break-words text-xs leading-5 ${t.textSub}`}>License: {u.license_number}</p> : null}
-                          </div>
-                        </div>
-                        <Pill color={u.role === "ADMIN" ? "red" : u.role === "DRIVER" ? "sky" : u.role === "HELPER" ? "indigo" : "slate"} isDark={isDark}>{u.role}</Pill>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {u.official_photo_verified ? <Pill color="emerald" isDark={isDark}>Photo OK</Pill> : u.official_photo_url ? <Pill color="amber" isDark={isDark}>Photo Pending</Pill> : <Pill color="slate" isDark={isDark}>No Photo</Pill>}
-                        {u.role === "DRIVER" ? (u.license_verified ? <Pill color="emerald" isDark={isDark}>License OK</Pill> : u.license_photo_url ? <Pill color="amber" isDark={isDark}>License Pending</Pill> : <Pill color="slate" isDark={isDark}>No License</Pill>) : null}
-                        {!u.is_active ? <Pill color="slate" isDark={isDark}>Inactive</Pill> : null}
-                      </div>
-                      {(u.official_photo_url || u.license_photo_url) ? (
-                        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {u.official_photo_url ? <img src={u.official_photo_url} alt={`${u.full_name} official`} className="h-24 w-full rounded-xl object-cover" /> : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>No official photo</div>}
-                          {u.role === "DRIVER" ? (u.license_photo_url ? <img src={u.license_photo_url} alt={`${u.full_name} license`} className="h-24 w-full rounded-xl object-cover" /> : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>No license photo</div>) : <div className={`flex h-24 items-center justify-center rounded-xl border text-xs ${t.textSub} ${rowBg}`}>License not required</div>}
-                        </div>
-                      ) : null}
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Btn tone="primary" onClick={() => startEditingUser(u)} className="!rounded-full !px-3 !py-2 text-[11px]">Edit</Btn>
-                        {user?.id !== u.id ? (
-                          <Btn tone="danger" onClick={() => deleteUser(u)} disabled={userDeleteBusyId === u.id} className="!rounded-full !px-3 !py-2 text-[11px]">
-                            {userDeleteBusyId === u.id ? "Deleting..." : "Delete"}
-                          </Btn>
-                        ) : null}
-                        {u.official_photo_url ? (
-                          <button
-                            type="button"
-                            onClick={() => reviewUser(u, { official_photo_verified: !u.official_photo_verified })}
-                            disabled={reviewBusyId === u.id}
-                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.official_photo_verified ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"} disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {u.official_photo_verified ? "Revoke Photo" : "Verify Photo"}
-                          </button>
-                        ) : null}
-                        {u.role === "DRIVER" && u.license_photo_url ? (
-                          <button
-                            type="button"
-                            onClick={() => reviewUser(u, { license_verified: !u.license_verified })}
-                            disabled={reviewBusyId === u.id}
-                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.license_verified ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"} disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {u.license_verified ? "Revoke License" : "Verify License"}
-                          </button>
-                        ) : null}
-                        {user?.id !== u.id ? (
-                          <button
-                            type="button"
-                            onClick={() => reviewUser(u, { is_active: !u.is_active })}
-                            disabled={reviewBusyId === u.id}
-                            className={`rounded-full px-3 py-2 text-[11px] font-bold transition ${u.is_active ? "bg-slate-200 text-slate-700 hover:bg-slate-300" : "bg-[var(--brand-soft)] text-[var(--brand-primary)] hover:bg-[#efe2f0]"} disabled:cursor-not-allowed disabled:opacity-50`}
-                          >
-                            {u.is_active ? "Set Inactive" : "Activate Account"}
-                          </button>
-                        ) : (
-                          <Pill color="slate" isDark={isDark}>Current Admin</Pill>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </GlassCard>
-          </div>
-        )}
-      </div>
+      <ConfirmModal
+        isOpen={!!confirmModal}
+        title={confirmModal?.title}
+        message={confirmModal?.msg}
+        onConfirm={confirmModal?.confirm}
+        onCancel={() => setConfirmModal(null)}
+        busy={busDeleteBusyId || routeDeleteBusyId || scheduleDeleteBusyId || userDeleteBusyId}
+      />
     </div>
   );
 }

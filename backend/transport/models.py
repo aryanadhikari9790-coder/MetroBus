@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Stop(models.Model):
@@ -19,6 +20,9 @@ class Route(models.Model):
     name = models.CharField(max_length=160)  # e.g., "Lakeside → Prithvi Chowk"
     city = models.CharField(max_length=80, default="Pokhara")
     is_active = models.BooleanField(default=True)
+    path_points = models.JSONField(default=list, blank=True)
+    path_waypoints = models.JSONField(default=list, blank=True)
+    path_distance_km = models.DecimalField(max_digits=8, decimal_places=2, default=0)
 
     class Meta:
         ordering = ["city", "name"]
@@ -60,6 +64,13 @@ class Bus(models.Model):
     interior_photo = models.ImageField(upload_to="buses/interior/", null=True, blank=True)
     seat_photo = models.ImageField(upload_to="buses/seats/", null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    route = models.ForeignKey(
+        Route,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_buses",
+    )
     driver = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -76,6 +87,9 @@ class Bus(models.Model):
         related_name="helped_buses",
         limit_choices_to={"role": "HELPER"},
     )
+    assignment_updated_at = models.DateTimeField(default=timezone.now)
+    driver_assignment_accepted_at = models.DateTimeField(null=True, blank=True)
+    helper_assignment_accepted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -83,6 +97,22 @@ class Bus(models.Model):
 
     def __str__(self):
         return self.plate_number
+
+    @property
+    def driver_assignment_accepted(self):
+        if not self.driver_id:
+            return False
+        if not self.driver_assignment_accepted_at:
+            return False
+        return self.driver_assignment_accepted_at >= self.assignment_updated_at
+
+    @property
+    def helper_assignment_accepted(self):
+        if not self.helper_id:
+            return False
+        if not self.helper_assignment_accepted_at:
+            return False
+        return self.helper_assignment_accepted_at >= self.assignment_updated_at
 
 
 class Seat(models.Model):

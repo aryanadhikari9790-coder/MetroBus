@@ -75,6 +75,15 @@ export function toLocPoint(location) {
   return location ? toPoint(location.lat, location.lng) : null;
 }
 
+export function normalizeRoutePath(pathPoints) {
+  return (pathPoints || [])
+    .map((point) => {
+      if (Array.isArray(point) && point.length >= 2) return toPoint(point[0], point[1]);
+      return toPoint(point?.lat, point?.lng);
+    })
+    .filter(Boolean);
+}
+
 export function distKm(a, b) {
   if (!a || !b) return 0;
   const R = 6371;
@@ -127,6 +136,97 @@ export function estimateEta(busPoint, targetPoint, path, speed) {
   if (busIndex > targetIndex + 3 && directDistance > 0.2) return { status: "passed", minutes: null };
   const routeDistance = targetIndex >= busIndex ? Math.max(0, cumulative[targetIndex] - cumulative[busIndex]) : directDistance;
   return { status: "enroute", minutes: Math.max(1, Math.round((routeDistance / speedKmh(speed)) * 60)) };
+}
+
+export function routeServesJourney(path, pickupPoint, dropPoint, toleranceKm = 0.35) {
+  if (!pickupPoint || !dropPoint || !path?.length) return { valid: false, reason: "missing" };
+  const pickupHit = nearestPathPoint(path, pickupPoint);
+  const dropHit = nearestPathPoint(path, dropPoint);
+  if (!pickupHit || !dropHit) return { valid: false, reason: "missing" };
+  if (pickupHit.distanceKm > toleranceKm || dropHit.distanceKm > toleranceKm) return { valid: false, reason: "off_route" };
+  if (dropHit.index <= pickupHit.index) return { valid: false, reason: "reverse" };
+  return { valid: true, pickupIndex: pickupHit.index, dropIndex: dropHit.index, pickupDistanceKm: pickupHit.distanceKm, dropDistanceKm: dropHit.distanceKm };
+}
+
+export function nearestPathPoint(path, target) {
+  if (!path?.length || !target) return null;
+  let bestIndex = -1;
+  let bestDistance = Infinity;
+  path.forEach((point, index) => {
+    const distanceKm = distKm(point, target);
+    if (distanceKm < bestDistance) {
+      bestDistance = distanceKm;
+      bestIndex = index;
+    }
+  });
+  if (bestIndex === -1) return null;
+  return { index: bestIndex, distanceKm: bestDistance };
+}
+
+export function describePickedPoint(point, routeStops, fallback = "Selected point", labelDistanceKm = 0.35) {
+  if (!point) return fallback;
+  const nearestStop = (routeStops || [])
+    .map((item) => ({ item, location: toPoint(item.stop?.lat, item.stop?.lng) }))
+    .filter((entry) => entry.location)
+    .map((entry) => ({ ...entry, distanceKm: distKm(point, entry.location) }))
+    .sort((a, b) => a.distanceKm - b.distanceKm)[0];
+  if (nearestStop?.item?.stop?.name && nearestStop.distanceKm <= labelDistanceKm) return nearestStop.item.stop.name;
+  if (nearestStop?.item?.stop?.name) return `Near ${nearestStop.item.stop.name}`;
+  return fallback;
+}
+
+export function deriveJourneySegment(routeStops, path, pickupPoint, dropPoint, toleranceKm = 0.35) {
+  if (!pickupPoint || !dropPoint) return { valid: false, reason: "missing" };
+  const stopRows = (routeStops || [])
+    .map((item) => ({ ...item, point: toPoint(item.stop?.lat, item.stop?.lng) }))
+    .filter((item) => item.point)
+    .sort((a, b) => Number(a.stop_order) - Number(b.stop_order));
+  const points = path?.length ? path : stopRows.map((item) => item.point);
+  if (stopRows.length < 2 || points.length < 2) return { valid: false, reason: "missing" };
+
+  const corridor = routeServesJourney(points, pickupPoint, dropPoint, toleranceKm);
+  if (!corridor.valid) return corridor;
+
+  const stopHits = stopRows
+    .map((item) => ({ ...item, hit: nearestPathPoint(points, item.point) }))
+    .filter((item) => item.hit)
+    .sort((a, b) => Number(a.stop_order) - Number(b.stop_order));
+
+  if (stopHits.length < 2) return { valid: false, reason: "missing" };
+
+  let pickupRow = stopHits.reduce((best, current) => (
+    !best || Math.abs(current.hit.index - corridor.pickupIndex) < Math.abs(best.hit.index - corridor.pickupIndex) ? current : best
+  ), null);
+  let dropRow = stopHits.reduce((best, current) => (
+    !best || Math.abs(current.hit.index - corridor.dropIndex) < Math.abs(best.hit.index - corridor.dropIndex) ? current : best
+  ), null);
+
+  if (!pickupRow || !dropRow || Number(dropRow.stop_order) <= Number(pickupRow.stop_order)) {
+    pickupRow = [...stopHits].reverse().find((item) => item.hit.index <= corridor.pickupIndex) || stopHits[0];
+    dropRow = stopHits.find((item) => item.hit.index >= corridor.dropIndex) || stopHits[stopHits.length - 1];
+  }
+
+  if (!pickupRow || !dropRow || Number(dropRow.stop_order) <= Number(pickupRow.stop_order)) {
+    const pickupIdx = stopHits.findIndex((item) => item.stop_order === pickupRow?.stop_order);
+    pickupRow = pickupRow || stopHits[0];
+    dropRow = stopHits.find((item) => Number(item.stop_order) > Number(pickupRow.stop_order)) || stopHits[pickupIdx + 1] || null;
+  }
+
+  if (!pickupRow || !dropRow || Number(dropRow.stop_order) <= Number(pickupRow.stop_order)) {
+    return { valid: false, reason: "segment" };
+  }
+
+  return {
+    valid: true,
+    pickupIndex: corridor.pickupIndex,
+    dropIndex: corridor.dropIndex,
+    from_order: Number(pickupRow.stop_order),
+    to_order: Number(dropRow.stop_order),
+    pickup_stop_name: describePickedPoint(pickupPoint, stopHits, pickupRow.stop?.name || "Pickup point"),
+    destination_stop_name: describePickedPoint(dropPoint, stopHits, dropRow.stop?.name || "Destination point"),
+    pickup_distance_km: corridor.pickupDistanceKm,
+    drop_distance_km: corridor.dropDistanceKm,
+  };
 }
 
 export function buildFormPost(redirect) {

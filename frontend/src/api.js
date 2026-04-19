@@ -1,5 +1,6 @@
 import axios from "axios";
 import { clearToken, getRefreshToken, getToken, setTokens } from "./auth";
+import { notifyGlobal } from "./NotificationContext";
 
 const browserHost = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
 const browserProtocol =
@@ -99,6 +100,15 @@ api.interceptors.response.use(
 
     if (error?.response?.status === 401 && isTokenInvalidError(error)) {
       clearToken();
+    }
+
+    const msg = error?.response?.data?.detail 
+      || error?.response?.data?.message 
+      || error?.message 
+      || "An unexpected error occurred.";
+    
+    if (error?.response?.status !== 401) {
+      notifyGlobal(msg, "error");
     }
 
     return Promise.reject(error);

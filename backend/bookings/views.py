@@ -9,9 +9,10 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from transport.models import Seat
 from transport.services import ensure_bus_seats
 from trips.models import Trip
-from .models import Booking, BookingSeat, OfflineBoarding, OfflineSeat, SeatHold
+from .models import Booking, BookingReview, BookingSeat, OfflineBoarding, OfflineSeat, SeatHold
 from .serializers import (
     BookingSerializer,
+    BookingReviewSerializer,
     CreateBookingSerializer,
     OfflineCreateSerializer,
     OfflineBoardingSerializer,
@@ -39,7 +40,7 @@ from .tickets import generate_boarding_otp, parse_ticket_reference
 
 def _booking_queryset():
     return (
-        Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by", "accepted_by_helper")
+        Booking.objects.select_related("trip__route", "trip__bus", "passenger", "payment", "payment_requested_by", "accepted_by_helper", "review")
         .prefetch_related("booking_seats__seat", "trip__route__route_stops__stop")
     )
 
@@ -572,6 +573,35 @@ class BookingDetailView(APIView):
             return Response({"detail": "You do not have access to this booking."}, status=403)
 
         return Response({"booking": serializer.data})
+
+
+class PassengerBookingReviewView(APIView):
+    permission_classes = [IsAuthenticated, IsPassenger]
+
+    def post(self, request, booking_id: int):
+        booking = _booking_queryset().filter(id=booking_id, passenger=request.user).first()
+        if not booking:
+            return Response({"detail": "Booking not found."}, status=404)
+        if not (booking.completed_at or booking.status == Booking.Status.COMPLETED):
+            return Response({"detail": "You can review a ride only after it is completed."}, status=400)
+
+        serializer = BookingReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        review, _created = BookingReview.objects.update_or_create(
+            booking=booking,
+            defaults={
+                "passenger": request.user,
+                "rating": serializer.validated_data["rating"],
+                "note": serializer.validated_data.get("note", ""),
+            },
+        )
+        return Response(
+            {
+                "message": "Thanks for reviewing your MetroBus ride.",
+                "review": BookingReviewSerializer(review).data,
+            },
+            status=200,
+        )
 
 
 class HelperVerifyBookingOtpView(APIView):

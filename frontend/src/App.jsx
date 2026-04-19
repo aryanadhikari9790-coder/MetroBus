@@ -7,54 +7,58 @@ import DriverHome from "./pages/driver/DriverHome";
 import AdminHome from "./pages/admin/AdminHome";
 import PaymentResult from "./pages/PaymentResult";
 import ProtectedRoute from "./ProtectedRoute";
+import GlobalNotification from "./components/GlobalNotification";
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/passenger" replace />} />
+    <>
+      <GlobalNotification />
+      <Routes>
+        <Route path="/" element={<Navigate to="/passenger" replace />} />
 
-      <Route path="/auth/login" element={<Login />} />
-      <Route path="/auth/register" element={<Register />} />
+        <Route path="/auth/login" element={<Login />} />
+        <Route path="/auth/register" element={<Register />} />
 
-      <Route path="/payment/result" element={<PaymentResult />} />
+        <Route path="/payment/result" element={<PaymentResult />} />
 
-      <Route
-        path="/passenger"
-        element={
-          <ProtectedRoute allowRoles={["PASSENGER"]}>
-            <PassengerHome />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/passenger"
+          element={
+            <ProtectedRoute allowRoles={["PASSENGER"]}>
+              <PassengerHome />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route
-        path="/helper"
-        element={
-          <ProtectedRoute allowRoles={["HELPER"]}>
-            <HelperHome />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/helper"
+          element={
+            <ProtectedRoute allowRoles={["HELPER"]}>
+              <HelperHome />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route
-        path="/driver"
-        element={
-          <ProtectedRoute allowRoles={["DRIVER"]}>
-            <DriverHome />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/driver"
+          element={
+            <ProtectedRoute allowRoles={["DRIVER"]}>
+              <DriverHome />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route
-        path="/admin/*"
-        element={
-          <ProtectedRoute allowRoles={["ADMIN"]}>
-            <AdminHome />
-          </ProtectedRoute>
-        }
-      />
+        <Route
+          path="/admin/*"
+          element={
+            <ProtectedRoute allowRoles={["ADMIN"]}>
+              <AdminHome />
+            </ProtectedRoute>
+          }
+        />
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }

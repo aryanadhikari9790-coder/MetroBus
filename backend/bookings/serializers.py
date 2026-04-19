@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Booking, BookingSeat, OfflineBoarding, OfflineSeat
+from .models import Booking, BookingReview, BookingSeat, OfflineBoarding, OfflineSeat
 
 
 def booking_payment_status_label(booking):
@@ -16,6 +16,15 @@ class BookingSeatSerializer(serializers.ModelSerializer):
     class Meta:
         model = BookingSeat
         fields = ("id", "seat", "seat_no")
+
+
+class BookingReviewSerializer(serializers.ModelSerializer):
+    passenger_name = serializers.CharField(source="passenger.full_name", read_only=True)
+
+    class Meta:
+        model = BookingReview
+        fields = ("id", "rating", "note", "passenger_name", "created_at", "updated_at")
+        read_only_fields = ("id", "passenger_name", "created_at", "updated_at")
 
 
 class PaymentSummaryFieldMixin:
@@ -65,6 +74,7 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     payment_pending_verification = serializers.SerializerMethodField()
     cancellation_reason_label = serializers.SerializerMethodField()
     can_cancel = serializers.SerializerMethodField()
+    review = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -103,6 +113,7 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
             "needs_payment_selection",
             "payment_pending_verification",
             "can_cancel",
+            "review",
             "pickup_stop_name",
             "destination_stop_name",
             "seat_labels",
@@ -161,6 +172,10 @@ class BookingSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     def get_can_cancel(self, obj):
         return bool(obj.status in {Booking.Status.CONFIRMED, Booking.Status.PENDING})
 
+    def get_review(self, obj):
+        review = getattr(obj, "review", None)
+        return BookingReviewSerializer(review).data if review else None
+
 
 class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.ModelSerializer):
     trip_id = serializers.IntegerField(source="trip.id", read_only=True)
@@ -187,6 +202,7 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
     payment_pending_verification = serializers.SerializerMethodField()
     cancellation_reason_label = serializers.SerializerMethodField()
     can_cancel = serializers.SerializerMethodField()
+    review = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -222,6 +238,7 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
             "needs_payment_selection",
             "payment_pending_verification",
             "can_cancel",
+            "review",
             "pickup_stop_name",
             "destination_stop_name",
             "seat_labels",
@@ -267,6 +284,10 @@ class PassengerBookingListSerializer(PaymentSummaryFieldMixin, serializers.Model
 
     def get_can_cancel(self, obj):
         return bool(obj.status in {Booking.Status.CONFIRMED, Booking.Status.PENDING})
+
+    def get_review(self, obj):
+        review = getattr(obj, "review", None)
+        return BookingReviewSerializer(review).data if review else None
 
 
 class CreateBookingSerializer(serializers.Serializer):
@@ -364,6 +385,7 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     journey_status_label = serializers.SerializerMethodField()
     can_accept = serializers.SerializerMethodField()
     can_verify_cash = serializers.SerializerMethodField()
+    can_verify_manual = serializers.SerializerMethodField()
     can_board = serializers.SerializerMethodField()
     can_complete = serializers.SerializerMethodField()
     can_request_payment = serializers.SerializerMethodField()
@@ -407,6 +429,7 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
             "completed_at",
             "can_request_payment",
             "can_verify_cash",
+            "can_verify_manual",
             "can_board",
             "can_complete",
         )
@@ -443,6 +466,16 @@ class HelperBookingTicketSerializer(PaymentSummaryFieldMixin, serializers.ModelS
     def get_can_verify_cash(self, obj):
         payment = getattr(obj, "payment", None)
         return bool(obj.accepted_by_helper_at and payment and payment.method == "CASH" and payment.status == "PENDING")
+
+    def get_can_verify_manual(self, obj):
+        payment = getattr(obj, "payment", None)
+        if not obj.accepted_by_helper_at or obj.completed_at or obj.status != Booking.Status.CONFIRMED:
+            return False
+        if payment and payment.status == "SUCCESS":
+            return False
+        if payment and payment.method == "CASH" and payment.status == "PENDING":
+            return False
+        return True
 
     def get_can_board(self, obj):
         return bool(

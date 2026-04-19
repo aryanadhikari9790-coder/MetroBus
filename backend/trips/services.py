@@ -1,6 +1,9 @@
 import math
+from json import load as json_load
 from datetime import timedelta
 from decimal import Decimal
+from urllib.error import URLError
+from urllib.request import urlopen
 
 from django.utils import timezone
 
@@ -12,11 +15,17 @@ from .models import TripLocation, TripSimulation
 def _clean_points(points):
     clean = []
     for point in points or []:
-        if not isinstance(point, (list, tuple)) or len(point) != 2:
+        if isinstance(point, dict):
+            lat_value = point.get("lat")
+            lng_value = point.get("lng")
+        elif isinstance(point, (list, tuple)) and len(point) >= 2:
+            lat_value = point[0]
+            lng_value = point[1]
+        else:
             continue
         try:
-            lat = round(float(point[0]), 6)
-            lng = round(float(point[1]), 6)
+            lat = round(float(lat_value), 6)
+            lng = round(float(lng_value), 6)
         except (TypeError, ValueError):
             continue
         clean.append([lat, lng])
@@ -24,6 +33,10 @@ def _clean_points(points):
 
 
 def _route_points_for_trip(trip):
+    route_path = _clean_points(getattr(trip.route, "path_points", None))
+    if len(route_path) >= 2:
+        return route_path
+
     rows = (
         RouteStop.objects.filter(route=trip.route)
         .select_related("stop")
@@ -36,6 +49,29 @@ def _route_points_for_trip(trip):
             if row.stop and row.stop.lat is not None and row.stop.lng is not None
         ]
     )
+
+
+def _snap_points_to_road(points):
+    clean = _clean_points(points)
+    if len(clean) < 2:
+        return clean
+
+    try:
+        coordinates = ";".join(f"{lng},{lat}" for lat, lng in clean)
+        with urlopen(
+            f"https://router.project-osrm.org/route/v1/driving/{coordinates}?overview=full&geometries=geojson",
+            timeout=5,
+        ) as response:
+            payload = json_load(response)
+        geometry = payload.get("routes", [{}])[0].get("geometry", {}).get("coordinates", [])
+        snapped = _clean_points([[lat, lng] for lng, lat in geometry])
+        return snapped if len(snapped) >= 2 else clean
+    except (OSError, ValueError, URLError):
+        return clean
+
+
+def _simulation_points_for_trip(trip):
+    return _snap_points_to_road(_route_points_for_trip(trip))
 
 
 def _densify_points(points, target_points=100):
@@ -108,9 +144,9 @@ def _persist_simulation_point(trip, simulation):
 
 
 def start_trip_simulation(trip, points, step_interval_ms):
-    clean_points = _clean_points(points)
+    clean_points = _densify_points(_clean_points(points), target_points=160)
     if len(clean_points) < 2:
-        clean_points = _densify_points(_route_points_for_trip(trip))
+        clean_points = _densify_points(_simulation_points_for_trip(trip), target_points=160)
     if len(clean_points) < 2:
         raise ValueError("Provide at least two valid route points for simulation.")
 
@@ -124,6 +160,18 @@ def start_trip_simulation(trip, points, step_interval_ms):
     simulation.save()
 
     return _persist_simulation_point(trip, simulation), simulation
+
+
+def ensure_trip_simulation(trip, step_interval_ms=3000):
+    simulation = getattr(trip, "simulation", None)
+    if simulation and simulation.points:
+        return trip.locations.order_by("-recorded_at").first(), simulation
+
+    route_points = _densify_points(_simulation_points_for_trip(trip), target_points=160)
+    if len(route_points) < 2:
+        return trip.locations.order_by("-recorded_at").first(), simulation
+
+    return start_trip_simulation(trip, route_points, step_interval_ms)
 
 
 def sync_trip_simulation(trip):
@@ -159,6 +207,22 @@ def pause_trip_simulation(trip):
     sync_trip_simulation(trip)
     simulation.is_active = False
     simulation.save(update_fields=["is_active", "updated_at"])
+    return trip.locations.order_by("-recorded_at").first(), simulation
+
+
+def resume_trip_simulation(trip, step_interval_ms=None):
+    simulation = getattr(trip, "simulation", None)
+    if not simulation or not simulation.points:
+        return ensure_trip_simulation(trip, step_interval_ms or 3000)
+
+    sync_trip_simulation(trip)
+    simulation.is_active = True
+    simulation.last_advanced_at = timezone.now()
+    if step_interval_ms is not None:
+        simulation.step_interval_ms = max(1000, min(int(step_interval_ms or simulation.step_interval_ms), 10000))
+        simulation.save(update_fields=["is_active", "last_advanced_at", "step_interval_ms", "updated_at"])
+    else:
+        simulation.save(update_fields=["is_active", "last_advanced_at", "updated_at"])
     return trip.locations.order_by("-recorded_at").first(), simulation
 
 

@@ -1,4 +1,7 @@
-from .models import Seat
+from decimal import Decimal
+from math import atan2, cos, radians, sin, sqrt
+
+from .models import Seat, Stop
 
 
 DEFAULT_SEATS_PER_ROW = 4
@@ -43,3 +46,70 @@ def ensure_bus_seats(bus) -> int:
         Seat.objects.bulk_create([Seat(bus=bus, seat_no=label) for label in missing_labels], ignore_conflicts=True)
 
     return bus.seats.count()
+
+
+def normalize_route_path_points(path_points) -> list[dict]:
+    normalized = []
+    for index, item in enumerate(path_points or [], start=1):
+        if isinstance(item, dict):
+            lat = item.get("lat")
+            lng = item.get("lng")
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            lat, lng = item[0], item[1]
+        else:
+            continue
+
+        try:
+            lat_value = float(lat)
+            lng_value = float(lng)
+        except (TypeError, ValueError):
+            continue
+
+        if not (-90 <= lat_value <= 90 and -180 <= lng_value <= 180):
+            continue
+
+        normalized.append(
+            {
+                "seq": index,
+                "lat": round(lat_value, 6),
+                "lng": round(lng_value, 6),
+            }
+        )
+    return normalized
+
+
+def stop_points_for_ids(stop_ids) -> list[dict]:
+    ordered_stops = list(Stop.objects.filter(id__in=stop_ids))
+    stop_map = {stop.id: stop for stop in ordered_stops}
+    return [
+        {
+            "seq": index,
+            "lat": round(float(stop_map[stop_id].lat), 6),
+            "lng": round(float(stop_map[stop_id].lng), 6),
+        }
+        for index, stop_id in enumerate(stop_ids, start=1)
+        if stop_id in stop_map
+    ]
+
+
+def route_distance_km(path_points) -> Decimal:
+    points = normalize_route_path_points(path_points)
+    if len(points) < 2:
+        return Decimal("0.00")
+
+    total = 0.0
+    for index in range(1, len(points)):
+        total += _haversine_km(points[index - 1], points[index])
+    return Decimal(f"{total:.2f}")
+
+
+def _haversine_km(a, b) -> float:
+    radius_km = 6371
+    lat1 = radians(float(a["lat"]))
+    lng1 = radians(float(a["lng"]))
+    lat2 = radians(float(b["lat"]))
+    lng2 = radians(float(b["lng"]))
+    d_lat = lat2 - lat1
+    d_lng = lng2 - lng1
+    h = sin(d_lat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(d_lng / 2) ** 2
+    return 2 * radius_km * atan2(sqrt(h), sqrt(max(0.0, 1 - h)))
