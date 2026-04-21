@@ -19,18 +19,34 @@ def _row_label(row_idx: int) -> str:
 
 
 def default_seat_labels(capacity: int, seats_per_row: int = DEFAULT_SEATS_PER_ROW) -> list[str]:
+    """Generate seat labels for all rows.
+
+    The last row is always a bench that spans the full bus width, adding one seat
+    in the aisle space (seats_per_row + 1). Regular rows use *seats_per_row*.
+    The *capacity* parameter should already include the back-row seats
+    (i.e. capacity = (rows - 1) * seats_per_row + (seats_per_row + 1)).
+    """
     labels = []
     seat_count = 0
     seats_per_row = max(int(seats_per_row or DEFAULT_SEATS_PER_ROW), 1)
-    rows_needed = (capacity + seats_per_row - 1) // seats_per_row
+    back_row_seats = seats_per_row + 1
 
-    for row_idx in range(rows_needed):
+    remaining = capacity
+    row_idx = 0
+
+    while remaining > 0:
         row_letter = _row_label(row_idx)
-        for col in range(1, seats_per_row + 1):
-            if seat_count >= capacity:
-                break
+        # It's the last row if remaining seats match exactly what a back row should have,
+        # or if it's the very last set of seats being allocated.
+        is_last_row = remaining <= back_row_seats
+        cols_this_row = back_row_seats if is_last_row else min(seats_per_row, remaining)
+
+        for col in range(1, cols_this_row + 1):
             labels.append(f"{row_letter}{col}")
             seat_count += 1
+
+        remaining -= cols_this_row
+        row_idx += 1
 
     return labels
 

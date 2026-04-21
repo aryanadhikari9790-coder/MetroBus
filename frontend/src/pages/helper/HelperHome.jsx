@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Polyline, Popup, TileLayer } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
+import { AdaptiveCircleMarker, SmartMapViewport } from "../../components/maps/MobileMapTools";
 import MetroSeatBoard from "../../components/shared/MetroSeatBoard";
 import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
@@ -146,19 +147,6 @@ function TextField({ label, value, onChange, placeholder = "", type = "text" }) 
       />
     </label>
   );
-}
-
-function MapViewport({ points }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!points.length) return;
-    if (points.length === 1) {
-      map.setView(points[0], 14);
-      return;
-    }
-    map.fitBounds(points, { padding: [26, 26] });
-  }, [map, points]);
-  return null;
 }
 
 const fmtTime = (value) => {
@@ -324,6 +312,23 @@ export default function HelperHome() {
     if (liveBusPoint) points.push(liveBusPoint);
     return points;
   }, [displayLine, liveBusPoint, passengerRequests]);
+  const mapFitPoints = useMemo(() => {
+    const points = [...displayLine];
+    passengerRequests.forEach((item) => {
+      const lat = Number(item.marker_lat);
+      const lng = Number(item.marker_lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) points.push([lat, lng]);
+    });
+    return points.length ? points : (liveBusPoint ? [liveBusPoint] : []);
+  }, [displayLine, liveBusPoint, passengerRequests]);
+  const mapFitSignature = useMemo(
+    () =>
+      JSON.stringify({
+        line: displayLine,
+        markers: passengerRequests.map((item) => [item.booking_id, item.stage, Number(item.marker_lat), Number(item.marker_lng)]),
+      }),
+    [displayLine, passengerRequests],
+  );
 
   const homeStatus = activeTrip
     ? "Trip Live"
@@ -938,18 +943,18 @@ export default function HelperHome() {
 
             <div className="relative h-[31rem] overflow-hidden bg-[var(--bg-soft)]">
               {mapPoints.length ? (
-                <MapContainer center={mapPoints[0]} zoom={13} className="h-full w-full" scrollWheelZoom={false}>
-                  <TileLayer attribution="&copy; OpenStreetMap contributors" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"} />
-                  <MapViewport points={mapPoints} />
-                  {displayLine.length > 1 ? <Polyline positions={displayLine} pathOptions={{ color: theme["--primary"], weight: 5, opacity: 0.92 }} /> : null}
+                <MapContainer center={mapPoints[0]} zoom={12} className="h-full w-full" scrollWheelZoom preferCanvas>
+                  <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
+                  <SmartMapViewport points={mapFitPoints} fitKey={mapFitSignature} maxZoom={13} padding={[44, 44]} />
+                  {displayLine.length > 1 ? <Polyline positions={displayLine} pathOptions={{ color: theme["--primary"], weight: 6, opacity: 0.92 }} /> : null}
                   {passengerRequests.map((item) => {
                     const lat = Number(item.marker_lat);
                     const lng = Number(item.marker_lng);
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
                     const pickup = item.stage === "pickup";
-                    return <CircleMarker key={`${item.booking_id}-${item.stage}`} center={[lat, lng]} radius={8} pathOptions={{ color: pickup ? "#15803d" : "#b91c1c", fillColor: pickup ? "#22c55e" : "#ef4444", fillOpacity: 0.96, weight: 2 }}><Popup><div className="min-w-[12rem] space-y-1 text-sm"><p className="font-black">{item.passenger_name}</p><p className="font-semibold text-[var(--primary)]">{pickup ? "Pickup point" : "Drop point"}</p><p className="text-[var(--muted)]">{item.pickup_stop_name} to {item.destination_stop_name}</p></div></Popup></CircleMarker>;
+                    return <AdaptiveCircleMarker key={`${item.booking_id}-${item.stage}`} center={[lat, lng]} baseRadius={4.8} minRadius={3.4} maxRadius={6.8} pathOptions={{ color: pickup ? "#15803d" : "#b91c1c", fillColor: pickup ? "#22c55e" : "#ef4444", fillOpacity: 0.96, weight: 2 }}><Popup><div className="min-w-[12rem] space-y-1 text-sm"><p className="font-black">{item.passenger_name}</p><p className="font-semibold text-[var(--primary)]">{pickup ? "Pickup point" : "Drop point"}</p><p className="text-[var(--muted)]">{item.pickup_stop_name} to {item.destination_stop_name}</p></div></Popup></AdaptiveCircleMarker>;
                   })}
-                  {liveBusPoint ? <CircleMarker center={liveBusPoint} radius={10} pathOptions={{ color: theme["--accent"], fillColor: theme["--accent"], fillOpacity: 1, weight: 3 }}><Popup>Live bus location</Popup></CircleMarker> : null}
+                  {liveBusPoint ? <AdaptiveCircleMarker center={liveBusPoint} baseRadius={5.8} minRadius={4.4} maxRadius={7.8} pathOptions={{ color: theme["--accent"], fillColor: theme["--accent"], fillOpacity: 1, weight: 3 }}><Popup>Live bus location</Popup></AdaptiveCircleMarker> : null}
                 </MapContainer>
               ) : (
                 <div className="grid h-full place-items-center px-6 text-center text-sm font-semibold text-[var(--muted)]">Start the trip to unlock the helper live map.</div>

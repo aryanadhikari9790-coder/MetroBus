@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
@@ -109,3 +110,49 @@ class AuthOTP(models.Model):
     def consume(self):
         self.consumed_at = timezone.now()
         self.save(update_fields=["consumed_at"])
+
+
+class Notification(models.Model):
+    """Persistent, per-user notification record (ride events, payment alerts, etc.)."""
+
+    class Kind(models.TextChoices):
+        TRIP_STARTED = "TRIP_STARTED", "Trip Started"
+        TRIP_ENDED = "TRIP_ENDED", "Trip Ended"
+        PAYMENT_REQUESTED = "PAYMENT_REQUESTED", "Payment Requested"
+        ASSIGNMENT_UPDATED = "ASSIGNMENT_UPDATED", "Assignment Updated"
+        REVIEW_PROMPT = "REVIEW_PROMPT", "Review Prompt"
+        GENERAL = "GENERAL", "General"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+    )
+    kind = models.CharField(max_length=30, choices=Kind.choices, default=Kind.GENERAL)
+    title = models.CharField(max_length=200)
+    message = models.TextField(blank=True, default="")
+    related_booking_id = models.IntegerField(null=True, blank=True)
+    related_trip_id = models.IntegerField(null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "is_read", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"[{self.kind}] {self.title} → {self.user_id}"
+
+    @classmethod
+    def push(cls, user, kind, title, message="", *, booking_id=None, trip_id=None):
+        """Convenience factory — creates and returns the notification."""
+        return cls.objects.create(
+            user=user,
+            kind=kind,
+            title=title,
+            message=message,
+            related_booking_id=booking_id,
+            related_trip_id=trip_id,
+        )

@@ -27,6 +27,7 @@ from .services import (
     pause_trip_simulation,
     reset_trip_simulation,
     resume_trip_simulation,
+    route_stops_for_trip,
     start_trip_simulation,
     step_trip_simulation,
     stop_trip_simulation,
@@ -135,6 +136,31 @@ def _respond_with_trip(trip, message, status_code=200):
         },
         status=status_code,
     )
+
+
+def _validate_trip_segment(route, from_order=None, to_order=None):
+    if from_order in (None, "") and to_order in (None, ""):
+        return None, None
+    if from_order in (None, "") or to_order in (None, ""):
+        raise ValueError("Choose both the start point and the destination before starting the route.")
+
+    try:
+        from_order = int(from_order)
+        to_order = int(to_order)
+    except (TypeError, ValueError):
+        raise ValueError("Choose a valid route segment before starting the ride.")
+
+    route_stop_orders = list(
+        RouteStop.objects.filter(route=route)
+        .order_by("stop_order")
+        .values_list("stop_order", flat=True)
+    )
+    if from_order not in route_stop_orders or to_order not in route_stop_orders:
+        raise ValueError("The selected route segment does not belong to this route.")
+    if to_order <= from_order:
+        raise ValueError("Destination must come after the selected start point.")
+
+    return from_order, to_order
 
 
 def _can_view_trip_bookings(user, trip):
@@ -442,9 +468,9 @@ class LiveTripsView(APIView):
             ensure_trip_simulation(trip)
             latest_location = sync_trip_simulation(trip)
             trip_data["latest_location"] = TripLocationSerializer(latest_location).data if latest_location else None
-            # Embed route_stops so the frontend can match without a second round-trip
             trip_data["route_stops"] = RouteStopSerializer(
-                route_stops_by_route.get(trip.route_id, []), many=True
+                route_stops_for_trip(trip, route_stops_by_route.get(trip.route_id, [])),
+                many=True,
             ).data
             payload.append(trip_data)
 
@@ -502,6 +528,11 @@ class DriverDashboardView(APIView):
                 "simulation": _serialize_simulation(getattr(active_trip, "simulation", None)) if active_trip else None,
                 "schedules": TripScheduleSerializer(schedules, many=True).data,
                 "assigned_bus": DriverStartOptionBusSerializer(assigned_bus).data if assigned_bus else None,
+                "assigned_route_stops": RouteStopSerializer(
+                    RouteStop.objects.filter(route=assigned_bus.route).select_related("stop").order_by("stop_order"),
+                    many=True,
+                ).data if assigned_bus and assigned_bus.route_id else [],
+                "assigned_route_path_points": assigned_bus.route.path_points if assigned_bus and assigned_bus.route_id else [],
                 "manual_start_options": {
                     "routes": DriverStartOptionRouteSerializer(routes, many=True).data,
                     "buses": DriverStartOptionBusSerializer(buses, many=True).data,
@@ -999,6 +1030,8 @@ class StartTripView(APIView):
             bus_id = request.data.get("bus_id")
             helper_id = request.data.get("helper_id")
             driver_id = request.data.get("driver_id")
+            requested_from_order = request.data.get("from_stop_order")
+            requested_to_order = request.data.get("to_stop_order")
             assigned_bus = _assigned_bus_for_user(actor)
 
             if role_label == "driver":
@@ -1021,6 +1054,15 @@ class StartTripView(APIView):
                     bus = assigned_bus
                     route = assigned_bus.route
                     helper = assigned_bus.helper
+
+                try:
+                    start_stop_order, end_stop_order = _validate_trip_segment(
+                        route,
+                        requested_from_order,
+                        requested_to_order,
+                    )
+                except ValueError as exc:
+                    return Response({"detail": str(exc)}, status=400)
 
                 trip = (
                     Trip.objects.filter(driver=actor, status=Trip.Status.NOT_STARTED, schedule__isnull=True)
@@ -1051,8 +1093,14 @@ class StartTripView(APIView):
                         helper=helper,
                         status=Trip.Status.NOT_STARTED,
                         deviation_mode=deviation_mode,
+                        start_stop_order=start_stop_order,
+                        end_stop_order=end_stop_order,
                     )
                     created = True
+                elif trip.start_stop_order != start_stop_order or trip.end_stop_order != end_stop_order:
+                    trip.start_stop_order = start_stop_order
+                    trip.end_stop_order = end_stop_order
+                    trip.save(update_fields=["start_stop_order", "end_stop_order"])
             else:
                 if route_id and bus_id and driver_id:
                     try:
@@ -1284,7 +1332,10 @@ class TripDetailView(APIView):
         if not trip:
             return Response({"detail": "Trip not found"}, status=404)
 
-        route_stops = RouteStop.objects.filter(route=trip.route).select_related("stop").order_by("stop_order")
+        full_route_stops = list(
+            RouteStop.objects.filter(route=trip.route).select_related("stop").order_by("stop_order")
+        )
+        route_stops = route_stops_for_trip(trip, full_route_stops)
         payload = {
             "trip": TripSerializer(trip).data,
             "route_stops": RouteStopSerializer(route_stops, many=True).data,

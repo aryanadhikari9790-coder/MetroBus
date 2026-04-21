@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Polyline, Popup, TileLayer, useMapEvents } from "react-leaflet";
 import { clearToken } from "../../auth";
 import { useAuth } from "../../AuthContext";
 import { api } from "../../api";
+import { AdaptiveCircleMarker, SmartMapViewport } from "../../components/maps/MobileMapTools";
 import { CheckoutPage, HistoryCard } from "../../components/passenger/PassengerUI";
 import MetroSeatBoard from "../../components/shared/MetroSeatBoard";
 import { snapRouteToRoad } from "../../lib/mapRoute";
@@ -39,16 +40,6 @@ const ActionButton = ({ children, tone = "primary", className = "", ...props }) 
 
 function SelectField({ label, value, onChange, options }) {
   return <div><label className="mb-2 block text-[0.66rem] font-black uppercase tracking-[0.22em] text-[var(--muted)]">{label}</label><select value={value} onChange={(event) => onChange(event.target.value)} className="w-full rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3.5 text-sm font-semibold text-[var(--text)] outline-none">{options.map((option) => <option key={`${option.value}-${option.label}`} value={option.value}>{option.label}</option>)}</select></div>;
-}
-
-function MapViewport({ points }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!points.length) return;
-    if (points.length === 1) { map.setView(points[0], 14); return; }
-    map.fitBounds(points, { padding: [26, 26] });
-  }, [map, points]);
-  return null;
 }
 
 function SearchMapPicker({ activeTarget, onPick }) {
@@ -139,6 +130,11 @@ export default function PassengerHomeRedesigned() {
   const [reviewBusy, setReviewBusy] = useState(false);
   const [dismissedReviewIds, setDismissedReviewIds] = useState([]);
   const [dismissedArrivalBookingIds, setDismissedArrivalBookingIds] = useState([]);
+  const [seenNotificationIds, setSeenNotificationIds] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("metrobus_seen_notif_ids") || "[]")); }
+    catch { return new Set(); }
+  });
+  const [tripStartedBanner, setTripStartedBanner] = useState(null); // { message, tripId }
 
   useEffect(() => {
     const params = new URLSearchParams(search);
@@ -201,6 +197,11 @@ export default function PassengerHomeRedesigned() {
   const displayLine = roadPolyline.length > 1 ? roadPolyline : routePolyline;
   const liveBusPoint = useMemo(() => toLocPoint(focusTrip?.live_override || focusTrip?.latest_location), [focusTrip]);
   const mapPoints = useMemo(() => [...displayLine, ...(liveBusPoint ? [liveBusPoint] : [])], [displayLine, liveBusPoint]);
+  const liveMapFitPoints = useMemo(() => (displayLine.length ? displayLine : mapPoints), [displayLine, mapPoints]);
+  const liveMapFitSignature = useMemo(
+    () => (displayLine.length ? routePolylineSignature || JSON.stringify(displayLine) : JSON.stringify(mapPoints)),
+    [displayLine, mapPoints, routePolylineSignature],
+  );
   const checkoutBooking = useMemo(() => bookings.find((booking) => Number(booking.id) === Number(checkoutBookingId)) || paymentActionBooking || paymentPendingBooking || activeBooking || null, [activeBooking, bookings, checkoutBookingId, paymentActionBooking, paymentPendingBooking]);
   const cancellationBooking = useMemo(() => bookings.find((booking) => Number(booking.id) === Number(cancellationBookingId)) || null, [bookings, cancellationBookingId]);
   const stopOptions = useMemo(() => [{ value: "", label: "Choose a stop" }, ...stops.map((stop) => ({ value: String(stop.id), label: stop.name }))], [stops]);
@@ -415,6 +416,7 @@ export default function PassengerHomeRedesigned() {
         routePoints,
         trip.latest_location?.speed,
       );
+      if (eta?.status === "passed") continue;
 
       let openSeats = trip.open_seats ?? null;
       let seatsTotal = trip.seats_total ?? null;
@@ -504,6 +506,52 @@ export default function PassengerHomeRedesigned() {
     const walletRefresh = setInterval(() => loadWalletSummary({ silent: true }), 30000);
     return () => clearInterval(walletRefresh);
   }, [loadWalletSummary]);
+
+  // --- Persistent notification polling (trip-end / review prompts / trip-start toast) ---
+  const pollNotifications = useCallback(async () => {
+    try {
+      const response = await api.get("/api/auth/notifications/");
+      const notifications = response.data.notifications || [];
+      const freshIds = new Set(seenNotificationIds);
+      for (const notif of notifications) {
+        if (notif.is_read) continue;
+        if (freshIds.has(notif.id)) continue;
+        freshIds.add(notif.id);
+        if (
+          notif.kind === "TRIP_STARTED" &&
+          notif.related_trip_id &&
+          activeBooking
+        ) {
+          setTripStartedBanner({ message: notif.title || "Your bus trip has started!", tripId: notif.related_trip_id });
+          setTimeout(() => setTripStartedBanner(null), 8000);
+          api.post("/api/auth/notifications/read/", { id: notif.id }).catch(() => {});
+        } else if (
+          (notif.kind === "TRIP_ENDED" || notif.kind === "REVIEW_PROMPT") &&
+          notif.related_booking_id &&
+          !reviewBookingId &&
+          !dismissedReviewIds.includes(Number(notif.related_booking_id))
+        ) {
+          setReviewBookingId(Number(notif.related_booking_id));
+          setReviewRating(5);
+          setReviewNote("");
+          api.post("/api/auth/notifications/read/", { id: notif.id }).catch(() => {});
+          break; // show one review at a time
+        }
+      }
+      if (freshIds.size !== seenNotificationIds.size) {
+        setSeenNotificationIds(freshIds);
+        try { localStorage.setItem("metrobus_seen_notif_ids", JSON.stringify([...freshIds].slice(-100))); } catch { /* storage full */ }
+      }
+    } catch {
+      // Notification polling is non-critical — silently swallow
+    }
+  }, [activeBooking, dismissedReviewIds, reviewBookingId, seenNotificationIds]);
+
+  useEffect(() => {
+    pollNotifications(); // immediate first fetch
+    const notifRefresh = setInterval(pollNotifications, 8000);
+    return () => clearInterval(notifRefresh);
+  }, [pollNotifications]);
   useEffect(() => {
     if (!acceptedTrip?.id || !acceptedTrip.from_order || !acceptedTrip.to_order) { setSeats([]); setSelectedSeatIds([]); return; }
     loadSeats(acceptedTrip.id, acceptedTrip.from_order, acceptedTrip.to_order);
@@ -634,6 +682,12 @@ export default function PassengerHomeRedesigned() {
     setMsg("");
     try {
       const response = await api.post(`/api/bookings/${reviewBookingId}/review/`, { rating: reviewRating, note: reviewNote.trim() });
+      setDismissedReviewIds((current) => [...new Set([...current, Number(reviewBookingId)])]);
+      setBookings((current) => current.map((booking) => (
+        Number(booking.id) === Number(reviewBookingId)
+          ? { ...booking, review: response.data.review || booking.review }
+          : booking
+      )));
       setMsg(response.data.message || "Thanks for sharing your MetroBus review.");
       setReviewBookingId(null);
       setReviewRating(5);
@@ -664,6 +718,15 @@ export default function PassengerHomeRedesigned() {
     ...(pickupPoint ? [pickupPoint] : []),
     ...(dropPoint ? [dropPoint] : []),
   ].filter(Boolean);
+  const searchMapFitSignature = useMemo(
+    () =>
+      JSON.stringify({
+        routes: searchRouteOverlays.map((route) => [route.id, route.points]),
+        pickupPoint,
+        dropPoint,
+      }),
+    [dropPoint, pickupPoint, searchRouteOverlays],
+  );
 
   return (
     <div style={theme} className="min-h-screen bg-[linear-gradient(180deg,var(--bg),var(--bg-soft))] text-[var(--text)]">
@@ -672,17 +735,35 @@ export default function PassengerHomeRedesigned() {
         <main className="flex-1 px-4 pb-28 pt-5">
           {err ? <p className="mb-4 rounded-[1rem] bg-[rgba(219,61,79,0.12)] px-4 py-3 text-sm font-semibold text-[var(--danger)]">{err}</p> : null}
           {msg ? <p className="mb-4 rounded-[1rem] bg-[rgba(23,165,103,0.12)] px-4 py-3 text-sm font-semibold text-[var(--success)]">{msg}</p> : null}
+          {tripStartedBanner ? (
+            <div
+              className="fixed bottom-24 left-1/2 z-50 w-[calc(100%-2rem)] max-w-[32rem] -translate-x-1/2 rounded-[1.4rem] border border-[rgba(23,165,103,0.28)] bg-[rgba(23,165,103,0.14)] px-5 py-4 shadow-[0_16px_40px_rgba(0,0,0,0.22)] backdrop-blur-xl"
+              style={{ animation: "slideUp 0.4s ease" }}
+            >
+              <style>{`@keyframes slideUp { from { transform: translateX(-50%) translateY(1.5rem); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--success)] text-white text-base">🚌</span>
+                  <div>
+                    <p className="text-[0.62rem] font-black uppercase tracking-[0.18em] text-[var(--success)]">Trip Started</p>
+                    <p className="text-sm font-bold text-[var(--text)]">{tripStartedBanner.message}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => setTripStartedBanner(null)} className="shrink-0 text-[var(--muted)] hover:text-[var(--text)]">✕</button>
+              </div>
+            </div>
+          ) : null}
           {tab === "home" ? (
             <SurfaceCard className="overflow-hidden">
               {activeBooking ? (
                 <div className="relative h-[65vh] min-h-[30rem] w-full overflow-hidden">
                   {mapPoints.length ? (
-                    <MapContainer center={mapPoints[0]} zoom={13} className="h-full w-full" scrollWheelZoom={false}>
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-                      <MapViewport points={mapPoints} />
-                      {displayLine.length > 1 ? <Polyline positions={displayLine} pathOptions={{ color: isDark ? "#8d5abf" : "#4b2666", weight: 6, opacity: 0.78 }} /> : null}
+                    <MapContainer center={mapPoints[0]} zoom={12} className="h-full w-full" scrollWheelZoom preferCanvas>
+                      <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
+                      <SmartMapViewport points={liveMapFitPoints} fitKey={liveMapFitSignature} maxZoom={13} padding={[44, 44]} />
+                      {displayLine.length > 1 ? <Polyline positions={displayLine} pathOptions={{ color: isDark ? "#8d5abf" : "#4b2666", weight: 6, opacity: 0.92 }} /> : null}
                       {liveBusPoint ? (
-                        <CircleMarker center={liveBusPoint} radius={10} pathOptions={{ color: "#ff8a1f", fillColor: "#ff8a1f", fillOpacity: 0.98, weight: 3 }}>
+                        <AdaptiveCircleMarker center={liveBusPoint} baseRadius={5.8} minRadius={4.4} maxRadius={7.8} pathOptions={{ color: "#ff8a1f", fillColor: "#ff8a1f", fillOpacity: 0.98, weight: 3 }}>
                           <Popup>
                             <div className="space-y-1 text-sm">
                               <p className="font-black">{focusTrip?.bus_plate || "MetroBus"}</p>
@@ -690,7 +771,7 @@ export default function PassengerHomeRedesigned() {
                               <p className="text-[var(--muted)]">ETA {etaText}</p>
                             </div>
                           </Popup>
-                        </CircleMarker>
+                        </AdaptiveCircleMarker>
                       ) : null}
                     </MapContainer>
                   ) : (
@@ -732,6 +813,12 @@ export default function PassengerHomeRedesigned() {
                           <p className="text-[0.62rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Map Selection</p>
                           <p className="mt-2 font-semibold">Pickup: {pickupLabel}</p>
                           <p className="mt-1 font-semibold">Destination: {dropLabel}</p>
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <button type="button" onClick={() => setActiveMapPick("pickup")} className="rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2 text-[0.7rem] font-black uppercase tracking-[0.14em] text-[var(--text)]">Change Pickup</button>
+                            <button type="button" onClick={() => { setPickupMapPoint(null); setPickupMapLabel(""); if (activeMapPick === "pickup") setActiveMapPick(null); }} className="rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2 text-[0.7rem] font-black uppercase tracking-[0.14em] text-[var(--text)]">Clear Pickup</button>
+                            <button type="button" onClick={() => setActiveMapPick("drop")} className="rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2 text-[0.7rem] font-black uppercase tracking-[0.14em] text-[var(--text)]">Change Destination</button>
+                            <button type="button" onClick={() => { setDropMapPoint(null); setDropMapLabel(""); if (activeMapPick === "drop") setActiveMapPick(null); }} className="rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-3 py-2 text-[0.7rem] font-black uppercase tracking-[0.14em] text-[var(--text)]">Clear Destination</button>
+                          </div>
                         </div>
                       ) : null}
                       <ActionButton onClick={findRoutes} disabled={findingRoutes}>
@@ -749,23 +836,23 @@ export default function PassengerHomeRedesigned() {
                     </div>
                     <div className="h-[24rem] border-t border-[var(--border)]">
                       {searchMapPoints.length ? (
-                        <MapContainer center={searchMapPoints[0]} zoom={13} className="h-full w-full" scrollWheelZoom={false}>
-                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
-                          <MapViewport points={searchMapPoints} />
+                        <MapContainer center={searchMapPoints[0]} zoom={12} className="h-full w-full" scrollWheelZoom preferCanvas>
+                          <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
+                          <SmartMapViewport points={searchMapPoints} fitKey={searchMapFitSignature} maxZoom={13} padding={[44, 44]} />
                           <SearchMapPicker activeTarget={activeMapPick} onPick={handleMapPick} />
                           {searchRouteOverlays.map((route) => (
                             <Polyline
                               key={`route-${route.id}`}
                               positions={route.points}
                               pathOptions={{
-                                color: matchedRouteIds.has(String(route.id)) ? (isDark ? "#ff962d" : "#ff8a1f") : (isDark ? "rgba(141,90,191,0.34)" : "rgba(75,38,102,0.22)"),
+                                color: matchedRouteIds.has(String(route.id)) ? (isDark ? "#8d5abf" : "#4b2666") : (isDark ? "rgba(141,90,191,0.34)" : "rgba(75,38,102,0.18)"),
                                 weight: matchedRouteIds.has(String(route.id)) ? 5 : 3,
-                                opacity: matchedRouteIds.has(String(route.id)) ? 0.9 : 0.45,
+                                opacity: matchedRouteIds.has(String(route.id)) ? 0.92 : 0.38,
                               }}
                             />
                           ))}
-                          {pickupPoint ? <CircleMarker center={pickupPoint} radius={7} pathOptions={{ color: "#16a34a", fillColor: "#16a34a", fillOpacity: 0.95, weight: 2 }}><Popup><div className="text-sm font-semibold">{pickupLabel}</div></Popup></CircleMarker> : null}
-                          {dropPoint ? <CircleMarker center={dropPoint} radius={7} pathOptions={{ color: "#db3d4f", fillColor: "#db3d4f", fillOpacity: 0.95, weight: 2 }}><Popup><div className="text-sm font-semibold">{dropLabel}</div></Popup></CircleMarker> : null}
+                          {pickupPoint ? <AdaptiveCircleMarker center={pickupPoint} baseRadius={4.6} minRadius={3.2} maxRadius={6.5} pathOptions={{ color: "#16a34a", fillColor: "#16a34a", fillOpacity: 0.95, weight: 2 }}><Popup><div className="text-sm font-semibold">{pickupLabel}</div></Popup></AdaptiveCircleMarker> : null}
+                          {dropPoint ? <AdaptiveCircleMarker center={dropPoint} baseRadius={4.6} minRadius={3.2} maxRadius={6.5} pathOptions={{ color: "#db3d4f", fillColor: "#db3d4f", fillOpacity: 0.95, weight: 2 }}><Popup><div className="text-sm font-semibold">{dropLabel}</div></Popup></AdaptiveCircleMarker> : null}
                         </MapContainer>
                       ) : (
                         <div className="grid h-full place-items-center bg-[var(--bg-soft)] px-6 text-center text-sm font-medium text-[var(--muted)]">MetroBus route corridors will appear here as buses go live and routes are mapped.</div>

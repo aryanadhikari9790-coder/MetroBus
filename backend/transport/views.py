@@ -313,13 +313,18 @@ class AdminBusManageView(APIView):
             return Response({"detail": "Seat layout must be within 1-30 rows and 1-8 columns."}, status=400)
 
         try:
-            capacity = int(capacity_raw) if capacity_raw not in (None, "") else layout_rows * layout_columns
+            # Default capacity: (rows-1) regular rows + back row (regular cols + 1)
+            back_row_seats = layout_columns + 1
+            default_capacity = (layout_rows - 1) * layout_columns + back_row_seats if layout_rows > 1 else back_row_seats
+            capacity = int(capacity_raw) if capacity_raw not in (None, "") else default_capacity
         except (TypeError, ValueError):
             return Response({"detail": "capacity must be a valid integer."}, status=400)
         if capacity < 1 or capacity > 200:
             return Response({"detail": "capacity must be between 1 and 200."}, status=400)
-        if capacity > layout_rows * layout_columns:
-            return Response({"detail": "Seat capacity cannot be greater than rows × columns."}, status=400)
+        # Max capacity = (rows-1) regular seats + back-row seats
+        max_capacity = (layout_rows - 1) * layout_columns + back_row_seats if layout_rows > 1 else back_row_seats
+        if capacity > max_capacity:
+            return Response({"detail": f"Seat capacity cannot exceed {max_capacity} for this layout ({layout_rows} rows × {layout_columns} cols + {back_row_seats} back-row seats)."}, status=400)
 
         model_year = None
         if model_year_raw not in (None, ""):
@@ -355,9 +360,9 @@ class AdminBusManageView(APIView):
             layout_rows=layout_rows,
             layout_columns=layout_columns,
             capacity=capacity,
-            exterior_photo=request.data.get("exterior_photo"),
-            interior_photo=request.data.get("interior_photo"),
-            seat_photo=request.data.get("seat_photo"),
+            exterior_photo=request.FILES.get("exterior_photo"),
+            interior_photo=request.FILES.get("interior_photo"),
+            seat_photo=request.FILES.get("seat_photo"),
             is_active=is_active,
             route=route,
             driver=driver,
@@ -503,8 +508,11 @@ class AdminBusDetailView(APIView):
             updated_fields.append("capacity")
             seat_layout_updated = True
 
-        if seat_layout_updated and next_capacity > next_rows * next_columns:
-            return Response({"detail": "Seat capacity cannot be greater than rows × columns."}, status=400)
+        if seat_layout_updated:
+            back_row_seats = next_columns + 1
+            max_cap = (next_rows - 1) * next_columns + back_row_seats if next_rows > 1 else back_row_seats
+            if next_capacity > max_cap:
+                return Response({"detail": f"Seat capacity cannot exceed {max_cap} for this layout."}, status=400)
         if "capacity" in request.data and next_capacity < bus.seats.count():
             return Response(
                 {"detail": "Reducing capacity below the existing seat count is not supported. Create a new bus if you need a smaller layout."},

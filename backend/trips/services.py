@@ -32,23 +32,70 @@ def _clean_points(points):
     return clean
 
 
-def _route_points_for_trip(trip):
-    route_path = _clean_points(getattr(trip.route, "path_points", None))
-    if len(route_path) >= 2:
-        return route_path
-
+def route_stops_for_trip(trip, route_stops=None):
     rows = (
-        RouteStop.objects.filter(route=trip.route)
-        .select_related("stop")
-        .order_by("stop_order")
+        list(route_stops)
+        if route_stops is not None
+        else list(
+            RouteStop.objects.filter(route=trip.route)
+            .select_related("stop")
+            .order_by("stop_order")
+        )
     )
-    return _clean_points(
+    start_order = getattr(trip, "start_stop_order", None)
+    end_order = getattr(trip, "end_stop_order", None)
+    if start_order:
+        rows = [row for row in rows if row.stop_order >= start_order]
+    if end_order:
+        rows = [row for row in rows if row.stop_order <= end_order]
+    return rows
+
+
+def _nearest_path_index(points, target):
+    if not points or not target:
+        return None
+    best_index = None
+    best_distance = float("inf")
+    for index, point in enumerate(points):
+        distance = math.dist(point, target)
+        if distance < best_distance:
+            best_distance = distance
+            best_index = index
+    return best_index
+
+
+def route_points_for_trip(trip, route_path=None, route_stops=None):
+    full_route_path = _clean_points(
+        route_path if route_path is not None else getattr(trip.route, "path_points", None)
+    )
+    segment_stops = route_stops_for_trip(trip, route_stops=route_stops)
+    segment_stop_points = _clean_points(
         [
             [row.stop.lat, row.stop.lng]
-            for row in rows
+            for row in segment_stops
             if row.stop and row.stop.lat is not None and row.stop.lng is not None
         ]
     )
+
+    if len(full_route_path) >= 2 and len(segment_stop_points) >= 2:
+        start_index = _nearest_path_index(full_route_path, segment_stop_points[0])
+        end_index = _nearest_path_index(full_route_path, segment_stop_points[-1])
+        if start_index is not None and end_index is not None and end_index > start_index:
+            sliced = full_route_path[start_index : end_index + 1]
+            if len(sliced) >= 2:
+                return sliced
+
+    if len(segment_stop_points) >= 2:
+        return segment_stop_points
+
+    if len(full_route_path) >= 2:
+        return full_route_path
+
+    return segment_stop_points
+
+
+def _route_points_for_trip(trip):
+    return route_points_for_trip(trip)
 
 
 def _snap_points_to_road(points):

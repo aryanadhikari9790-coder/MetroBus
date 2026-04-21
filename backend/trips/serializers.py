@@ -2,6 +2,7 @@ from rest_framework import serializers
 from accounts.models import User
 from transport.models import Route, Bus
 from .models import Trip, TripExpense, TripSchedule
+from .services import route_points_for_trip
 
 
 class TripScheduleSerializer(serializers.ModelSerializer):
@@ -47,7 +48,7 @@ class TripSerializer(serializers.ModelSerializer):
     waiting_for_end_confirmation = serializers.BooleanField(read_only=True)
     missing_start_confirmations = serializers.SerializerMethodField()
     missing_end_confirmations = serializers.SerializerMethodField()
-    route_path_points = serializers.JSONField(source="route.path_points", read_only=True)
+    route_path_points = serializers.SerializerMethodField()
     route_path_distance_km = serializers.DecimalField(source="route.path_distance_km", max_digits=8, decimal_places=2, read_only=True)
 
     def get_missing_start_confirmations(self, obj):
@@ -55,6 +56,9 @@ class TripSerializer(serializers.ModelSerializer):
 
     def get_missing_end_confirmations(self, obj):
         return obj.missing_end_confirmations()
+
+    def get_route_path_points(self, obj):
+        return route_points_for_trip(obj)
 
     class Meta:
         model = Trip
@@ -78,6 +82,8 @@ class TripSerializer(serializers.ModelSerializer):
             "waiting_for_end_confirmation",
             "missing_start_confirmations",
             "missing_end_confirmations",
+            "start_stop_order",
+            "end_stop_order",
             "route_path_points",
             "route_path_distance_km",
             "started_at",

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CircleMarker, MapContainer, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Polyline, Popup, TileLayer } from "react-leaflet";
 import { api } from "../../api";
 import { useAuth } from "../../AuthContext";
 import { clearToken } from "../../auth";
+import { AdaptiveCircleMarker, SmartMapViewport } from "../../components/maps/MobileMapTools";
 import MetroSeatBoard from "../../components/shared/MetroSeatBoard";
 import { snapRouteToRoad } from "../../lib/mapRoute";
 import { useTheme } from "../../ThemeContext";
@@ -68,19 +69,6 @@ function Icon({ name, className = "h-5 w-5" }) {
     case "stop": return <svg {...common}><rect x="7" y="7" width="10" height="10" rx="2" /></svg>;
     default: return <svg {...common}><circle cx="12" cy="12" r="8" /></svg>;
   }
-}
-
-function MapViewport({ points }) {
-  const map = useMap();
-  useEffect(() => {
-    if (!points.length) return;
-    if (points.length === 1) {
-      map.setView(points[0], 14);
-      return;
-    }
-    map.fitBounds(points, { padding: [26, 26] });
-  }, [map, points]);
-  return null;
 }
 
 function ActionButton({ children, tone = "primary", className = "", ...props }) {
@@ -238,6 +226,16 @@ export default function DriverHome() {
     if (liveBusPoint) points.push(liveBusPoint);
     return points;
   }, [displayLine, passengerRequests, liveBusPoint]);
+  const mapFitPoints = useMemo(() => {
+    const points = [...displayLine];
+    passengerRequests.forEach((item) => {
+      const lat = Number(item.marker_lat);
+      const lng = Number(item.marker_lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) points.push([lat, lng]);
+    });
+    return points.length ? points : mapPoints;
+  }, [displayLine, mapPoints, passengerRequests]);
+  const mapFitSignature = useMemo(() => JSON.stringify(mapFitPoints), [mapFitPoints]);
 
   const routeStart = routeStops[0]?.stop?.name || "--";
   const routeEnd = routeStops[routeStops.length - 1]?.stop?.name || "--";
@@ -458,6 +456,20 @@ export default function DriverHome() {
 
   useEffect(() => { loadTrip(trip?.id, { clearIfMissing: true }); }, [trip?.id, loadTrip]);
   useEffect(() => {
+    if (trip?.id) return;
+    const assignedRouteStops = dashboard?.assigned_route_stops || [];
+    if (assignedRouteStops.length) {
+      setRouteStops(assignedRouteStops);
+      setRoutePathPoints(dashboard?.assigned_route_path_points || []);
+      setPassengerRequests([]);
+      return;
+    }
+    setRouteStops([]);
+    setRoutePathPoints([]);
+    setRoadPolyline([]);
+    setPassengerRequests([]);
+  }, [dashboard?.assigned_route_path_points, dashboard?.assigned_route_stops, trip?.id]);
+  useEffect(() => {
     if (routeStops.length < 2) {
       setFromOrder("");
       setToOrder("");
@@ -507,12 +519,17 @@ export default function DriverHome() {
   };
 
   const startRide = async () => {
+    if (routeStops.length >= 2 && fromOrder && toOrder && Number(toOrder) <= Number(fromOrder)) {
+      setErr("Choose a destination that comes after the selected start point.");
+      return;
+    }
+    const segmentPayload = fromOrder && toOrder ? { from_stop_order: Number(fromOrder), to_stop_order: Number(toOrder) } : {};
     const payload = pendingTrip?.id
       ? { trip_id: pendingTrip.id }
       : assignedRouteReady
-        ? { route_id: assignedBus.route, bus_id: assignedBus.id, helper_id: assignedBus.helper }
+        ? { route_id: assignedBus.route, bus_id: assignedBus.id, helper_id: assignedBus.helper, ...segmentPayload }
         : selectedSchedule?.id
-          ? { schedule_id: selectedSchedule.id }
+          ? { schedule_id: selectedSchedule.id, ...segmentPayload }
           : null;
     if (!payload) {
       setErr("No ride is ready to start right now.");
@@ -572,7 +589,8 @@ export default function DriverHome() {
 
   const showAccept = !activeTrip && !pendingTrip && (assignedBusNeedsAcceptance || (!assignedRouteReady && selectedSchedule && !selectedSchedule.driver_assignment_accepted));
   const showStart = !activeTrip && !assignedBusNeedsAcceptance && (pendingTrip || assignedRouteReady || selectedSchedule?.driver_assignment_accepted);
-  const canStart = !assignedBusNeedsAcceptance && (pendingTrip ? !pendingTrip.driver_start_confirmed : Boolean(assignedRouteReady || selectedSchedule?.driver_assignment_accepted)) && checklistReady;
+  const hasValidStartSegment = !routeStops.length || !fromOrder || !toOrder || Number(toOrder) > Number(fromOrder);
+  const canStart = !assignedBusNeedsAcceptance && (pendingTrip ? !pendingTrip.driver_start_confirmed : Boolean(assignedRouteReady || selectedSchedule?.driver_assignment_accepted)) && checklistReady && hasValidStartSegment;
   const homeStatus = activeTrip
     ? "Trip Live"
     : pendingTrip
@@ -689,11 +707,11 @@ export default function DriverHome() {
             </div>
 
             <div className="relative h-[28rem] overflow-hidden bg-[var(--bg-soft)]">
-              <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+              <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom preferCanvas className="h-full w-full">
                 <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
-                <MapViewport points={mapPoints} />
+                <SmartMapViewport points={mapFitPoints} fitKey={mapFitSignature} maxZoom={13} padding={[44, 44]} />
                 {displayLine.length > 1 ? <Polyline positions={displayLine} pathOptions={{ color: theme["--primary"], weight: 6, opacity: 0.92 }} /> : null}
-                {liveBusPoint ? <CircleMarker center={liveBusPoint} radius={10} pathOptions={{ color: theme["--accent"], fillColor: theme["--accent"], fillOpacity: 1, weight: 3 }}><Popup>Dummy live bus location</Popup></CircleMarker> : null}
+                {liveBusPoint ? <AdaptiveCircleMarker center={liveBusPoint} baseRadius={5.8} minRadius={4.4} maxRadius={7.8} pathOptions={{ color: theme["--accent"], fillColor: theme["--accent"], fillOpacity: 1, weight: 3 }}><Popup>Dummy live bus location</Popup></AdaptiveCircleMarker> : null}
               </MapContainer>
               {!activeTrip ? (
                 <div className="absolute inset-0 flex items-center justify-center bg-[linear-gradient(180deg,rgba(255,247,240,0.24),rgba(255,247,240,0.72))] px-6 text-center backdrop-blur-[2px]">
@@ -933,6 +951,20 @@ export default function DriverHome() {
                       ))}
                     </div>
                   </div>
+                  {!pendingTrip && stopOptions.length >= 2 ? (
+                    <div className="rounded-[1.3rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-4">
+                      <p className="text-[0.66rem] font-black uppercase tracking-[0.18em] text-[var(--primary)]">Manual Start Segment</p>
+                      <p className="mt-2 text-xs leading-5 text-[var(--muted)]">Choose where this ride starts on the assigned route and where this trip should end.</p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <select value={fromOrder} onChange={(event) => setFromOrder(event.target.value)} className="w-full rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3.5 text-sm font-semibold text-[var(--text)] outline-none">
+                          {stopOptions.map((option) => <option key={`home-from-${option.value}`} value={option.value}>{option.label}</option>)}
+                        </select>
+                        <select value={toOrder} onChange={(event) => setToOrder(event.target.value)} className="w-full rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3.5 text-sm font-semibold text-[var(--text)] outline-none">
+                          {stopOptions.map((option) => <option key={`home-to-${option.value}`} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ) : null}
                   {showAccept ? <button type="button" onClick={acceptAssignment} disabled={busy} className={`${button} bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-[var(--shadow-strong)]`}><Icon name="assignment" className="h-4 w-4" />{busy ? "Accepting Assignment..." : assignedBusNeedsAcceptance ? "Accept Admin Assignment" : "Accept Assignment"}</button> : null}
                   {showStart ? <button type="button" onClick={startRide} disabled={busy || !canStart} className={`${button} bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-[var(--shadow-strong)]`}><Icon name="play" className="h-4 w-4" />{busy ? "Sending..." : startLabel}</button> : null}
                 </div>
@@ -965,25 +997,25 @@ export default function DriverHome() {
                   </div>
                 </div>
 
-                <MapContainer center={[28.2096, 83.9856]} zoom={13} scrollWheelZoom={false} className="h-full w-full">
+                <MapContainer center={[28.2096, 83.9856]} zoom={12} scrollWheelZoom preferCanvas className="h-full w-full">
                   <TileLayer attribution="&copy; OpenStreetMap &copy; CARTO" url={isDark ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"} />
-                  <MapViewport points={mapPoints} />
+                  <SmartMapViewport points={mapFitPoints} fitKey={mapFitSignature} maxZoom={13} padding={[44, 44]} />
                   {displayLine.length > 1 ? <Polyline positions={displayLine} pathOptions={{ color: theme["--primary"], weight: 5, opacity: 0.92 }} /> : null}
                   {routeStops.map((item, index) => {
                     const lat = Number(item.stop?.lat);
                     const lng = Number(item.stop?.lng);
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
                     const current = index === stopIndex && liveBusPoint;
-                    return <CircleMarker key={`${item.stop_order}-${item.stop?.name}`} center={[lat, lng]} radius={current ? 7 : 4} pathOptions={{ color: current ? theme["--accent"] : theme["--primary"], fillColor: current ? theme["--accent"] : "#ffffff", fillOpacity: 0.95, weight: 2 }}><Popup>Stop {item.stop_order}: {item.stop?.name}</Popup></CircleMarker>;
+                    return <AdaptiveCircleMarker key={`${item.stop_order}-${item.stop?.name}`} center={[lat, lng]} baseRadius={current ? 4.8 : 3.1} minRadius={current ? 4 : 2.3} maxRadius={current ? 6.5 : 4.6} pathOptions={{ color: current ? theme["--accent"] : theme["--primary"], fillColor: current ? theme["--accent"] : "#ffffff", fillOpacity: 0.95, weight: 2 }}><Popup>Stop {item.stop_order}: {item.stop?.name}</Popup></AdaptiveCircleMarker>;
                   })}
                   {passengerRequests.map((item) => {
                     const lat = Number(item.marker_lat);
                     const lng = Number(item.marker_lng);
                     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
                     const pickup = item.stage === "pickup";
-                    return <CircleMarker key={`${item.booking_id}-${item.stage}`} center={[lat, lng]} radius={8} pathOptions={{ color: pickup ? "#15803d" : "#b91c1c", fillColor: pickup ? "#22c55e" : "#ef4444", fillOpacity: 0.96, weight: 2 }}><Popup><div className="min-w-[12rem] space-y-1 text-sm"><p className="font-black">{item.passenger_name}</p><p className="font-semibold text-[var(--primary)]">{pickup ? "Pickup point" : "Drop point"}</p><p className="text-[var(--muted)]">{item.pickup_stop_name} to {item.destination_stop_name}</p></div></Popup></CircleMarker>;
+                    return <AdaptiveCircleMarker key={`${item.booking_id}-${item.stage}`} center={[lat, lng]} baseRadius={4.8} minRadius={3.4} maxRadius={6.8} pathOptions={{ color: pickup ? "#15803d" : "#b91c1c", fillColor: pickup ? "#22c55e" : "#ef4444", fillOpacity: 0.96, weight: 2 }}><Popup><div className="min-w-[12rem] space-y-1 text-sm"><p className="font-black">{item.passenger_name}</p><p className="font-semibold text-[var(--primary)]">{pickup ? "Pickup point" : "Drop point"}</p><p className="text-[var(--muted)]">{item.pickup_stop_name} to {item.destination_stop_name}</p></div></Popup></AdaptiveCircleMarker>;
                   })}
-                  {liveBusPoint ? <CircleMarker center={liveBusPoint} radius={10} pathOptions={{ color: theme["--accent"], fillColor: theme["--accent"], fillOpacity: 1, weight: 3 }}><Popup>Live bus location</Popup></CircleMarker> : null}
+                  {liveBusPoint ? <AdaptiveCircleMarker center={liveBusPoint} baseRadius={5.8} minRadius={4.4} maxRadius={7.8} pathOptions={{ color: theme["--accent"], fillColor: theme["--accent"], fillOpacity: 1, weight: 3 }}><Popup>Live bus location</Popup></AdaptiveCircleMarker> : null}
                 </MapContainer>
 
                 {!trip || !routeStops.length ? (

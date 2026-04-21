@@ -12,6 +12,8 @@ from .views import (
     AdminUserListCreateView,
     AdminUserReviewView,
     AdminUserDetailView,
+    NotificationListView,
+    NotificationMarkReadView,
 )
 
 
@@ -32,4 +34,6 @@ urlpatterns = [
     path("admin/users/", AdminUserListCreateView.as_view(), name="admin-users"),
     path("admin/users/<int:user_id>/", AdminUserDetailView.as_view(), name="admin-user-detail"),
     path("admin/users/<int:user_id>/review/", AdminUserReviewView.as_view(), name="admin-user-review"),
+    path("notifications/", NotificationListView.as_view(), name="notification-list"),
+    path("notifications/read/", NotificationMarkReadView.as_view(), name="notification-mark-read"),
 ]

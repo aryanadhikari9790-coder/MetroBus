@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.db.models.deletion import ProtectedError
-from django.db.models import Count, Sum, Q, Value, DecimalField, Avg
+from django.db.models import Count, Sum, Q, Value, DecimalField, Avg, F
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 from rest_framework import generics, permissions
@@ -16,7 +16,7 @@ from payments.models import PassengerWallet, Payment
 from payments.wallets import FREE_RIDE_REWARD_POINTS
 from transport.models import Route, Stop, Bus, Seat, RouteStop
 from trips.models import Trip
-from .models import AuthOTP
+from .models import AuthOTP, Notification
 from .otp_delivery import OTPDeliveryError, send_password_reset_otp, send_registration_otp
 from .serializers import (
     RegisterSerializer, MeSerializer, MeUpdateSerializer, RegisterOTPRequestSerializer,
@@ -269,6 +269,34 @@ class AdminDashboardView(APIView):
             .order_by("-day")[:7]
         )
 
+        payment_trend_rows = (
+            Payment.objects.filter(status=Payment.Status.SUCCESS)
+            .annotate(day=TruncDate("created_at"))
+            .values("day")
+            .annotate(total_revenue=Coalesce(Sum("amount"), money_zero))
+            .order_by("-day")[:7]
+        )
+
+        trips_today = Trip.objects.filter(started_at__date=timezone.localdate()).count()
+
+        ended_trips_with_duration = (
+            Trip.objects.filter(
+                status=Trip.Status.ENDED,
+                ended_at__isnull=False,
+                started_at__isnull=False,
+            ).annotate(
+                duration_seconds=F("ended_at") - F("started_at")
+            )
+        )
+        avg_trip_duration_minutes = 0
+        if ended_trips_with_duration.exists():
+            total_seconds = sum(
+                item.duration_seconds.total_seconds()
+                for item in ended_trips_with_duration[:100]
+            )
+            count = min(ended_trips_with_duration.count(), 100)
+            avg_trip_duration_minutes = round(total_seconds / max(count, 1) / 60, 1)
+
         live_trip_rows = []
         for trip in live_trips:
             latest_location = trip.locations.order_by("-recorded_at").first()
@@ -292,6 +320,44 @@ class AdminDashboardView(APIView):
                     ),
                 }
             )
+
+        # Staff analytics (Drivers and Helpers)
+        staff_analytics = {}
+        for staff_user in User.objects.filter(role__in=[User.Role.DRIVER, User.Role.HELPER]):
+            if staff_user.role == User.Role.DRIVER:
+                completed_trips = Trip.objects.filter(driver=staff_user, status=Trip.Status.ENDED).count()
+                all_trips = Trip.objects.filter(driver=staff_user).count()
+                revenue_handled = float(
+                    Payment.objects.filter(
+                        booking__trip__driver=staff_user,
+                        status=Payment.Status.SUCCESS,
+                    ).aggregate(total=Coalesce(Sum("amount"), money_zero))["total"]
+                )
+            else:
+                completed_trips = Trip.objects.filter(helper=staff_user, status=Trip.Status.ENDED).count()
+                all_trips = Trip.objects.filter(helper=staff_user).count()
+                revenue_handled = float(
+                    Payment.objects.filter(
+                        booking__trip__helper=staff_user,
+                        status=Payment.Status.SUCCESS,
+                    ).aggregate(total=Coalesce(Sum("amount"), money_zero))["total"]
+                )
+            # Compute reviews for this staff member depending on role
+            if staff_user.role == User.Role.DRIVER:
+                review_agg = BookingReview.objects.filter(
+                    booking__trip__driver=staff_user
+                ).aggregate(total=Count("id"), avg_rating=Avg("rating"))
+            else:
+                review_agg = BookingReview.objects.filter(
+                    booking__trip__helper=staff_user
+                ).aggregate(total=Count("id"), avg_rating=Avg("rating"))
+            staff_analytics[staff_user.id] = {
+                "completed_trips": completed_trips,
+                "total_trips": all_trips,
+                "revenue_handled": revenue_handled,
+                "reviews_total": review_agg["total"] or 0,
+                "avg_rating": round(float(review_agg["avg_rating"] or 0), 2),
+            }
 
         route_analytics = []
         for route in Route.objects.prefetch_related("route_stops").order_by("city", "name")[:40]:
@@ -418,6 +484,8 @@ class AdminDashboardView(APIView):
                     "live": Trip.objects.filter(status=Trip.Status.LIVE).count(),
                     "ended": Trip.objects.filter(status=Trip.Status.ENDED).count(),
                     "not_started": Trip.objects.filter(status=Trip.Status.NOT_STARTED).count(),
+                    "today": trips_today,
+                    "avg_duration_minutes": avg_trip_duration_minutes,
                 },
                 "bookings": {
                     "total": Booking.objects.count(),
@@ -557,9 +625,18 @@ class AdminDashboardView(APIView):
                 }
                 for row in reversed(list(review_trend_rows))
             ],
+            "payment_trend": [
+                {
+                    "day": row["day"],
+                    "label": row["day"].strftime("%b %d") if row["day"] else "--",
+                    "revenue": float(row["total_revenue"]),
+                }
+                for row in reversed(list(payment_trend_rows))
+            ],
             "station_analytics": station_analytics,
             "route_analytics": route_analytics,
             "bus_analytics": bus_analytics,
+            "staff_analytics": staff_analytics,
         }
         return Response(data)
 
@@ -678,3 +755,51 @@ class AdminUserDetailView(APIView):
             )
 
         return Response({"message": f"Deleted {full_name}."}, status=200)
+
+
+class NotificationListView(APIView):
+    """Returns the 40 most recent notifications for the authenticated user."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        qs = (
+            Notification.objects
+            .filter(user=request.user)
+            .order_by("-created_at")[:40]
+        )
+        unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({
+            "unread_count": unread_count,
+            "notifications": [
+                {
+                    "id": n.id,
+                    "kind": n.kind,
+                    "title": n.title,
+                    "message": n.message,
+                    "is_read": n.is_read,
+                    "related_booking_id": n.related_booking_id,
+                    "related_trip_id": n.related_trip_id,
+                    "created_at": n.created_at,
+                }
+                for n in qs
+            ],
+        })
+
+
+class NotificationMarkReadView(APIView):
+    """Mark one or all notifications as read.
+    POST {} → mark all as read.
+    POST {id: 42} → mark notification #42 as read.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        notification_id = request.data.get("id")
+        if notification_id:
+            updated = Notification.objects.filter(
+                id=notification_id, user=request.user
+            ).update(is_read=True)
+            return Response({"marked": updated})
+        # Mark all
+        updated = Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({"marked": updated})

@@ -58,6 +58,9 @@ class Trip(models.Model):
     driver_end_confirmed_at = models.DateTimeField(null=True, blank=True)
     helper_end_confirmed_at = models.DateTimeField(null=True, blank=True)
 
+    start_stop_order = models.PositiveIntegerField(null=True, blank=True)
+    end_stop_order = models.PositiveIntegerField(null=True, blank=True)
+
     started_at = models.DateTimeField(null=True, blank=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 

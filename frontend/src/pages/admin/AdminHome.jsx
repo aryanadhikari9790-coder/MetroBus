@@ -57,6 +57,13 @@ const DARK = {
   "--chart-grid": "rgba(255,255,255,0.08)",
 };
 
+
+const LAYOUT_PRESETS = [
+  { id: "2x2", label: "2x2", left: 2, right: 2, description: "Standard comfort" },
+  { id: "2x1", label: "2x1", left: 2, right: 1, description: "Executive style" },
+  { id: "1x1", label: "1x1", left: 1, right: 1, description: "Micro bus" }
+];
+
 function GlassCard({ children, className = "" }) { return <div className={`rounded-[1.6rem] border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] backdrop-blur-xl ${className}`}>{children}</div>; }
 function Pill({ children, color = "slate" }) {
   const tones = {
@@ -99,6 +106,150 @@ function FileField({ label, onChange, file, accept = "image/*" }) {
 }
 function SelectField({ label, value, onChange, options }) {
   return <div><label className="mb-1.5 block text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">{label}</label><select value={value} onChange={e => onChange(e.target.value)} className="w-full rounded-[1rem] border border-[var(--border)] bg-[var(--surface-strong)] px-4 py-3 text-sm font-semibold text-[var(--text)] outline-none transition focus:border-[var(--primary)]">{options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>;
+}
+
+// Bus-style seat layout configurator  shows real bus seat grid with aisle + back row with no gap
+function BusSeatLayoutConfigurator({ rows, onRowsChange, preset, onPresetChange, disabledSeats, onToggleSeat, onReset }) {
+  const presetObj = LAYOUT_PRESETS.find(p => p.id === preset) || LAYOUT_PRESETS[0];
+  const { left, right } = presetObj;
+  const totalCols = left + right;
+  const backRowSeats = totalCols + 1; // Last row fills the aisle gap
+
+  const regularRows = Math.max(0, rows - 1);
+  const totalSeats = rows === 1 ? backRowSeats : regularRows * totalCols + backRowSeats;
+  const activeSeats = totalSeats - disabledSeats.size;
+
+  // Row-major numbering to match backend labels (A1, A2, A3, A4...)
+  const getSeatNum = (row, col, isLastRow = false) => {
+    if (isLastRow) {
+      return (regularRows * totalCols) + col + 1;
+    }
+    return (row * totalCols) + col + 1;
+  };
+
+  const SeatBtn = ({ num, isBack = false }) => {
+    const disabled = disabledSeats.has(num);
+    return (
+      <button
+        type="button"
+        title={`Seat ${num}${isBack ? " (back row)" : ""}`}
+        onClick={() => onToggleSeat(num)}
+        className={`flex h-10 w-10 items-center justify-center rounded-[0.6rem] border text-[0.65rem] font-black transition ${
+          disabled
+            ? "border-dashed border-[var(--danger)] bg-[rgba(219,61,79,0.08)] text-[var(--danger)] opacity-60"
+            : isBack
+              ? "border-[var(--primary)] bg-[var(--accent-soft)] text-[var(--primary)] shadow-sm hover:bg-[var(--primary)] hover:text-white"
+              : "border-[var(--border)] bg-white text-[var(--text)] shadow-sm hover:border-[var(--primary)] hover:bg-[var(--accent-soft)]"
+        }`}
+      >
+        {disabled ? "?" : num}
+      </button>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Preset selector */}
+      <div>
+        <p className="mb-2 text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Seat Arrangement</p>
+        <div className="flex flex-wrap gap-2">
+          {LAYOUT_PRESETS.map(p => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onPresetChange(p.id)}
+              className={`rounded-[0.9rem] border px-4 py-2 text-xs font-black transition ${
+                preset === p.id
+                  ? "border-transparent bg-[linear-gradient(135deg,var(--primary),var(--accent))] text-white shadow-md"
+                  : "border-[var(--border)] bg-[var(--surface-strong)] text-[var(--text)] hover:border-[var(--primary)]"
+              }`}
+            >
+              {p.label}
+              <span className="ml-1.5 text-[0.6rem] opacity-75">{p.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Row count */}
+      <div className="flex items-center gap-4">
+        <div className="flex-1">
+          <p className="mb-2 text-[0.64rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Rows (incl. back row)</p>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => onRowsChange(Math.max(1, rows - 1))} className="grid h-9 w-9 place-items-center rounded-[0.8rem] border border-[var(--border)] bg-[var(--surface-strong)] text-lg font-black text-[var(--primary)]">-</button>
+            <span className="min-w-[2.5rem] text-center text-2xl font-black text-[var(--text)]">{rows}</span>
+            <button type="button" onClick={() => onRowsChange(Math.min(20, rows + 1))} className="grid h-9 w-9 place-items-center rounded-[0.8rem] border border-[var(--border)] bg-[var(--surface-strong)] text-lg font-black text-[var(--primary)]">+</button>
+          </div>
+        </div>
+        <div className="flex-1 rounded-[1rem] border border-[var(--border)] bg-[var(--accent-soft)] px-4 py-3 text-center">
+          <p className="text-[0.62rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Active Seats</p>
+          <p className="mt-1 text-2xl font-black text-[var(--primary)]">{activeSeats}</p>
+          <p className="text-[0.62rem] text-[var(--muted)]">{regularRows} reg. rows  {totalCols} + {backRowSeats} back</p>
+        </div>
+      </div>
+
+      {/* Tip */}
+      <p className="text-[0.66rem] text-[var(--muted)]">Click any seat to disable it. The last row has an extra seat in the aisle space.</p>
+
+      {/* Bus seat grid */}
+      <div className="overflow-x-auto rounded-[1.2rem] border border-[var(--border)] bg-[var(--surface-strong)] p-4">
+        {/* Column headers (visual guides for regular rows) */}
+        <div className="flex items-center gap-1 mb-2">
+          {Array.from({ length: left }, (_, col) => (
+            <div key={`lh${col}`} className="w-10 text-center text-[0.55rem] font-black uppercase tracking-wider text-[var(--muted)]">{String.fromCharCode(65 + col)}</div>
+          ))}
+          <div className="w-6" />{/* aisle */}
+          {Array.from({ length: right }, (_, col) => (
+            <div key={`rh${col}`} className="w-10 text-center text-[0.55rem] font-black uppercase tracking-wider text-[var(--muted)]">{String.fromCharCode(65 + left + col)}</div>
+          ))}
+          <div className="ml-1 w-5" />
+        </div>
+
+        {/* All rows rendered in a single sequence */}
+        {Array.from({ length: rows }, (_, rowIdx) => {
+          const isLast = rowIdx === rows - 1;
+          
+          if (!isLast) {
+            return (
+              <div key={rowIdx} className="flex items-center gap-1 mb-1">
+                {/* Left side */}
+                {Array.from({ length: left }, (_, colIdx) => (
+                  <SeatBtn key={`l-${rowIdx}-${colIdx}`} num={getSeatNum(rowIdx, colIdx)} />
+                ))}
+                {/* Aisle */}
+                <div className="flex h-10 w-6 items-center justify-center text-[0.55rem] text-[var(--muted)]">
+                  {rowIdx === Math.floor(regularRows / 2) ? "?" : ""}
+                </div>
+                {/* Right side */}
+                {Array.from({ length: right }, (_, colIdx) => (
+                  <SeatBtn key={`r-${rowIdx}-${colIdx}`} num={getSeatNum(rowIdx, left + colIdx)} />
+                ))}
+                {/* Row label */}
+                <div className="ml-1 w-5 text-center text-[0.55rem] font-black text-[var(--muted)]">{rowIdx + 1}</div>
+              </div>
+            );
+          } else {
+            // Last row  no aisle, extra seat
+            return (
+              <div key={rowIdx} className="flex items-center gap-1">
+                {Array.from({ length: backRowSeats }, (_, i) => (
+                  <SeatBtn key={`back-${i}`} num={getSeatNum(rowIdx, i, true)} isBack />
+                ))}
+                <div className="ml-1 w-5 text-center text-[0.55rem] font-black text-[var(--primary)]">{rows}</div>
+              </div>
+            );
+          }
+        })}
+      </div>
+
+      {/* Reset */}
+      {disabledSeats.size > 0 && (
+        <button type="button" onClick={onReset} className="text-xs font-black text-[var(--primary)] underline underline-offset-2">
+          Reset  re-enable all {disabledSeats.size} disabled seat{disabledSeats.size !== 1 ? "s" : ""}
+        </button>
+      )}
+    </div>
+  );
 }
 function Icon({ name, className = "h-5 w-5" }) {
   const common = { className, fill: "none", stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round", strokeLinejoin: "round", viewBox: "0 0 24 24" };
@@ -279,6 +430,52 @@ function SimpleDonutChart({ items }) {
   );
 }
 
+function StarRatingBars({ counts }) {
+  // counts: {1:n, 2:n, 3:n, 4:n, 5:n}
+  const max = Math.max(...Object.values(counts || {}), 1);
+  const colors = { 5: "var(--success)", 4: "#4ade80", 3: "var(--warning)", 2: "var(--accent)", 1: "var(--danger)" };
+  return (
+    <div className="space-y-2">
+      {[5, 4, 3, 2, 1].map((star) => {
+        const count = counts?.[star] || 0;
+        const pct = Math.max(4, Math.round((count / max) * 100));
+        return (
+          <div key={star} className="flex items-center gap-3">
+            <span className="w-8 text-right text-xs font-black text-[var(--muted)]">{star}★</span>
+            <div className="h-2 flex-1 rounded-full bg-[var(--card-alt)]">
+              <div className="h-2 rounded-full" style={{ width: `${pct}%`, background: colors[star] }} />
+            </div>
+            <span className="w-6 text-xs font-semibold text-[var(--muted)]">{count}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MiniStackedBar({ segments }) {
+  // segments: [{label, value, color}]
+  const total = segments.reduce((s, seg) => s + (seg.value || 0), 0) || 1;
+  return (
+    <div className="space-y-2">
+      <div className="flex h-4 w-full overflow-hidden rounded-full">
+        {segments.map((seg) => (
+          <div key={seg.label} style={{ width: `${(seg.value / total) * 100}%`, background: seg.color }} title={`${seg.label}: ${seg.value}`} />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {segments.map((seg) => (
+          <div key={seg.label} className="flex items-center gap-1.5 text-xs">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: seg.color }} />
+            <span className="font-semibold text-[var(--muted)]">{seg.label}</span>
+            <span className="font-black text-[var(--text)]">{seg.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SeatLayoutPreview({ rows = 0, columns = 0, capacity = 0 }) {
   const totalCells = Math.max(0, Number(rows || 0) * Number(columns || 0));
   return (
@@ -321,7 +518,7 @@ const ADMIN_SECTIONS = [
   { id: "buses", label: "Buses", icon: "buses", description: "Fleet setup and seat plans" },
   { id: "stops", label: "Stations / Stops", icon: "stops", description: "Map stops and station points" },
   { id: "routes", label: "Routes", icon: "routes", description: "Route builder and path layout" },
-  { id: "assignments", label: "Assignments", icon: "assignments", description: "Bus, driver, helper scheduling" },
+  { id: "assignments", label: "Assignments", icon: "assignments", description: "Permanent bus, route & staff setup" },
   { id: "analytics", label: "Analytics", icon: "analytics", description: "Revenue and occupancy insights" },
   { id: "reports", label: "Reports", icon: "reports", description: "Exportable business summaries" },
   { id: "settings", label: "Settings", icon: "settings", description: "Admin profile and preferences" },
@@ -351,6 +548,7 @@ export default function AdminHome() {
   const [err, setErr]                       = useState("");
   const [msg, setMsg]                       = useState("");
   const [confirmModal, setConfirmModal]     = useState(null);
+  const [drillEntity, setDrillEntity]       = useState(null); // { kind: "bus"|"route", data }
   const [adminSearch, setAdminSearch]       = useState("");
   const [quickOpen, setQuickOpen]           = useState(false);
   const [profileOpen, setProfileOpen]       = useState(false);
@@ -407,6 +605,9 @@ export default function AdminHome() {
   const [busSeatPhoto, setBusSeatPhoto]     = useState(null);
   const [busMgmtBusy, setBusMgmtBusy]       = useState(false);
   const [editingBusId, setEditingBusId]     = useState(null);
+  const [busLayoutPreset, setBusLayoutPreset] = useState("2x2"); // preset id
+  const [busLayoutRows, setBusLayoutRows]   = useState(9);       // numeric
+  const [busDisabledSeats, setBusDisabledSeats] = useState(new Set()); // seat numbers disabled
   const [busDeleteBusyId, setBusDeleteBusyId] = useState(null);
   const [assignBusId, setAssignBusId]       = useState("");
   const [assignRouteId, setAssignRouteId]   = useState("");
@@ -497,6 +698,7 @@ export default function AdminHome() {
   }, [activeSection, editingUserId, uRole]);
   const overview = dashboard?.overview; const roleCounts = overview?.role_counts || EMPTY_OBJ; const transport = overview?.transport || EMPTY_OBJ; const trips = overview?.trips || EMPTY_OBJ; const bookings = overview?.bookings || EMPTY_OBJ; const rideOps = overview?.ride_ops || EMPTY_OBJ; const payments = overview?.payments || EMPTY_OBJ; const wallets = overview?.wallets || EMPTY_OBJ; const reviews = overview?.reviews || EMPTY_OBJ;
   const paymentRows = useMemo(() => Object.entries(payments?.methods || {}).map(([method, stats]) => ({ method, total: stats.total || 0, success: stats.success || 0, rate: stats.total ? Math.round((stats.success / stats.total) * 100) : 0 })), [payments]);
+  const paymentTrend = dashboard?.payment_trend || [];
   const recentBookingFlow = dashboard?.recent_booking_flow || [];
   const rewardLeaderboard = dashboard?.reward_leaderboard || [];
   const recentReviews = dashboard?.recent_reviews || [];
@@ -504,6 +706,7 @@ export default function AdminHome() {
   const stationAnalytics = dashboard?.station_analytics || [];
   const routeAnalytics = dashboard?.route_analytics || [];
   const busAnalytics = dashboard?.bus_analytics || [];
+  const staffAnalytics = dashboard?.staff_analytics || {};
   const staffUsers = useMemo(() => userList.filter(item => item.role !== "PASSENGER"), [userList]);
   const selectedStops = useMemo(() => selectedStopIds.map(id => builderStops.find(s => s.id === id)).filter(Boolean), [builderStops, selectedStopIds]);
   const selPts = useMemo(() => selectedStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)), [selectedStops]);
@@ -513,11 +716,14 @@ export default function AdminHome() {
   const dispPts = roadPolyline.length > 1 ? roadPolyline : routeAnchorPoints;
   const mapPts  = useMemo(() => dispPts.length > 0 ? dispPts : builderStops.map(s => [Number(s.lat), Number(s.lng)]).filter(([la, lo]) => isFinite(la) && isFinite(lo)).slice(0, 12), [builderStops, dispPts]);
   const busCapacityPreview = useMemo(() => {
-    const rows = parseInt(busRows, 10);
-    const cols = parseInt(busCols, 10);
-    if (isNaN(rows) || isNaN(cols) || rows < 1 || cols < 1) return 0;
-    return rows * cols;
-  }, [busCols, busRows]);
+    const presetObj = LAYOUT_PRESETS.find(p => p.id === busLayoutPreset) || LAYOUT_PRESETS[0];
+    const totalCols = presetObj.left + presetObj.right;
+    const backRowSeats = totalCols + 1;
+    const regularRows = Math.max(0, busLayoutRows - 1);
+    // (rows-1) regular seats + backRowSeats always at the back
+    const totalSeats = busLayoutRows === 1 ? backRowSeats : regularRows * totalCols + backRowSeats;
+    return Math.max(0, totalSeats - busDisabledSeats.size);
+  }, [busLayoutPreset, busLayoutRows, busDisabledSeats]);
   const searchQuery = adminSearch.trim().toLowerCase();
   const matchesSearch = (...values) => !searchQuery || values.some((value) => String(value || "").toLowerCase().includes(searchQuery));
   const driverUsers = useMemo(() => userList.filter((item) => item.role === "DRIVER"), [userList]);
@@ -636,6 +842,9 @@ export default function AdminHome() {
     setBusExteriorPhoto(null);
     setBusInteriorPhoto(null);
     setBusSeatPhoto(null);
+    setBusLayoutPreset("2x2");
+    setBusLayoutRows(9);
+    setBusDisabledSeats(new Set());
   };
   const resetUserForm = () => {
     setEditingUserId(null);
@@ -851,13 +1060,15 @@ export default function AdminHome() {
     if (!busPlate.trim()) { notify("Enter a plate number.", "error"); return; }
     if (!busName.trim()) { notify("Enter a bus name for identification.", "error"); return; }
     if (!busCapacityPreview || busCapacityPreview > 200) { notify("Seat layout must resolve to 1-200 seats.", "error"); return; }
+    const presetObj = LAYOUT_PRESETS.find(p => p.id === busLayoutPreset) || LAYOUT_PRESETS[0];
+    const layoutCols = presetObj.left + presetObj.right; // regular cols (back row is always 5)
     setBusMgmtBusy(true);
     try {
       const formData = new FormData();
       formData.append("display_name", busName.trim());
       formData.append("plate_number", busPlate.trim());
-      formData.append("layout_rows", busRows);
-      formData.append("layout_columns", busCols);
+      formData.append("layout_rows", String(busLayoutRows));
+      formData.append("layout_columns", String(layoutCols));
       formData.append("capacity", String(busCapacityPreview));
       formData.append("condition", busCondition);
       formData.append("is_active", String(busActive));
@@ -887,6 +1098,12 @@ export default function AdminHome() {
     setBusExteriorPhoto(null);
     setBusInteriorPhoto(null);
     setBusSeatPhoto(null);
+    // Restore layout preset based on existing column count
+    const cols = bus.layout_columns || 4;
+    const preset = LAYOUT_PRESETS.find(p => (p.left + p.right) === cols) || LAYOUT_PRESETS[0];
+    setBusLayoutPreset(preset.id);
+    setBusLayoutRows(bus.layout_rows || 9);
+    setBusDisabledSeats(new Set());
     navigate("/admin/buses");
   };
 
@@ -1164,64 +1381,85 @@ export default function AdminHome() {
     </GlassCard>
   );
 
-  const renderUserPreview = (staffUser, role) => (
-    <GlassCard className="h-full">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <div>
-          <SLabel>{role} Preview</SLabel>
-          <p className="text-xl font-black text-[var(--text)]">{staffUser ? staffUser.full_name : `Select a ${role.toLowerCase()}`}</p>
-        </div>
-        {staffUser ? <Pill color={staffUser.is_active ? "emerald" : "slate"}>{staffUser.is_active ? "Active" : "Inactive"}</Pill> : null}
-      </div>
-      {!staffUser ? (
-        <p className="text-sm text-[var(--muted)]">Choose a {role.toLowerCase()} from the table to view their profile, verification state, and admin actions.</p>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-start gap-4">
-            {staffUser.official_photo_url ? (
-              <img src={staffUser.official_photo_url} alt={staffUser.full_name} className="h-20 w-20 rounded-[1.4rem] object-cover" />
-            ) : (
-              <div className="flex h-20 w-20 items-center justify-center rounded-[1.4rem] bg-[var(--accent-soft)] text-xl font-black text-[var(--primary)]">{avatarInitials(staffUser.full_name)}</div>
-            )}
-            <div className="min-w-0 space-y-1">
-              <p className="text-sm font-bold text-[var(--text)]">{staffUser.phone}</p>
-              <p className="break-all text-sm text-[var(--muted)]">{staffUser.email || "No email provided"}</p>
-              <p className="text-sm text-[var(--muted)]">{staffUser.address || "No address recorded"}</p>
-              {staffUser.license_number ? <p className="text-sm font-semibold text-[var(--text)]">License: {staffUser.license_number}</p> : null}
-            </div>
+  const renderUserPreview = (staffUser, role) => {
+    const perf = staffUser ? (staffAnalytics[staffUser.id] || null) : null;
+    return (
+      <GlassCard className="h-full">
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <SLabel>{role} Preview</SLabel>
+            <p className="text-xl font-black text-[var(--text)]">{staffUser ? staffUser.full_name : `Select a ${role.toLowerCase()}`}</p>
           </div>
-          {(staffUser.official_photo_url || staffUser.license_photo_url) ? (
-            <div className="grid gap-3 xl:grid-cols-2">
-              {staffUser.official_photo_url ? <img src={staffUser.official_photo_url} alt={`${staffUser.full_name} profile`} className="h-36 w-full rounded-[1.2rem] object-cover" /> : <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>No official photo</div>}
-              {role === "Driver" ? (
-                staffUser.license_photo_url ? <img src={staffUser.license_photo_url} alt={`${staffUser.full_name} license`} className="h-36 w-full rounded-[1.2rem] object-cover" /> : <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>No license photo</div>
+          {staffUser ? <Pill color={staffUser.is_active ? "emerald" : "slate"}>{staffUser.is_active ? "Active" : "Inactive"}</Pill> : null}
+        </div>
+        {!staffUser ? (
+          <p className="text-sm text-[var(--muted)]">Choose a {role.toLowerCase()} from the table to view their profile, verification state, and admin actions.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-start gap-4">
+              {staffUser.official_photo_url ? (
+                <img src={staffUser.official_photo_url} alt={staffUser.full_name} className="h-20 w-20 rounded-[1.4rem] object-cover" />
               ) : (
-                <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>License not required</div>
+                <div className="flex h-20 w-20 items-center justify-center rounded-[1.4rem] bg-[var(--accent-soft)] text-xl font-black text-[var(--primary)]">{avatarInitials(staffUser.full_name)}</div>
               )}
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-bold text-[var(--text)]">{staffUser.phone}</p>
+                <p className="break-all text-sm text-[var(--muted)]">{staffUser.email || "No email provided"}</p>
+                <p className="text-sm text-[var(--muted)]">{staffUser.address || "No address recorded"}</p>
+                {staffUser.license_number ? <p className="text-sm font-semibold text-[var(--text)]">License: {staffUser.license_number}</p> : null}
+              </div>
             </div>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            {staffUser.official_photo_url ? (
-              <Btn tone="ghost" onClick={() => reviewUser(staffUser, { official_photo_verified: !staffUser.official_photo_verified })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
-                {staffUser.official_photo_verified ? "Revoke photo" : "Verify photo"}
-              </Btn>
+            {perf ? (
+              <div className="grid gap-3 xl:grid-cols-3">
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Trips Completed</p>
+                  <p className="mt-2 text-2xl font-black text-[var(--text)]">{perf.completed_trips}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">{perf.total_trips} total trips</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">{role === "Helper" ? "Revenue Managed" : "Revenue on Bus"}</p>
+                  <p className="mt-2 text-2xl font-black text-[var(--success)]">{fmtMoney(perf.revenue_handled)}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">successful payments</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Avg Rating</p>
+                  <p className="mt-2 text-2xl font-black text-[var(--text)]">{perf.reviews_total ? `${Number(perf.avg_rating).toFixed(1)}/5` : "--"}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">{perf.reviews_total} passenger reviews</p>
+                </div>
+              </div>
             ) : null}
-            {role === "Driver" && staffUser.license_photo_url ? (
-              <Btn tone="ghost" onClick={() => reviewUser(staffUser, { license_verified: !staffUser.license_verified })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
-                {staffUser.license_verified ? "Revoke license" : "Verify license"}
-              </Btn>
+            {(staffUser.official_photo_url || staffUser.license_photo_url) ? (
+              <div className="grid gap-3 xl:grid-cols-2">
+                {staffUser.official_photo_url ? <img src={staffUser.official_photo_url} alt={`${staffUser.full_name} profile`} className="h-36 w-full rounded-[1.2rem] object-cover" /> : <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>No official photo</div>}
+                {role === "Driver" ? (
+                  staffUser.license_photo_url ? <img src={staffUser.license_photo_url} alt={`${staffUser.full_name} license`} className="h-36 w-full rounded-[1.2rem] object-cover" /> : <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>No license photo</div>
+                ) : (
+                  <div className={`flex h-36 items-center justify-center rounded-[1.2rem] border ${rowBg} text-sm text-[var(--muted)]`}>License not required</div>
+                )}
+              </div>
             ) : null}
-            {user?.id !== staffUser.id ? (
-              <Btn tone={staffUser.is_active ? "ghost" : "success"} onClick={() => reviewUser(staffUser, { is_active: !staffUser.is_active })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
-                {staffUser.is_active ? "Set inactive" : "Activate account"}
-              </Btn>
-            ) : <Pill color="indigo">Current admin</Pill>}
+            <div className="flex flex-wrap gap-2">
+              {staffUser.official_photo_url ? (
+                <Btn tone="ghost" onClick={() => reviewUser(staffUser, { official_photo_verified: !staffUser.official_photo_verified })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
+                  {staffUser.official_photo_verified ? "Revoke photo" : "Verify photo"}
+                </Btn>
+              ) : null}
+              {role === "Driver" && staffUser.license_photo_url ? (
+                <Btn tone="ghost" onClick={() => reviewUser(staffUser, { license_verified: !staffUser.license_verified })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
+                  {staffUser.license_verified ? "Revoke license" : "Verify license"}
+                </Btn>
+              ) : null}
+              {user?.id !== staffUser.id ? (
+                <Btn tone={staffUser.is_active ? "ghost" : "success"} onClick={() => reviewUser(staffUser, { is_active: !staffUser.is_active })} disabled={reviewBusyId === staffUser.id} className="!px-4 !py-2 text-xs">
+                  {staffUser.is_active ? "Set inactive" : "Activate account"}
+                </Btn>
+              ) : <Pill color="indigo">Current admin</Pill>}
+            </div>
           </div>
-        </div>
-      )}
-    </GlassCard>
-  );
-
+        )}
+      </GlassCard>
+    );
+  };
   const renderSectionContent = () => {
     if (activeSection === "dashboard") {
       return (
@@ -1301,24 +1539,31 @@ export default function AdminHome() {
             <GlassCard>
               <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <SLabel>Upcoming Assignments</SLabel>
-                  <p className="text-xl font-black text-[var(--text)]">Next planned departures</p>
+                  <SLabel>Fleet Assignment Status</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Permanent bus assignments</p>
                 </div>
-                <Pill color="amber">{upcomingSchedules.length} scheduled</Pill>
+                <Pill color={assignmentHealth.missingStaff > 0 ? "amber" : "emerald"}>{busList.length} buses</Pill>
               </div>
-              <div className="space-y-3">
-                {!upcomingSchedules.length ? <p className="text-sm text-[var(--muted)]">No planned assignments yet.</p> : upcomingSchedules.map((schedule) => (
-                  <div key={schedule.id} className={`rounded-[1.1rem] border px-4 py-4 ${rowBg}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-bold text-[var(--text)]">{schedule.route_name}</p>
-                        <p className="mt-1 text-xs text-[var(--muted)]">{schedule.bus_plate} | {schedule.driver_name || "--"} | {schedule.helper_name || "--"}</p>
-                      </div>
-                      <Pill color="amber">{schedule.status}</Pill>
-                    </div>
-                    <p className="mt-3 text-xs text-[var(--muted)]">Starts {fmt(schedule.scheduled_start_time)}</p>
-                  </div>
-                ))}
+              <div className="grid gap-3">
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Fully assigned</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--success)]">{assignmentHealth.fullyAssigned}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">Route + driver + helper all set</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Missing route</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--warning)]">{assignmentHealth.missingRoute}</p>
+                </div>
+                <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
+                  <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Missing staff</p>
+                  <p className="mt-2 text-3xl font-black text-[var(--danger)]">{assignmentHealth.missingStaff}</p>
+                  <p className="mt-1 text-xs text-[var(--muted)]">Driver or helper not assigned</p>
+                </div>
+                {assignmentHealth.missingStaff > 0 || assignmentHealth.missingRoute > 0 ? (
+                  <Btn tone="ghost" onClick={() => navigate("/admin/assignments")} className="!py-3 text-xs">
+                    Fix assignments →
+                  </Btn>
+                ) : null}
               </div>
             </GlassCard>
           </div>
@@ -1434,9 +1679,10 @@ export default function AdminHome() {
                       </div>
                       <Pill color={trip.deviation_mode ? "amber" : "emerald"}>{trip.deviation_mode ? "Deviation" : "On route"}</Pill>
                     </div>
-                    <div className="mt-3 grid gap-2 xl:grid-cols-2">
+                    <div className="mt-3 grid gap-2 xl:grid-cols-3">
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Started {fmt(trip.started_at)}</div>
-                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS data yet"}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>{trip.latest_location ? `GPS ${Number(trip.latest_location.lat).toFixed(4)}, ${Number(trip.latest_location.lng).toFixed(4)}` : "No GPS yet"}</div>
+                      <div className={`rounded-[0.9rem] border px-3 py-3 text-xs font-black text-[var(--accent)] ${rowBg}`}>{rideOps.onboard > 0 ? `${rideOps.onboard} onboard` : "Boarding"}</div>
                     </div>
                   </div>
                 ))}
@@ -1489,14 +1735,18 @@ export default function AdminHome() {
                 <InputField label="Make Year" value={busYear} onChange={setBusYear} placeholder="2024" type="number" />
                 <SelectField label="Condition" value={busCondition} onChange={setBusCondition} options={[{ value: "NEW", label: "New" }, { value: "NORMAL", label: "Normal" }, { value: "OLD", label: "Old" }]} />
               </div>
-              <div className="grid gap-4 xl:grid-cols-2">
-                <InputField label="Seat Rows" value={busRows} onChange={setBusRows} placeholder="9" type="number" />
-                <InputField label="Seat Columns" value={busCols} onChange={setBusCols} placeholder="4" type="number" />
-              </div>
-              <div className={`rounded-[1.2rem] border px-4 py-4 ${rowBg}`}>
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Seat arrangement preview</p>
-                <p className="mt-2 text-3xl font-black text-[var(--text)]">{busCapacityPreview} seats</p>
-                <p className="mt-1 text-sm text-[var(--muted)]">{busRows} rows x {busCols} columns</p>
+              {/* Visual Seat Layout Configurator */}
+              <div className={`rounded-[1.4rem] border px-4 py-5 ${rowBg}`}>
+                <p className="mb-4 text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Seat Layout Configuration</p>
+                <BusSeatLayoutConfigurator
+                  rows={busLayoutRows}
+                  onRowsChange={setBusLayoutRows}
+                  preset={busLayoutPreset}
+                  onPresetChange={(id) => { setBusLayoutPreset(id); setBusDisabledSeats(new Set()); }}
+                  disabledSeats={busDisabledSeats}
+                  onToggleSeat={(num) => setBusDisabledSeats(prev => { const next = new Set(prev); next.has(num) ? next.delete(num) : next.add(num); return next; })}
+                  onReset={() => setBusDisabledSeats(new Set())}
+                />
               </div>
               <FileField label="Exterior Photo" file={busExteriorPhoto} onChange={setBusExteriorPhoto} />
               <FileField label="Interior Photo" file={busInteriorPhoto} onChange={setBusInteriorPhoto} />
@@ -2122,12 +2372,78 @@ export default function AdminHome() {
             <GlassCard>
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <SLabel>Station Activity</SLabel>
-                  <p className="text-xl font-black text-[var(--text)]">Most used stops across MetroBus</p>
+                  <SLabel>Revenue Trend</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Daily payment revenue (7 days)</p>
                 </div>
-                <Pill color="amber">{stationAnalytics.length} stations</Pill>
+                <Pill color="sky">{paymentTrend.length} days</Pill>
               </div>
-              <SimpleBarChart items={topStations.length ? topStations : [{ label: "No data", value: 0 }]} color="var(--success)" />
+              <SimpleLineChart points={paymentTrend.length ? paymentTrend.map((item) => ({ label: item.label, value: item.revenue || 0 })) : [{ label: "No data", value: 0 }]} color="var(--success)" />
+              <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-[var(--muted)] xl:grid-cols-4">
+                {(paymentTrend.length ? paymentTrend.slice(-4) : []).map((point) => <div key={point.label} className={`rounded-[1rem] border px-3 py-3 ${rowBg}`}>{point.label}: {fmtMoney(point.revenue || 0)}</div>)}
+              </div>
+            </GlassCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Rating Breakdown</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Star distribution across all reviews</p>
+                </div>
+                <Pill color="emerald">{reviews.total || 0} reviews</Pill>
+              </div>
+              <StarRatingBars counts={(() => {
+                const c = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+                recentReviews.forEach((r) => { if (r.rating >= 1 && r.rating <= 5) c[r.rating] = (c[r.rating] || 0) + 1; });
+                return c;
+              })()} />
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className={`rounded-[1rem] border px-3 py-3 text-center ${rowBg}`}>
+                  <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Positive</p>
+                  <p className="mt-1 text-2xl font-black text-[var(--success)]">{reviews.positive || 0}</p>
+                </div>
+                <div className={`rounded-[1rem] border px-3 py-3 text-center ${rowBg}`}>
+                  <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Avg rating</p>
+                  <p className="mt-1 text-2xl font-black text-[var(--text)]">{reviews.avg_rating ? Number(reviews.avg_rating).toFixed(1) : "--"}</p>
+                </div>
+                <div className={`rounded-[1rem] border px-3 py-3 text-center ${rowBg}`}>
+                  <p className="text-[0.6rem] font-black uppercase tracking-[0.18em] text-[var(--muted)]">Critical</p>
+                  <p className="mt-1 text-2xl font-black text-[var(--danger)]">{reviews.critical || 0}</p>
+                </div>
+              </div>
+            </GlassCard>
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <SLabel>Booking Lifecycle Funnel</SLabel>
+                  <p className="text-xl font-black text-[var(--text)]">Current ride-ops pipeline</p>
+                </div>
+                <Pill color="amber">{rideOps.onboard || 0} onboard</Pill>
+              </div>
+              <MiniStackedBar segments={[
+                { label: "Awaiting acceptance", value: rideOps.awaiting_acceptance || 0, color: "#9d4edd" },
+                { label: "Awaiting payment", value: rideOps.awaiting_payment || 0, color: "var(--accent)" },
+                { label: "Ready to board", value: rideOps.ready_to_board || 0, color: "#3a86ff" },
+                { label: "Onboard", value: rideOps.onboard || 0, color: "var(--success)" },
+                { label: "Completed today", value: rideOps.completed_today || 0, color: "#4ade80" },
+              ]} />
+              <div className="mt-4 grid gap-2">
+                {[
+                  { label: "Awaiting helper acceptance", value: rideOps.awaiting_acceptance || 0, color: "var(--muted)" },
+                  { label: "Awaiting payment", value: rideOps.awaiting_payment || 0, color: "var(--warning)" },
+                  { label: "Ready to board", value: rideOps.ready_to_board || 0, color: "var(--primary)" },
+                  { label: "Currently onboard", value: rideOps.onboard || 0, color: "var(--success)" },
+                  { label: "Completed today", value: rideOps.completed_today || 0, color: "#4ade80" },
+                ].map((item) => (
+                  <div key={item.label} className={`flex items-center justify-between rounded-[0.9rem] border px-3 py-2.5 ${rowBg}`}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="h-2 w-2 rounded-full" style={{ background: item.color }} />
+                      <span className="text-xs font-semibold text-[var(--muted)]">{item.label}</span>
+                    </div>
+                    <span className="text-sm font-black text-[var(--text)]">{item.value}</span>
+                  </div>
+                ))}
+              </div>
             </GlassCard>
           </div>
           <GlassCard>
@@ -2143,12 +2459,12 @@ export default function AdminHome() {
               <SelectField label="Route Filter" value={analyticsRouteFilter} onChange={setAnalyticsRouteFilter} options={routeFilterOptions} />
               <SelectField label="Bus Filter" value={analyticsBusFilter} onChange={setAnalyticsBusFilter} options={busFilterOptions} />
               <div className={`rounded-[1rem] border px-4 py-4 ${rowBg}`}>
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Growth indicator</p>
-                <p className="mt-2 text-3xl font-black text-[var(--success)]">+{Math.max(8, Math.round(overallOccupancyRate / 2))}%</p>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Trips today</p>
+                <p className="mt-2 text-3xl font-black text-[var(--primary)]">{trips.today || 0}</p>
               </div>
               <div className={`rounded-[1rem] border px-4 py-4 ${rowBg}`}>
-                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Average rating</p>
-                <p className="mt-2 text-3xl font-black text-[var(--text)]">{reviews.avg_rating ? Number(reviews.avg_rating).toFixed(1) : "--"}</p>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Avg trip duration</p>
+                <p className="mt-2 text-3xl font-black text-[var(--text)]">{trips.avg_duration_minutes ? `${trips.avg_duration_minutes}m` : "--"}</p>
               </div>
             </div>
           </GlassCard>
@@ -2364,7 +2680,10 @@ export default function AdminHome() {
                         <p className="font-bold text-[var(--text)]">{bus.display_name}</p>
                         <p className="mt-1 text-xs text-[var(--muted)]">{bus.plate_number} | {bus.capacity} seats</p>
                       </div>
-                      <Pill color={bus.is_active ? "emerald" : "slate"}>{bus.is_active ? "Active" : "Inactive"}</Pill>
+                      <div className="flex items-center gap-2">
+                        <Pill color={bus.is_active ? "emerald" : "slate"}>{bus.is_active ? "Active" : "Inactive"}</Pill>
+                        <Btn tone="ghost" onClick={() => setDrillEntity({ kind: "bus", data: bus })} className="!px-3 !py-1.5 text-xs">Report →</Btn>
+                      </div>
                     </div>
                     <div className="mt-3 grid gap-2 xl:grid-cols-4">
                       <div className={`rounded-[0.9rem] border px-3 py-3 text-xs ${rowBg}`}>Trips {bus.total_trips}</div>
@@ -2676,12 +2995,79 @@ export default function AdminHome() {
           {renderSectionContent()}
         </main>
       </div>
+      {drillEntity ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(25,15,36,0.48)] px-4 backdrop-blur-sm">
+          <div className="w-full max-w-[46rem] rounded-[2rem] border border-[var(--border)] bg-[var(--surface-strong)] p-7 shadow-[var(--shadow-strong)] max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div>
+                <p className="text-[0.72rem] font-black uppercase tracking-[0.22em] text-[var(--primary)]">{drillEntity.kind === "bus" ? "Bus Performance Report" : "Route Performance Report"}</p>
+                <h2 className="mt-2 text-[1.8rem] font-black leading-tight text-[var(--text)]">
+                  {drillEntity.kind === "bus" ? drillEntity.data.display_name : drillEntity.data.route_name}
+                </h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">
+                  {drillEntity.kind === "bus"
+                    ? `${drillEntity.data.plate_number} | ${drillEntity.data.capacity} seats | Driver: ${drillEntity.data.driver_name || "Unassigned"}`
+                    : `${drillEntity.data.city} | ${drillEntity.data.stops_count} stops`}
+                </p>
+              </div>
+              <button type="button" onClick={() => setDrillEntity(null)} className="grid h-11 w-11 place-items-center rounded-full bg-[var(--accent-soft)] text-[var(--primary)] shrink-0">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M6 6l12 12" /><path d="M18 6 6 18" /></svg>
+              </button>
+            </div>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className={`rounded-[1.4rem] border px-5 py-5 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Total Trips</p>
+                <p className="mt-2 text-3xl font-black text-[var(--text)]">{drillEntity.data.total_trips || 0}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{drillEntity.data.live_trips || 0} currently live</p>
+              </div>
+              <div className={`rounded-[1.4rem] border px-5 py-5 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Revenue Earned</p>
+                <p className="mt-2 text-3xl font-black text-[var(--success)]">{fmtMoney(drillEntity.data.revenue_success || 0)}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{drillEntity.data.completed_bookings || 0} completed bookings</p>
+              </div>
+              <div className={`rounded-[1.4rem] border px-5 py-5 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Passenger Rating</p>
+                <p className="mt-2 text-3xl font-black text-[var(--text)]">{drillEntity.data.reviews_total ? `${Number(drillEntity.data.avg_rating || 0).toFixed(1)} / 5` : "No reviews yet"}</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{drillEntity.data.reviews_total || 0} total passenger reviews</p>
+              </div>
+              <div className={`rounded-[1.4rem] border px-5 py-5 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)]">Booking Funnel</p>
+                <p className="mt-2 text-3xl font-black text-[var(--text)]">{drillEntity.data.bookings || 0} total</p>
+                <p className="mt-1 text-xs text-[var(--muted)]">{drillEntity.data.completed_bookings || 0} completed | {(drillEntity.data.bookings || 0) - (drillEntity.data.completed_bookings || 0)} pending/cancelled</p>
+              </div>
+            </div>
+            {drillEntity.kind === "bus" ? (
+              <div className={`mt-4 rounded-[1.4rem] border px-5 py-5 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)] mb-3">Fleet Assignment</p>
+                <div className="grid gap-3 xl:grid-cols-3">
+                  <div><p className="text-xs text-[var(--muted)]">Driver</p><p className="mt-1 font-bold text-[var(--text)]">{drillEntity.data.driver_name || "Unassigned"}</p></div>
+                  <div><p className="text-xs text-[var(--muted)]">Helper</p><p className="mt-1 font-bold text-[var(--text)]">{drillEntity.data.helper_name || "Unassigned"}</p></div>
+                  <div><p className="text-xs text-[var(--muted)]">Condition</p><p className="mt-1 font-bold text-[var(--text)]">{drillEntity.data.condition || "--"}</p></div>
+                </div>
+              </div>
+            ) : (
+              <div className={`mt-4 rounded-[1.4rem] border px-5 py-5 ${rowBg}`}>
+                <p className="text-[0.68rem] font-black uppercase tracking-[0.16em] text-[var(--muted)] mb-3">Route Details</p>
+                <div className="grid gap-3 xl:grid-cols-2">
+                  <div><p className="text-xs text-[var(--muted)]">City</p><p className="mt-1 font-bold text-[var(--text)]">{drillEntity.data.city}</p></div>
+                  <div><p className="text-xs text-[var(--muted)]">Stops</p><p className="mt-1 font-bold text-[var(--text)]">{drillEntity.data.stops_count}</p></div>
+                  <div><p className="text-xs text-[var(--muted)]">Status</p><p className="mt-1 font-bold text-[var(--text)]">{drillEntity.data.is_active ? "Active" : "Inactive"}</p></div>
+                  <div><p className="text-xs text-[var(--muted)]">Planned Schedules</p><p className="mt-1 font-bold text-[var(--text)]">{drillEntity.data.planned_schedules || 0}</p></div>
+                </div>
+              </div>
+            )}
+            <div className="mt-6 flex justify-end">
+              <Btn tone="primary" onClick={() => setDrillEntity(null)} className="!px-6 !py-3">Close Report</Btn>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <ConfirmModal
         isOpen={!!confirmModal}
         title={confirmModal?.title}
-        message={confirmModal?.msg}
-        onConfirm={confirmModal?.confirm}
-        onCancel={() => setConfirmModal(null)}
+        message={confirmModal?.message}
+        onConfirm={confirmModal?.onConfirm}
+        onCancel={confirmModal?.onCancel || (() => setConfirmModal(null))}
         busy={busDeleteBusyId || routeDeleteBusyId || scheduleDeleteBusyId || userDeleteBusyId}
       />
     </div>

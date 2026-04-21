@@ -323,17 +323,21 @@ class TripSeatAvailabilityView(APIView):
 
         # Auto-resolve full route range when params are omitted
         if not from_param or not to_param:
-            from transport.models import RouteStop
-            route_stop_orders = list(
-                RouteStop.objects.filter(route=trip.route)
-                .order_by("stop_order")
-                .values_list("stop_order", flat=True)
-            )
-            if len(route_stop_orders) >= 2:
-                from_order = route_stop_orders[0]
-                to_order = route_stop_orders[-1]
+            if trip.start_stop_order and trip.end_stop_order:
+                from_order = trip.start_stop_order
+                to_order = trip.end_stop_order
             else:
-                return Response({"detail": "Provide valid from and to query params"}, status=400)
+                from transport.models import RouteStop
+                route_stop_orders = list(
+                    RouteStop.objects.filter(route=trip.route)
+                    .order_by("stop_order")
+                    .values_list("stop_order", flat=True)
+                )
+                if len(route_stop_orders) >= 2:
+                    from_order = route_stop_orders[0]
+                    to_order = route_stop_orders[-1]
+                else:
+                    return Response({"detail": "Provide valid from and to query params"}, status=400)
         else:
             try:
                 from_order = int(from_param)
